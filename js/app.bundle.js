@@ -762,6 +762,7 @@
       this.btnPrint = document.getElementById('btnPrint');
       this.btnQuickPrint = document.getElementById('btnQuickPrint');
       this.btnDownloadPdf = document.getElementById('btnDownloadPdf');
+      this.btnClearData = document.getElementById('btnClearData');
 
       // Dropzone & Arquivo
       this.dropzone = document.getElementById('excelDropzone');
@@ -843,6 +844,7 @@
     initEvents() {
       this.btnDownloadTemplate.addEventListener('click', () => ExcelParser.downloadTemplate());
       this.btnLoadSample.addEventListener('click', () => this.loadDefaultSample());
+      this.btnClearData.addEventListener('click', () => this.clearSpreadsheetData());
       this.btnPrint.addEventListener('click', () => window.print());
       this.btnQuickPrint.addEventListener('click', () => window.print());
       
@@ -1200,45 +1202,57 @@
     populateContractSelect() {
       this.contractSectorSelect.innerHTML = '';
 
-      // Opção padrão print
+      // 1. Consolidado Geral (todos os contratos e setores)
       const optDefault = document.createElement('option');
       optDefault.value = 'PRINT_DEFAULT';
-      optDefault.textContent = '★ Santos (SEDUC) - Consolidado Geral (Mar Brasil)';
+      optDefault.textContent = '⭐ Consolidado Geral (Todos os Contratos)';
       this.contractSectorSelect.appendChild(optDefault);
 
-      // Grupo de Contratos
+      // 2. Consolidado por Contrato
       const optGroupContracts = document.createElement('optgroup');
-      optGroupContracts.label = '── Contratos Cadastrados (Consolidado) ──';
-
+      optGroupContracts.label = '── Consolidado por Contrato ──';
       this.config.contracts.forEach(contract => {
-        let techText = '';
-        if (contract.technicianId) {
-          techText = ` (${ContractStore.getTechName(this.config.technicians, contract.technicianId)})`;
-        } else if (contract.sectors && contract.sectors.length > 0) {
-          techText = ` (${contract.sectors.length} Setores)`;
-        }
-
+        const techText = contract.technicianId
+          ? ` — ${ContractStore.getTechName(this.config.technicians, contract.technicianId)}`
+          : contract.sectors && contract.sectors.length > 0
+            ? ` — ${contract.sectors.length} Setores`
+            : '';
         const opt = document.createElement('option');
         opt.value = `CONTRACT_${contract.id}`;
-        opt.textContent = `${contract.code} - ${contract.clientName}${techText}`;
+        opt.textContent = `${contract.code} · ${contract.clientName}${techText}`;
         optGroupContracts.appendChild(opt);
       });
       this.contractSectorSelect.appendChild(optGroupContracts);
 
-      // Grupo de Setores da Planilha com Técnico Associado
-      if (this.spreadsheetData && this.spreadsheetData.rows) {
+      // 3. Setores Individuais (apenas se houver planilha carregada)
+      if (this.spreadsheetData && this.spreadsheetData.rows && this.spreadsheetData.rows.length > 0) {
         const optGroupSectors = document.createElement('optgroup');
-        optGroupSectors.label = '── Setores Individuais com Técnicos ──';
-
+        optGroupSectors.label = '── Setores Individuais ──';
         this.spreadsheetData.rows.forEach((row, idx) => {
           const resolved = ContractStore.resolveSectorInfo(this.config, row.setor);
           const opt = document.createElement('option');
           opt.value = `ROW_${idx}`;
-          opt.textContent = `${row.setor} ➔ ${resolved.technicianName} (${row.equipamentosAtivos} maq.)`;
+          opt.textContent = `${row.setor}  ·  ${resolved.technicianName}  (${row.equipamentosAtivos} equip.)`;
           optGroupSectors.appendChild(opt);
         });
         this.contractSectorSelect.appendChild(optGroupSectors);
       }
+    }
+
+    /** Agrega todas as linhas da planilha em um único consolidado. */
+    computeGlobalTotals() {
+      const zero = { equipamentosAtivos: 0, mensalPrevista: 0, mensalRealizada: 0, semestralPrevista: 0, semestralRealizada: 0, corretivasPrevista: 0, corretivasRealizada: 0 };
+      if (!this.spreadsheetData || !this.spreadsheetData.rows || this.spreadsheetData.rows.length === 0) return null;
+      return this.spreadsheetData.rows.reduce((acc, row) => {
+        acc.equipamentosAtivos  += row.equipamentosAtivos;
+        acc.mensalPrevista      += row.mensalPrevista;
+        acc.mensalRealizada     += row.mensalRealizada;
+        acc.semestralPrevista   += row.semestralPrevista;
+        acc.semestralRealizada  += row.semestralRealizada;
+        acc.corretivasPrevista  += row.corretivasPrevista;
+        acc.corretivasRealizada += row.corretivasRealizada;
+        return acc;
+      }, { ...zero });
     }
 
     onSectorChange() {
@@ -1246,18 +1260,38 @@
 
       if (val === 'PRINT_DEFAULT') {
         this.state = JSON.parse(JSON.stringify(DEFAULT_REPORT_DATA));
-        this.state.technicianName = 'Múltiplos Setores • Equipe Especializada';
-        this.updateSidebarInfo('Mar Brasil', 'SEDUC Santos', 'Múltiplos Setores (Santos)', 'Consolidado Geral (6 setores)');
-        this.syncInputsFromState();
-        this.updateQuickStats({
-          equipamentos: 402,
-          mensalPrev: 402,
-          mensalReal: 211,
-          semestralPrev: 80,
-          semestralReal: 0,
-          corretivaPrev: 0,
-          corretivaReal: 0
-        });
+        this.state.contractBadge = 'CONSOLIDADO GERAL — MAR BRASIL';
+        this.state.contractTitle = 'Medição de Desempenho - Mar Brasil';
+        this.state.contractSubtitle = DEFAULT_REPORT_DATA.contractSubtitle;
+
+        const totals = this.computeGlobalTotals();
+        if (totals) {
+          // Planilha carregada: usa dados reais agregados de todos os contratos
+          this.state.pmocMensal.prevista      = totals.mensalPrevista;
+          this.state.pmocMensal.realizada     = totals.mensalRealizada;
+          this.state.pmocSemestral.prevista   = totals.semestralPrevista;
+          this.state.pmocSemestral.realizada  = totals.semestralRealizada;
+          this.state.corretiva.prevista       = totals.corretivasPrevista;
+          this.state.corretiva.realizada      = totals.corretivasRealizada;
+          this.state.technicianName           = `${this.spreadsheetData.rows.length} Setores · Todos os Contratos`;
+          this.updateSidebarInfo('Mar Brasil', 'Todos os Contratos', 'Múltiplos Contratos', 'Consolidado Geral');
+          this.syncInputsFromState();
+          this.updateQuickStats({
+            equipamentos: totals.equipamentosAtivos,
+            mensalPrev:   totals.mensalPrevista,
+            mensalReal:   totals.mensalRealizada,
+            semestralPrev: totals.semestralPrevista,
+            semestralReal: totals.semestralRealizada,
+            corretivaPrev: totals.corretivasPrevista,
+            corretivaReal: totals.corretivasRealizada
+          });
+        } else {
+          // Sem planilha: usa dados de demonstração
+          this.state.technicianName = 'Múltiplos Setores • Equipe Especializada';
+          this.updateSidebarInfo('Mar Brasil', 'SEDUC Santos', 'Múltiplos Setores (Santos)', 'Dados de Demonstração');
+          this.syncInputsFromState();
+          this.updateQuickStats({ equipamentos: 402, mensalPrev: 402, mensalReal: 211, semestralPrev: 80, semestralReal: 0, corretivaPrev: 0, corretivaReal: 0 });
+        }
         this.update();
         return;
       }
@@ -1278,30 +1312,41 @@
 
           this.state.technicianName = techName;
 
-          this.updateSidebarInfo(contract.company || 'Mar Brasil', contract.clientName, techName, 'Consolidado');
+          this.updateSidebarInfo(contract.company || 'Mar Brasil', contract.clientName, techName, 'Consolidado do Contrato');
 
-          // Busca dados agregados da planilha se houver
-          const groupKey = Object.keys(this.spreadsheetData.groups).find(k => 
-            contract.code.toUpperCase().replace(/[^A-Z0-9]/g, '').includes(k.replace(/[^A-Z0-9]/g, ''))
-          );
+          // Busca dados agregados da planilha filtrando apenas as linhas deste contrato
+          const contractNorm = contract.code.toUpperCase().replace(/[^A-Z0-9]/g, '');
+          const contractRows = (this.spreadsheetData.rows || []).filter(row => {
+            const rowNorm = row.setor.toUpperCase().replace(/[^A-Z0-9]/g, '');
+            return rowNorm.includes(contractNorm) || contractNorm.includes(rowNorm.substring(0, 8));
+          });
 
-          if (groupKey && this.spreadsheetData.groups[groupKey]) {
-            const grp = this.spreadsheetData.groups[groupKey];
-            this.state.pmocMensal.prevista = grp.totals.mensalPrevista;
-            this.state.pmocMensal.realizada = grp.totals.mensalRealizada;
-            this.state.pmocSemestral.prevista = grp.totals.semestralPrevista;
-            this.state.pmocSemestral.realizada = grp.totals.semestralRealizada;
-            this.state.corretiva.prevista = grp.totals.corretivasPrevista;
-            this.state.corretiva.realizada = grp.totals.corretivasRealizada;
+          if (contractRows.length > 0) {
+            const totals = contractRows.reduce((acc, row) => {
+              acc.equipamentosAtivos  += row.equipamentosAtivos;
+              acc.mensalPrevista      += row.mensalPrevista;
+              acc.mensalRealizada     += row.mensalRealizada;
+              acc.semestralPrevista   += row.semestralPrevista;
+              acc.semestralRealizada  += row.semestralRealizada;
+              acc.corretivasPrevista  += row.corretivasPrevista;
+              acc.corretivasRealizada += row.corretivasRealizada;
+              return acc;
+            }, { equipamentosAtivos:0, mensalPrevista:0, mensalRealizada:0, semestralPrevista:0, semestralRealizada:0, corretivasPrevista:0, corretivasRealizada:0 });
 
+            this.state.pmocMensal.prevista      = totals.mensalPrevista;
+            this.state.pmocMensal.realizada     = totals.mensalRealizada;
+            this.state.pmocSemestral.prevista   = totals.semestralPrevista;
+            this.state.pmocSemestral.realizada  = totals.semestralRealizada;
+            this.state.corretiva.prevista       = totals.corretivasPrevista;
+            this.state.corretiva.realizada      = totals.corretivasRealizada;
             this.updateQuickStats({
-              equipamentos: grp.totals.equipamentosAtivos,
-              mensalPrev: grp.totals.mensalPrevista,
-              mensalReal: grp.totals.mensalRealizada,
-              semestralPrev: grp.totals.semestralPrevista,
-              semestralReal: grp.totals.semestralRealizada,
-              corretivaPrev: grp.totals.corretivasPrevista,
-              corretivaReal: grp.totals.corretivasRealizada
+              equipamentos:  totals.equipamentosAtivos,
+              mensalPrev:    totals.mensalPrevista,
+              mensalReal:    totals.mensalRealizada,
+              semestralPrev: totals.semestralPrevista,
+              semestralReal: totals.semestralRealizada,
+              corretivaPrev: totals.corretivasPrevista,
+              corretivaReal: totals.corretivasRealizada
             });
           }
 
@@ -1443,6 +1488,22 @@
         corretivaReal: 0
       });
       this.update();
+    }
+
+    clearSpreadsheetData() {
+      // Reseta os dados da planilha para o estado vazio
+      this.spreadsheetData = { rows: [], groups: {} };
+
+      // Oculta indicadores de arquivo
+      this.fileBadge.style.display = 'none';
+      this.fileInfoNotice.style.display = 'none';
+      this.activeFileName.textContent = '';
+      this.fileInput.value = '';
+
+      // Volta para o Consolidado Geral e re-renderiza com dados de demonstração
+      this.populateContractSelect();
+      this.contractSectorSelect.value = 'PRINT_DEFAULT';
+      this.onSectorChange();
     }
 
     update() {

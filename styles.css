@@ -135,6 +135,17 @@ body {
   background-color: #e2e8f0;
 }
 
+.btn-danger {
+  background-color: #fee2e2;
+  border-color: #fca5a5;
+  color: #b91c1c;
+}
+
+.btn-danger:hover {
+  background-color: #fecaca;
+  border-color: #f87171;
+}
+
 /* ==========================================================================
    LAYOUT PRINCIPAL (CONTROLES + PREVIEW DO RELATÓRIO)
    ========================================================================== */
