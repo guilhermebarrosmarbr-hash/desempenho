@@ -1,6 +1,6 @@
 /**
  * SISTEMA DE MEDIÇÃO DE DESEMPENHO E FATURAMENTO - MAR BRASIL
- * Versão Consolidada Escalável com Gestão de Contratos e Técnicos Parceiros
+ * Versão Consolidada com Gestão de Contratos, Níveis de Técnicos e Cálculos Dinâmicos
  * Princípios de Clean Code: Responsabilidade Única, Funções Puras, Sem Dependências Desnecessárias.
  */
 
@@ -35,7 +35,49 @@
   };
 
   /* ==========================================================================
-     2. REGRAS DE NEGÓCIO E CÁLCULO DA MEDIÇÃO
+     2. TABELA DE NÍVEIS DOS TÉCNICOS & REGRAS (MAR BRASIL)
+     ========================================================================== */
+  const TECH_LEVELS = {
+    LVL_1: { id: 'LVL_1', label: 'Nível 01', value: 6000.0, description: 'STS 36693/22 - Setor 01' },
+    LVL_2: { id: 'LVL_2', label: 'Nível 02', value: 5250.0, description: 'SMSU PSP 6029/25 & STS 36693/22 - Setor 04' },
+    LVL_3: { id: 'LVL_3', label: 'Nível 03', value: 4250.0, description: 'CRSN PSP 6018/25 & STS 36693/22 - Setores 02, 03, 05, 06' }
+  };
+
+  /**
+   * Identifica o nível do técnico com base no setor e contrato:
+   * - Nível 01 (R$ 6.000,00): Setor 01 do STS 36693/22
+   * - Nível 02 (R$ 5.250,00): SMSU PSP 6029/25 e Setor 04 do STS 36693/22
+   * - Nível 03 (R$ 4.250,00): CRSN PSP 6018/25 e Setores 02, 03, 05 e 06 do STS 36693/22
+   */
+  function resolveTechLevelBySector(setorStr) {
+    const norm = (setorStr || '').toUpperCase();
+
+    // STS Setor 01 -> Nível 01
+    if (norm.includes('SETOR 01') || norm.includes('SETOR 1')) {
+      return TECH_LEVELS.LVL_1;
+    }
+
+    // SMSU ou STS Setor 04 -> Nível 02
+    if (norm.includes('SMSU') || norm.includes('6029') || norm.includes('SETOR 04') || norm.includes('SETOR 4')) {
+      return TECH_LEVELS.LVL_2;
+    }
+
+    // CRSN ou STS Setores 02, 03, 05, 06 -> Nível 03
+    if (
+      norm.includes('CRSN') || norm.includes('6018') ||
+      norm.includes('SETOR 02') || norm.includes('SETOR 2') ||
+      norm.includes('SETOR 03') || norm.includes('SETOR 3') ||
+      norm.includes('SETOR 05') || norm.includes('SETOR 5') ||
+      norm.includes('SETOR 06') || norm.includes('SETOR 6')
+    ) {
+      return TECH_LEVELS.LVL_3;
+    }
+
+    return TECH_LEVELS.LVL_3;
+  }
+
+  /* ==========================================================================
+     3. REGRAS DE NEGÓCIO E CÁLCULO DA MEDIÇÃO
      ========================================================================== */
   class MeasurementCalculator {
     static computePerformance(prevista, realizada) {
@@ -48,14 +90,51 @@
       return Math.min(1.0, Math.max(0.0, real / prev));
     }
 
+    /**
+     * Regra do Excedente (Ponto 05):
+     * Preenchido somente se a soma das preventivas mensais e semestrais for > 500.
+     * Caso contrário, é zerado.
+     */
+    static computeExcedenteQty(mensalRealizada, semestralRealizada) {
+      const soma = (Number(mensalRealizada) || 0) + (Number(semestralRealizada) || 0);
+      return soma > 500 ? (soma - 500) : 0;
+    }
+
+    /**
+     * Regra do Incentivo Veicular (Ponto 02):
+     * Média da produtividade dos itens do técnico (Mensal, Semestral, Corretiva e EPI).
+     * - Média 100%: Incentivo de 100% (R$ 1.000,00)
+     * - Média 90% a 99%: R$ 750,00
+     * - Média < 90%: R$ 0,00
+     */
+    static computeIncentivo(perfMensal, perfSemestral, perfCorretiva, perfEPI, baseValue = 1000.0) {
+      const items = [perfMensal, perfSemestral, perfCorretiva, perfEPI];
+      const avg = items.reduce((acc, val) => acc + val, 0) / items.length;
+      const avgPct = Math.round(avg * 100);
+
+      let reconhecido = 0.0;
+      if (avgPct >= 100) {
+        reconhecido = baseValue;
+      } else if (avgPct >= 90) {
+        reconhecido = 750.0;
+      } else {
+        reconhecido = 0.0;
+      }
+
+      return {
+        metaPerformance: avg,
+        baseValue: baseValue,
+        reconhecido: reconhecido
+      };
+    }
+
     static calculate(params) {
       const {
-        contractValue = 6000.0,
+        contractValue = 4250.0, // Nível do Técnico (canto superior direito)
         pmocMensal = { prevista: 402, realizada: 211, peso: 0.05 },
-        pmocSemestral = { prevista: 80, realizada: 0, peso: 0.40 },
+        pmocSemestral = { prevista: 80, realizada: 0, peso: 0.50 },
         corretiva = { prevista: 0, realizada: 0, peso: 0.40 },
-        epi = { prevista: 22, realizada: 9, peso: 0.10 },
-        instDesins = { performance: 1.0, peso: 0.05 },
+        epi = { prevista: 22, realizada: 9, peso: 0.05 },
         excedente = { quantidade: 0, tarifa: 10.75, unitario: 3.50 },
         incentivoVeicular = { metaPerformance: 0.59, baseValue: 1000.0, reconhecido: 0 }
       } = params;
@@ -65,34 +144,31 @@
       const perfSemestral = this.computePerformance(pmocSemestral.prevista, pmocSemestral.realizada);
       const perfCorretiva = this.computePerformance(corretiva.prevista, corretiva.realizada);
       const perfEPI = this.computePerformance(epi.prevista, epi.realizada);
-      const perfInstDesins = Number(instDesins.performance) || 1.0;
 
-      // 2. Valores Base
-      const baseMensal = contractValue * pmocMensal.peso;
-      const baseSemestral = contractValue * pmocSemestral.peso;
-      const baseCorretiva = contractValue * corretiva.peso;
-      const baseEPI = contractValue * epi.peso;
-      const baseInstDesins = contractValue * instDesins.peso;
+      // 2. Valores Base (calculados a partir do Nível do Técnico)
+      const baseMensal = contractValue * (Number(pmocMensal.peso) || 0.05);
+      const baseSemestral = contractValue * (Number(pmocSemestral.peso) || 0.50);
+      const baseCorretiva = contractValue * (Number(corretiva.peso) || 0.40);
+      const baseEPI = contractValue * (Number(epi.peso) || 0.05);
 
       // 3. Valores Reconhecidos
       const recMensal = baseMensal * perfMensal;
       const recSemestral = baseSemestral * perfSemestral;
       const recCorretiva = baseCorretiva * perfCorretiva;
       const recEPI = baseEPI * perfEPI;
-      const recInstDesins = baseInstDesins * perfInstDesins;
 
-      // Excedente
+      // 4. Excedente
       const qtdExcedente = Number(excedente.quantidade) || 0;
       const unitExcedente = Number(excedente.unitario) || 0;
       const recExcedente = qtdExcedente * unitExcedente;
 
-      // Subtotal
-      const subtotal = recMensal + recSemestral + recCorretiva + recEPI + recInstDesins + recExcedente;
+      // 5. Subtotal (sem Inst/Desins que foi removida)
+      const subtotal = recMensal + recSemestral + recCorretiva + recEPI + recExcedente;
 
-      // Incentivo Veicular
+      // 6. Incentivo Veicular
       const recIncentivo = Number(incentivoVeicular.reconhecido) || 0;
 
-      // Total Final
+      // 7. Total Final
       const total = subtotal + recIncentivo;
 
       return {
@@ -149,13 +225,6 @@
               valorReconhecido: Formatter.currency(recEPI, true)
             },
             {
-              item: 'INST/DESINS',
-              performance: Formatter.percentage(perfInstDesins),
-              peso: Formatter.percentage(instDesins.peso),
-              valorBase: Formatter.currency(baseInstDesins),
-              valorReconhecido: Formatter.currency(recInstDesins, true)
-            },
-            {
               item: 'EXCEDENTE',
               performance: `${qtdExcedente}`,
               peso: Formatter.currency(excedente.tarifa),
@@ -182,19 +251,19 @@
   }
 
   /* ==========================================================================
-     3. REPOSITÓRIO E GESTÃO DE CONTRATOS E TÉCNICOS (MAR BRASIL)
+     4. REPOSITÓRIO E GESTÃO DE CONTRATOS E TÉCNICOS (MAR BRASIL)
      ========================================================================== */
-  const STORAGE_KEY = 'MAR_BRASIL_PMOC_CONFIG_V1';
+  const STORAGE_KEY = 'MAR_BRASIL_PMOC_CONFIG_V2';
 
   const INITIAL_TECHNICIANS = [
-    { id: 'tech-gb', name: 'GB Climatização', phone: '', notes: 'Responsável Setor 01 Santos' },
-    { id: 'tech-ravtech', name: 'RavTech Climatização', phone: '', notes: 'Responsável Setor 02 Santos' },
-    { id: 'tech-rn', name: 'RN Climatização', phone: '', notes: 'Responsável Setor 03 Santos' },
-    { id: 'tech-gr', name: 'GR Ar Condicionado', phone: '', notes: 'Responsável Setor 04 Santos' },
-    { id: 'tech-cj', name: 'CJ Refrigeração', phone: '', notes: 'Responsável Setor 05 Santos' },
-    { id: 'tech-santoar', name: 'Santo Ar', phone: '', notes: 'Responsável Setor 06 Santos' },
-    { id: 'tech-jr', name: 'JR Refrigeração', phone: '', notes: 'Responsável Contrato CRSN PSP 6018/25' },
-    { id: 'tech-cm2d', name: 'CM2D Refrigeração', phone: '', notes: 'Responsável Contrato SMSU PSP 6029/25' }
+    { id: 'tech-gb', name: 'GB Climatização', phone: '', notes: 'Responsável Setor 01 Santos (Nível 01)' },
+    { id: 'tech-ravtech', name: 'RavTech Climatização', phone: '', notes: 'Responsável Setor 02 Santos (Nível 03)' },
+    { id: 'tech-rn', name: 'RN Climatização', phone: '', notes: 'Responsável Setor 03 Santos (Nível 03)' },
+    { id: 'tech-gr', name: 'GR Ar Condicionado', phone: '', notes: 'Responsável Setor 04 Santos (Nível 02)' },
+    { id: 'tech-cj', name: 'CJ Refrigeração', phone: '', notes: 'Responsável Setor 05 Santos (Nível 03)' },
+    { id: 'tech-santoar', name: 'Santo Ar', phone: '', notes: 'Responsável Setor 06 Santos (Nível 03)' },
+    { id: 'tech-jr', name: 'JR Refrigeração', phone: '', notes: 'Responsável Contrato CRSN PSP 6018/25 (Nível 03)' },
+    { id: 'tech-cm2d', name: 'CM2D Refrigeração', phone: '', notes: 'Responsável Contrato SMSU PSP 6029/25 (Nível 02)' }
   ];
 
   const INITIAL_CONTRACTS = [
@@ -208,12 +277,12 @@
       contractValue: 6000.0,
       technicianId: '',
       sectors: [
-        { id: 'sec-sts-01', code: 'SETOR 01', fullName: 'STS36693/22 - SETOR 01', technicianId: 'tech-gb' },
-        { id: 'sec-sts-02', code: 'SETOR 02', fullName: 'STS36693/22 - SETOR 02', technicianId: 'tech-ravtech' },
-        { id: 'sec-sts-03', code: 'SETOR 03', fullName: 'STS36693/22 - SETOR 03', technicianId: 'tech-rn' },
-        { id: 'sec-sts-04', code: 'SETOR 04', fullName: 'STS36693/22 - SETOR 04', technicianId: 'tech-gr' },
-        { id: 'sec-sts-05', code: 'SETOR 05', fullName: 'STS36693/22 - SETOR 05', technicianId: 'tech-cj' },
-        { id: 'sec-sts-06', code: 'SETOR 06', fullName: 'STS36693/22 - SETOR 06', technicianId: 'tech-santoar' }
+        { id: 'sec-sts-01', code: 'SETOR 01', fullName: 'STS36693/22 - SETOR 01', technicianId: 'tech-gb', techLevel: 'LVL_1' },
+        { id: 'sec-sts-02', code: 'SETOR 02', fullName: 'STS36693/22 - SETOR 02', technicianId: 'tech-ravtech', techLevel: 'LVL_3' },
+        { id: 'sec-sts-03', code: 'SETOR 03', fullName: 'STS36693/22 - SETOR 03', technicianId: 'tech-rn', techLevel: 'LVL_3' },
+        { id: 'sec-sts-04', code: 'SETOR 04', fullName: 'STS36693/22 - SETOR 04', technicianId: 'tech-gr', techLevel: 'LVL_2' },
+        { id: 'sec-sts-05', code: 'SETOR 05', fullName: 'STS36693/22 - SETOR 05', technicianId: 'tech-cj', techLevel: 'LVL_3' },
+        { id: 'sec-sts-06', code: 'SETOR 06', fullName: 'STS36693/22 - SETOR 06', technicianId: 'tech-santoar', techLevel: 'LVL_3' }
       ]
     },
     {
@@ -223,10 +292,11 @@
       clientFullName: 'Coordenadoria Regional de Saúde Norte de São Paulo',
       company: 'Mar Brasil',
       description: 'Avaliação objetiva da execução contratual de manutenção (PMOC e correlatos) da Coordenadoria Regional de Saúde Norte de São Paulo realizada pela Mar Brasil, com conversão direta de performance operacional em valor financeiro reconhecido.',
-      contractValue: 3500.0,
+      contractValue: 4250.0,
       technicianId: 'tech-jr',
+      techLevel: 'LVL_3',
       sectors: [
-        { id: 'sec-crsn-01', code: 'CRSN', fullName: 'PSP6018/25 - CRSN', technicianId: 'tech-jr' }
+        { id: 'sec-crsn-01', code: 'CRSN', fullName: 'PSP6018/25 - CRSN', technicianId: 'tech-jr', techLevel: 'LVL_3' }
       ]
     },
     {
@@ -236,10 +306,11 @@
       clientFullName: 'Secretaria Municipal de Segurança Urbana de São Paulo',
       company: 'Mar Brasil',
       description: 'Avaliação objetiva da execução contratual de manutenção (PMOC e correlatos) da Secretaria Municipal de Segurança Urbana de São Paulo realizada pela Mar Brasil, com conversão direta de performance operacional em valor financeiro reconhecido.',
-      contractValue: 2800.0,
+      contractValue: 5250.0,
       technicianId: 'tech-cm2d',
+      techLevel: 'LVL_2',
       sectors: [
-        { id: 'sec-smsu-01', code: 'SMSU', fullName: 'PSP6029/25 - SMSU', technicianId: 'tech-cm2d' }
+        { id: 'sec-smsu-01', code: 'SMSU', fullName: 'PSP6029/25 - SMSU', technicianId: 'tech-cm2d', techLevel: 'LVL_2' }
       ]
     }
   ];
@@ -301,11 +372,13 @@
           clientFullName: 'Secretaria de Educação de Santos',
           technicianName: 'GB Climatização',
           sectorDisplayName: 'Setor 01',
+          techLevel: TECH_LEVELS.LVL_1,
           isConsolidated: false
         };
       }
 
       const cleanStr = setorStr.replace(/\s+/g, ' ').toUpperCase();
+      const detectedLevel = resolveTechLevelBySector(cleanStr);
 
       for (const contract of config.contracts) {
         if (contract.sectors && contract.sectors.length > 0) {
@@ -327,6 +400,7 @@
                 clientFullName: contract.clientFullName,
                 technicianName: techName,
                 sectorDisplayName: sec.code || sec.fullName,
+                techLevel: sec.techLevel ? (TECH_LEVELS[sec.techLevel] || detectedLevel) : detectedLevel,
                 isConsolidated: false
               };
             }
@@ -351,6 +425,7 @@
             clientFullName: contract.clientFullName,
             technicianName: techSummary,
             sectorDisplayName: 'Consolidado Geral',
+            techLevel: detectedLevel,
             isConsolidated: true
           };
         }
@@ -364,13 +439,14 @@
         clientFullName: 'Órgão Contratante',
         technicianName: 'Técnico Responsável',
         sectorDisplayName: setorStr,
+        techLevel: detectedLevel,
         isConsolidated: false
       };
     }
   }
 
   /* ==========================================================================
-     4. DADOS DE DEMONSTRAÇÃO DO PRINT (MAR BRASIL)
+     5. DADOS DE DEMONSTRAÇÃO DO PRINT (MAR BRASIL)
      ========================================================================== */
   const DEFAULT_REPORT_DATA = {
     contractBadge: 'CONTRATO STS 36693/22',
@@ -381,12 +457,11 @@
     clientName: 'SEDUC Santos',
     clientFullName: 'Secretaria de Educação de Santos',
     technicianName: 'GB Climatização (Setor 01)',
-    contractValue: 6000.0,
+    contractValue: 6000.0, // Nível 01
     pmocMensal: { prevista: 402, realizada: 211, peso: 0.05 },
-    pmocSemestral: { prevista: 80, realizada: 0, peso: 0.40 },
+    pmocSemestral: { prevista: 80, realizada: 0, peso: 0.50 },
     corretiva: { prevista: 0, realizada: 0, peso: 0.40 },
-    epi: { prevista: 22, realizada: 9, peso: 0.10 },
-    instDesins: { performance: 1.0, peso: 0.05 },
+    epi: { prevista: 22, realizada: 9, peso: 0.05 },
     excedente: { quantidade: 0, tarifa: 10.75, unitario: 3.50 },
     incentivoVeicular: { metaPerformance: 0.59, baseValue: 1000.0, reconhecido: 0 }
   };
@@ -403,7 +478,7 @@
   ];
 
   /* ==========================================================================
-     5. PARSER E EXPORTADOR DE EXCEL
+     6. PARSER E EXPORTADOR DE EXCEL
      ========================================================================== */
   class ExcelParser {
     static normalizeHeader(str) {
@@ -463,7 +538,6 @@
       return map;
     }
 
-    /** Usa mapeamento por nome se completo; caso contrário usa posicional fixo. */
     static resolveColumnMap(headers) {
       const byName = this.mapHeadersByName(headers);
       const required = ['setor', 'mensalPrevista', 'mensalRealizada', 'semestralPrevista', 'semestralRealizada'];
@@ -519,7 +593,6 @@
           semestralRealizada:  this.parseNumber(row[columnMap.semestralRealizada]),
           corretivasPrevista:  this.parseNumber(row[columnMap.corretivasPrevista]),
           corretivasRealizada: this.parseNumber(row[columnMap.corretivasRealizada])
-          // EPI: sempre manual — não lido da planilha
         });
       }
 
@@ -599,7 +672,7 @@
   }
 
   /* ==========================================================================
-     6. RENDERIZADOR VISUAL DO RELATÓRIO (DONUTS SVG + TABELA + TÉCNICO)
+     7. RENDERIZADOR VISUAL DO RELATÓRIO (DONUTS SVG + TABELA + TÉCNICO)
      ========================================================================== */
   class ReportRenderer {
     static renderDonut(percentage, title, desc) {
@@ -692,7 +765,7 @@
           <section class="financial-section">
             <div class="financial-header">
               <span class="financial-label">${data.periodLabel || 'VALORES - MAR BRASIL 06/2026'}</span>
-              <span class="financial-total-base">${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(data.contractValue || 6000)}</span>
+              <span class="financial-total-base" title="Valor base do nível do técnico">${Formatter.currency(data.contractValue || 4250.0)}</span>
             </div>
 
             <table class="report-table">
@@ -733,7 +806,7 @@
   }
 
   /* ==========================================================================
-     7. CONTROLADOR PRINCIPAL DA APLICAÇÃO (UI, EVENTOS E MODAL ESCALÁVEL)
+     8. CONTROLADOR PRINCIPAL DA APLICAÇÃO (UI, EVENTOS E MODAL ESCALÁVEL)
      ========================================================================== */
   class MeasurementApp {
     constructor() {
@@ -787,14 +860,25 @@
       // Inputs de Parâmetros
       this.inputContractBadge = document.getElementById('inputContractBadge');
       this.inputPeriodLabel = document.getElementById('inputPeriodLabel');
+      this.selectTechLevel = document.getElementById('selectTechLevel');
       this.inputContractValue = document.getElementById('inputContractValue');
+
+      // Tarefas Operacionais Editáveis
+      this.inputMensalPrevista = document.getElementById('inputMensalPrevista');
+      this.inputMensalRealizada = document.getElementById('inputMensalRealizada');
+      this.inputMensalPeso = document.getElementById('inputMensalPeso');
+
+      this.inputSemestralPrevista = document.getElementById('inputSemestralPrevista');
+      this.inputSemestralRealizada = document.getElementById('inputSemestralRealizada');
+      this.inputSemestralPeso = document.getElementById('inputSemestralPeso');
+
+      this.inputCorretivaPrevista = document.getElementById('inputCorretivaPrevista');
+      this.inputCorretivaRealizada = document.getElementById('inputCorretivaRealizada');
+      this.inputCorretivaPeso = document.getElementById('inputCorretivaPeso');
 
       this.inputEpiPrevista = document.getElementById('inputEpiPrevista');
       this.inputEpiRealizada = document.getElementById('inputEpiRealizada');
       this.inputEpiPeso = document.getElementById('inputEpiPeso');
-
-      this.inputInstPerf = document.getElementById('inputInstPerf');
-      this.inputInstPeso = document.getElementById('inputInstPeso');
 
       this.inputExcedenteQtd = document.getElementById('inputExcedenteQtd');
       this.inputExcedenteTarifa = document.getElementById('inputExcedenteTarifa');
@@ -888,16 +972,58 @@
 
       this.contractSectorSelect.addEventListener('change', () => this.onSectorChange());
 
+      // Mudança no Nível do Técnico
+      if (this.selectTechLevel) {
+        this.selectTechLevel.addEventListener('change', () => {
+          const selected = this.selectTechLevel.value;
+          if (selected === 'LVL_1') {
+            this.inputContractValue.value = '6000.00';
+          } else if (selected === 'LVL_2') {
+            this.inputContractValue.value = '5250.00';
+          } else if (selected === 'LVL_3') {
+            this.inputContractValue.value = '4250.00';
+          }
+          this.syncStateFromInputs(false);
+        });
+      }
+
+      // Recomputação automática de excedente ao alterar tarefas mensais e semestrais
+      const triggerExcedenteUpdate = () => {
+        const mReal = parseInt(this.inputMensalRealizada.value, 10) || 0;
+        const sReal = parseInt(this.inputSemestralRealizada.value, 10) || 0;
+        this.inputExcedenteQtd.value = MeasurementCalculator.computeExcedenteQty(mReal, sReal);
+        this.syncStateFromInputs(true);
+      };
+
+      if (this.inputMensalRealizada) this.inputMensalRealizada.addEventListener('input', triggerExcedenteUpdate);
+      if (this.inputSemestralRealizada) this.inputSemestralRealizada.addEventListener('input', triggerExcedenteUpdate);
+
+      // Recomputação de incentivo veicular em tarefas operacionais
+      const operationalInputs = [
+        this.inputMensalPrevista, this.inputSemestralPrevista,
+        this.inputCorretivaPrevista, this.inputCorretivaRealizada,
+        this.inputEpiPrevista, this.inputEpiRealizada
+      ];
+
+      operationalInputs.forEach(input => {
+        if (input) {
+          input.addEventListener('input', () => this.syncStateFromInputs(true));
+        }
+      });
+
+      // Inputs reativos gerais
       const reactiveInputs = [
         this.inputContractBadge, this.inputPeriodLabel, this.inputContractValue,
-        this.inputEpiPrevista, this.inputEpiRealizada, this.inputEpiPeso,
-        this.inputInstPerf, this.inputInstPeso,
+        this.inputMensalPeso, this.inputSemestralPeso, this.inputCorretivaPeso,
+        this.inputEpiPeso,
         this.inputExcedenteQtd, this.inputExcedenteTarifa, this.inputExcedenteUnit,
         this.inputIncentivoMeta, this.inputIncentivoBase, this.inputIncentivoRec
       ];
 
       reactiveInputs.forEach(input => {
-        input.addEventListener('input', () => this.syncStateFromInputs());
+        if (input) {
+          input.addEventListener('input', () => this.syncStateFromInputs(false));
+        }
       });
     }
 
@@ -905,7 +1031,6 @@
        GESTÃO DO MODAL DE CONFIGURAÇÃO ESCALÁVEL
        ========================================================================== */
     initModalEvents() {
-      // Abrir / Fechar Modal
       this.btnOpenConfigModal.addEventListener('click', () => {
         this.renderContractsList();
         this.renderTechniciansList();
@@ -926,7 +1051,6 @@
         if (e.target === this.configModal) closeModal();
       });
 
-      // Alternar Abas
       this.tabBtnContracts.addEventListener('click', () => {
         this.tabBtnContracts.classList.add('active');
         this.tabBtnTechs.classList.remove('active');
@@ -941,7 +1065,6 @@
         this.paneContracts.classList.remove('active');
       });
 
-      // Restaurar Padrões
       this.btnResetConfig.addEventListener('click', () => {
         if (confirm('Deseja restaurar os contratos e técnicos padrão da Mar Brasil?')) {
           this.config = ContractStore.resetToDefault();
@@ -951,13 +1074,13 @@
         }
       });
 
-      // --- Gestão de Contratos ---
+      // Formulário Contrato
       this.btnShowAddContract.addEventListener('click', () => {
         this.formContractId.value = '';
         this.formContractCode.value = '';
         this.formClientName.value = '';
         this.formClientFullName.value = '';
-        this.formContractValue.value = '6000.00';
+        this.formContractValue.value = '4250.00';
         this.formContractDesc.value = 'Avaliação objetiva da execução contratual de manutenção (PMOC e correlatos) realizada pela Mar Brasil.';
         this.populateTechSelectOptions(this.formContractTech);
         this.contractFormBox.classList.add('active');
@@ -972,7 +1095,7 @@
         const code = this.formContractCode.value.trim();
         const clientName = this.formClientName.value.trim();
         const clientFullName = this.formClientFullName.value.trim();
-        const contractValue = parseFloat(this.formContractValue.value) || 6000.0;
+        const contractValue = parseFloat(this.formContractValue.value) || 4250.0;
         const description = this.formContractDesc.value.trim();
         const technicianId = this.formContractTech.value;
 
@@ -1008,7 +1131,7 @@
         this.renderContractsList();
       });
 
-      // --- Gestão de Técnicos ---
+      // Formulário Técnico
       this.btnShowAddTech.addEventListener('click', () => {
         this.formTechId.value = '';
         this.formTechName.value = '';
@@ -1085,7 +1208,6 @@
           </div>
         `;
 
-        // Subsetores
         if (contract.sectors && contract.sectors.length > 0) {
           const sectorsBox = document.createElement('div');
           sectorsBox.className = 'sectors-accordion';
@@ -1118,13 +1240,12 @@
           card.appendChild(sectorsBox);
         }
 
-        // Ações de Editar / Excluir Contrato
         card.querySelector('[data-action="edit-contract"]').addEventListener('click', () => {
           this.formContractId.value = contract.id;
           this.formContractCode.value = contract.code;
           this.formClientName.value = contract.clientName;
           this.formClientFullName.value = contract.clientFullName || '';
-          this.formContractValue.value = contract.contractValue || 6000;
+          this.formContractValue.value = contract.contractValue || 4250;
           this.formContractDesc.value = contract.description || '';
           this.populateTechSelectOptions(this.formContractTech, contract.technicianId);
           this.contractFormBox.classList.add('active');
@@ -1197,7 +1318,7 @@
     }
 
     /* ==========================================================================
-       POPULAÇÃO DO SELECTOR DE CONTRATOS & SETORES COM MAPEAMENTO DE TÉCNICO
+       POPULAÇÃO DO SELECTOR DE CONTRATOS & SETORES
        ========================================================================== */
     populateContractSelect() {
       this.contractSectorSelect.innerHTML = '';
@@ -1230,9 +1351,10 @@
         optGroupSectors.label = '── Setores Individuais ──';
         this.spreadsheetData.rows.forEach((row, idx) => {
           const resolved = ContractStore.resolveSectorInfo(this.config, row.setor);
+          const levelLabel = resolved.techLevel ? resolved.techLevel.label : 'Nível 03';
           const opt = document.createElement('option');
           opt.value = `ROW_${idx}`;
-          opt.textContent = `${row.setor}  ·  ${resolved.technicianName}  (${row.equipamentosAtivos} equip.)`;
+          opt.textContent = `${row.setor}  ·  ${resolved.technicianName} [${levelLabel}] (${row.equipamentosAtivos} equip.)`;
           optGroupSectors.appendChild(opt);
         });
         this.contractSectorSelect.appendChild(optGroupSectors);
@@ -1263,6 +1385,7 @@
         this.state.contractBadge = 'CONSOLIDADO GERAL — MAR BRASIL';
         this.state.contractTitle = 'Medição de Desempenho - Mar Brasil';
         this.state.contractSubtitle = DEFAULT_REPORT_DATA.contractSubtitle;
+        this.state.periodLabel = 'VALORES - MAR BRASIL 06/2026';
 
         const totals = this.computeGlobalTotals();
         if (totals) {
@@ -1274,6 +1397,17 @@
           this.state.corretiva.prevista       = totals.corretivasPrevista;
           this.state.corretiva.realizada      = totals.corretivasRealizada;
           this.state.technicianName           = `${this.spreadsheetData.rows.length} Setores · Todos os Contratos`;
+          
+          // Excedente calculado para o consolidado
+          this.state.excedente.quantidade = MeasurementCalculator.computeExcedenteQty(totals.mensalRealizada, totals.semestralRealizada);
+
+          // Incentivo calculado pela média
+          const perfM = MeasurementCalculator.computePerformance(totals.mensalPrevista, totals.mensalRealizada);
+          const perfS = MeasurementCalculator.computePerformance(totals.semestralPrevista, totals.semestralRealizada);
+          const perfC = MeasurementCalculator.computePerformance(totals.corretivasPrevista, totals.corretivasRealizada);
+          const perfE = MeasurementCalculator.computePerformance(this.state.epi.prevista, this.state.epi.realizada);
+          this.state.incentivoVeicular = MeasurementCalculator.computeIncentivo(perfM, perfS, perfC, perfE, 1000.0);
+
           this.updateSidebarInfo('Mar Brasil', 'Todos os Contratos', 'Múltiplos Contratos', 'Consolidado Geral');
           this.syncInputsFromState();
           this.updateQuickStats({
@@ -1288,6 +1422,7 @@
         } else {
           // Sem planilha: usa dados de demonstração
           this.state.technicianName = 'Múltiplos Setores • Equipe Especializada';
+          this.state.excedente.quantidade = MeasurementCalculator.computeExcedenteQty(this.state.pmocMensal.realizada, this.state.pmocSemestral.realizada);
           this.updateSidebarInfo('Mar Brasil', 'SEDUC Santos', 'Múltiplos Setores (Santos)', 'Dados de Demonstração');
           this.syncInputsFromState();
           this.updateQuickStats({ equipamentos: 402, mensalPrev: 402, mensalReal: 211, semestralPrev: 80, semestralReal: 0, corretivaPrev: 0, corretivaReal: 0 });
@@ -1304,21 +1439,25 @@
           this.state.contractTitle = `Medição de Desempenho - ${contract.company || 'Mar Brasil'}`;
           this.state.contractSubtitle = contract.description;
           this.state.periodLabel = `VALORES - MAR BRASIL 06/2026`;
-          this.state.contractValue = contract.contractValue;
+
+          // Nível representativo do contrato
+          const techLevel = resolveTechLevelBySector(contract.code + ' ' + (contract.clientName || ''));
+          this.state.contractValue = techLevel.value;
 
           let techName = contract.technicianId 
             ? ContractStore.getTechName(this.config.technicians, contract.technicianId)
-            : `${contract.sectors.length} Setores • Equipe Especializada`;
+            : `${contract.sectors ? contract.sectors.length : 0} Setores • Equipe Especializada`;
 
           this.state.technicianName = techName;
 
           this.updateSidebarInfo(contract.company || 'Mar Brasil', contract.clientName, techName, 'Consolidado do Contrato');
 
-          // Busca dados agregados da planilha filtrando apenas as linhas deste contrato
+          // Busca dados agregados filtrando apenas as linhas deste contrato
           const contractNorm = contract.code.toUpperCase().replace(/[^A-Z0-9]/g, '');
+          const clientNorm = (contract.clientName || '').toUpperCase();
           const contractRows = (this.spreadsheetData.rows || []).filter(row => {
             const rowNorm = row.setor.toUpperCase().replace(/[^A-Z0-9]/g, '');
-            return rowNorm.includes(contractNorm) || contractNorm.includes(rowNorm.substring(0, 8));
+            return rowNorm.includes(contractNorm) || (clientNorm && row.setor.toUpperCase().includes(clientNorm));
           });
 
           if (contractRows.length > 0) {
@@ -1339,6 +1478,17 @@
             this.state.pmocSemestral.realizada  = totals.semestralRealizada;
             this.state.corretiva.prevista       = totals.corretivasPrevista;
             this.state.corretiva.realizada      = totals.corretivasRealizada;
+
+            // Excedente calculado para o contrato
+            this.state.excedente.quantidade = MeasurementCalculator.computeExcedenteQty(totals.mensalRealizada, totals.semestralRealizada);
+
+            // Incentivo calculado pela média
+            const perfM = MeasurementCalculator.computePerformance(totals.mensalPrevista, totals.mensalRealizada);
+            const perfS = MeasurementCalculator.computePerformance(totals.semestralPrevista, totals.semestralRealizada);
+            const perfC = MeasurementCalculator.computePerformance(totals.corretivasPrevista, totals.corretivasRealizada);
+            const perfE = MeasurementCalculator.computePerformance(this.state.epi.prevista, this.state.epi.realizada);
+            this.state.incentivoVeicular = MeasurementCalculator.computeIncentivo(perfM, perfS, perfC, perfE, 1000.0);
+
             this.updateQuickStats({
               equipamentos:  totals.equipamentosAtivos,
               mensalPrev:    totals.mensalPrevista,
@@ -1366,7 +1516,9 @@
           this.state.contractTitle = `Medição de Desempenho - ${resolved.company || 'Mar Brasil'}`;
           this.state.contractSubtitle = resolved.contract ? resolved.contract.description : DEFAULT_REPORT_DATA.contractSubtitle;
           this.state.periodLabel = `VALORES - MAR BRASIL 06/2026`;
-          this.state.contractValue = resolved.contract ? resolved.contract.contractValue : 6000.0;
+          
+          // Valor do nível do técnico atribuído ao setor
+          this.state.contractValue = resolved.techLevel ? resolved.techLevel.value : 4250.0;
           this.state.technicianName = resolved.technicianName;
 
           this.state.pmocMensal.prevista = row.mensalPrevista;
@@ -1375,6 +1527,16 @@
           this.state.pmocSemestral.realizada = row.semestralRealizada;
           this.state.corretiva.prevista = row.corretivasPrevista;
           this.state.corretiva.realizada = row.corretivasRealizada;
+
+          // Regra do Excedente (Ponto 05): mensal + semestral > 500
+          this.state.excedente.quantidade = MeasurementCalculator.computeExcedenteQty(row.mensalRealizada, row.semestralRealizada);
+
+          // Regra do Incentivo Veicular (Ponto 02): média das 4 produtividades
+          const perfM = MeasurementCalculator.computePerformance(row.mensalPrevista, row.mensalRealizada);
+          const perfS = MeasurementCalculator.computePerformance(row.semestralPrevista, row.semestralRealizada);
+          const perfC = MeasurementCalculator.computePerformance(row.corretivasPrevista, row.corretivasRealizada);
+          const perfE = MeasurementCalculator.computePerformance(this.state.epi.prevista, this.state.epi.realizada);
+          this.state.incentivoVeicular = MeasurementCalculator.computeIncentivo(perfM, perfS, perfC, perfE, 1000.0);
 
           this.updateSidebarInfo(resolved.company || 'Mar Brasil', resolved.clientName, resolved.technicianName, resolved.sectorDisplayName);
 
@@ -1430,45 +1592,102 @@
     }
 
     syncInputsFromState() {
-      this.inputContractBadge.value = this.state.contractBadge;
-      this.inputPeriodLabel.value = this.state.periodLabel;
-      this.inputContractValue.value = this.state.contractValue;
+      if (this.inputContractBadge) this.inputContractBadge.value = this.state.contractBadge;
+      if (this.inputPeriodLabel) this.inputPeriodLabel.value = this.state.periodLabel;
+      if (this.inputContractValue) this.inputContractValue.value = this.state.contractValue;
 
-      this.inputEpiPrevista.value = this.state.epi.prevista;
-      this.inputEpiRealizada.value = this.state.epi.realizada;
-      this.inputEpiPeso.value = Math.round(this.state.epi.peso * 100);
+      if (this.selectTechLevel) {
+        const val = Number(this.state.contractValue);
+        if (Math.abs(val - 6000) < 1) this.selectTechLevel.value = 'LVL_1';
+        else if (Math.abs(val - 5250) < 1) this.selectTechLevel.value = 'LVL_2';
+        else if (Math.abs(val - 4250) < 1) this.selectTechLevel.value = 'LVL_3';
+        else this.selectTechLevel.value = 'CUSTOM';
+      }
 
-      this.inputInstPerf.value = Math.round(this.state.instDesins.performance * 100);
-      this.inputInstPeso.value = Math.round(this.state.instDesins.peso * 100);
+      if (this.inputMensalPrevista) this.inputMensalPrevista.value = this.state.pmocMensal.prevista;
+      if (this.inputMensalRealizada) this.inputMensalRealizada.value = this.state.pmocMensal.realizada;
+      if (this.inputMensalPeso) this.inputMensalPeso.value = Math.round((this.state.pmocMensal.peso || 0.05) * 100);
 
-      this.inputExcedenteQtd.value = this.state.excedente.quantidade;
-      this.inputExcedenteTarifa.value = this.state.excedente.tarifa;
-      this.inputExcedenteUnit.value = this.state.excedente.unitario;
+      if (this.inputSemestralPrevista) this.inputSemestralPrevista.value = this.state.pmocSemestral.prevista;
+      if (this.inputSemestralRealizada) this.inputSemestralRealizada.value = this.state.pmocSemestral.realizada;
+      if (this.inputSemestralPeso) this.inputSemestralPeso.value = Math.round((this.state.pmocSemestral.peso || 0.50) * 100);
 
-      this.inputIncentivoMeta.value = Math.round(this.state.incentivoVeicular.metaPerformance * 100);
-      this.inputIncentivoBase.value = this.state.incentivoVeicular.baseValue;
-      this.inputIncentivoRec.value = this.state.incentivoVeicular.reconhecido;
+      if (this.inputCorretivaPrevista) this.inputCorretivaPrevista.value = this.state.corretiva.prevista;
+      if (this.inputCorretivaRealizada) this.inputCorretivaRealizada.value = this.state.corretiva.realizada;
+      if (this.inputCorretivaPeso) this.inputCorretivaPeso.value = Math.round((this.state.corretiva.peso || 0.40) * 100);
+
+      if (this.inputEpiPrevista) this.inputEpiPrevista.value = this.state.epi.prevista;
+      if (this.inputEpiRealizada) this.inputEpiRealizada.value = this.state.epi.realizada;
+      if (this.inputEpiPeso) this.inputEpiPeso.value = Math.round((this.state.epi.peso || 0.05) * 100);
+
+      if (this.inputExcedenteQtd) this.inputExcedenteQtd.value = this.state.excedente.quantidade;
+      if (this.inputExcedenteTarifa) this.inputExcedenteTarifa.value = this.state.excedente.tarifa;
+      if (this.inputExcedenteUnit) this.inputExcedenteUnit.value = this.state.excedente.unitario;
+
+      if (this.inputIncentivoMeta) this.inputIncentivoMeta.value = Math.round(this.state.incentivoVeicular.metaPerformance * 100);
+      if (this.inputIncentivoBase) this.inputIncentivoBase.value = this.state.incentivoVeicular.baseValue;
+      if (this.inputIncentivoRec) this.inputIncentivoRec.value = this.state.incentivoVeicular.reconhecido;
     }
 
-    syncStateFromInputs() {
-      this.state.contractBadge = this.inputContractBadge.value || 'CONTRATO STS 36693/22';
-      this.state.periodLabel = this.inputPeriodLabel.value || 'VALORES - MAR BRASIL 06/2026';
-      this.state.contractValue = parseFloat(this.inputContractValue.value) || 6000.0;
+    syncStateFromInputs(autoRecomputeIncentive = false) {
+      if (this.inputContractBadge) this.state.contractBadge = this.inputContractBadge.value || 'CONTRATO STS 36693/22';
+      if (this.inputPeriodLabel) this.state.periodLabel = this.inputPeriodLabel.value || 'VALORES - MAR BRASIL 06/2026';
+      
+      const parsedVal = parseFloat(this.inputContractValue.value) || 4250.0;
+      this.state.contractValue = parsedVal;
 
-      this.state.epi.prevista = parseInt(this.inputEpiPrevista.value, 10) || 0;
-      this.state.epi.realizada = parseInt(this.inputEpiRealizada.value, 10) || 0;
-      this.state.epi.peso = (parseFloat(this.inputEpiPeso.value) || 10) / 100;
+      if (this.selectTechLevel) {
+        if (Math.abs(parsedVal - 6000) < 1) this.selectTechLevel.value = 'LVL_1';
+        else if (Math.abs(parsedVal - 5250) < 1) this.selectTechLevel.value = 'LVL_2';
+        else if (Math.abs(parsedVal - 4250) < 1) this.selectTechLevel.value = 'LVL_3';
+        else this.selectTechLevel.value = 'CUSTOM';
+      }
 
-      this.state.instDesins.performance = (parseFloat(this.inputInstPerf.value) || 100) / 100;
-      this.state.instDesins.peso = (parseFloat(this.inputInstPeso.value) || 5) / 100;
+      if (this.inputMensalPrevista) this.state.pmocMensal.prevista = parseInt(this.inputMensalPrevista.value, 10) || 0;
+      if (this.inputMensalRealizada) this.state.pmocMensal.realizada = parseInt(this.inputMensalRealizada.value, 10) || 0;
+      if (this.inputMensalPeso) this.state.pmocMensal.peso = (parseFloat(this.inputMensalPeso.value) || 5) / 100;
 
-      this.state.excedente.quantidade = parseInt(this.inputExcedenteQtd.value, 10) || 0;
-      this.state.excedente.tarifa = parseFloat(this.inputExcedenteTarifa.value) || 10.75;
-      this.state.excedente.unitario = parseFloat(this.inputExcedenteUnit.value) || 3.50;
+      if (this.inputSemestralPrevista) this.state.pmocSemestral.prevista = parseInt(this.inputSemestralPrevista.value, 10) || 0;
+      if (this.inputSemestralRealizada) this.state.pmocSemestral.realizada = parseInt(this.inputSemestralRealizada.value, 10) || 0;
+      if (this.inputSemestralPeso) this.state.pmocSemestral.peso = (parseFloat(this.inputSemestralPeso.value) || 50) / 100;
 
-      this.state.incentivoVeicular.metaPerformance = (parseFloat(this.inputIncentivoMeta.value) || 59) / 100;
-      this.state.incentivoVeicular.baseValue = parseFloat(this.inputIncentivoBase.value) || 1000.0;
-      this.state.incentivoVeicular.reconhecido = parseFloat(this.inputIncentivoRec.value) || 0;
+      if (this.inputCorretivaPrevista) this.state.corretiva.prevista = parseInt(this.inputCorretivaPrevista.value, 10) || 0;
+      if (this.inputCorretivaRealizada) this.state.corretiva.realizada = parseInt(this.inputCorretivaRealizada.value, 10) || 0;
+      if (this.inputCorretivaPeso) this.state.corretiva.peso = (parseFloat(this.inputCorretivaPeso.value) || 40) / 100;
+
+      if (this.inputEpiPrevista) this.state.epi.prevista = parseInt(this.inputEpiPrevista.value, 10) || 0;
+      if (this.inputEpiRealizada) this.state.epi.realizada = parseInt(this.inputEpiRealizada.value, 10) || 0;
+      if (this.inputEpiPeso) this.state.epi.peso = (parseFloat(this.inputEpiPeso.value) || 5) / 100;
+
+      if (this.inputExcedenteQtd) this.state.excedente.quantidade = parseInt(this.inputExcedenteQtd.value, 10) || 0;
+      if (this.inputExcedenteTarifa) this.state.excedente.tarifa = parseFloat(this.inputExcedenteTarifa.value) || 10.75;
+      if (this.inputExcedenteUnit) this.state.excedente.unitario = parseFloat(this.inputExcedenteUnit.value) || 3.50;
+
+      if (autoRecomputeIncentive) {
+        const perfM = MeasurementCalculator.computePerformance(this.state.pmocMensal.prevista, this.state.pmocMensal.realizada);
+        const perfS = MeasurementCalculator.computePerformance(this.state.pmocSemestral.prevista, this.state.pmocSemestral.realizada);
+        const perfC = MeasurementCalculator.computePerformance(this.state.corretiva.prevista, this.state.corretiva.realizada);
+        const perfE = MeasurementCalculator.computePerformance(this.state.epi.prevista, this.state.epi.realizada);
+        const baseVal = parseFloat(this.inputIncentivoBase.value) || 1000.0;
+        const inc = MeasurementCalculator.computeIncentivo(perfM, perfS, perfC, perfE, baseVal);
+        this.state.incentivoVeicular = inc;
+        if (this.inputIncentivoMeta) this.inputIncentivoMeta.value = Math.round(inc.metaPerformance * 100);
+        if (this.inputIncentivoRec) this.inputIncentivoRec.value = inc.reconhecido;
+      } else {
+        if (this.inputIncentivoMeta) this.state.incentivoVeicular.metaPerformance = (parseFloat(this.inputIncentivoMeta.value) || 0) / 100;
+        if (this.inputIncentivoBase) this.state.incentivoVeicular.baseValue = parseFloat(this.inputIncentivoBase.value) || 1000.0;
+        if (this.inputIncentivoRec) this.state.incentivoVeicular.reconhecido = parseFloat(this.inputIncentivoRec.value) || 0;
+      }
+
+      this.updateQuickStats({
+        equipamentos: this.state.pmocMensal.prevista,
+        mensalPrev: this.state.pmocMensal.prevista,
+        mensalReal: this.state.pmocMensal.realizada,
+        semestralPrev: this.state.pmocSemestral.prevista,
+        semestralReal: this.state.pmocSemestral.realizada,
+        corretivaPrev: this.state.corretiva.prevista,
+        corretivaReal: this.state.corretiva.realizada
+      });
 
       this.update();
     }
@@ -1500,7 +1719,7 @@
       this.activeFileName.textContent = '';
       this.fileInput.value = '';
 
-      // Volta para o Consolidado Geral e re-renderiza com dados de demonstração
+      // Volta para o Consolidado Geral e re-renderiza
       this.populateContractSelect();
       this.contractSectorSelect.value = 'PRINT_DEFAULT';
       this.onSectorChange();

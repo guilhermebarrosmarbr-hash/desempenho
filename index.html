@@ -126,7 +126,7 @@
         </div>
       </section>
 
-      <!-- Card 3: Parâmetros Financeiros e Complementares -->
+      <!-- Card 3: Parâmetros Financeiros e Operacionais (100% Editáveis) -->
       <section class="card">
         <h2 class="card-title">
           <span>⚙️ 3. Parâmetros e Indicadores</span>
@@ -140,20 +140,61 @@
 
         <div class="form-group">
           <label class="form-label" for="inputPeriodLabel">Rótulo da Tabela / Período:</label>
-          <input type="text" id="inputPeriodLabel" class="form-input" value="VALORES - GWSB 06/2026" />
+          <input type="text" id="inputPeriodLabel" class="form-input" value="VALORES - MAR BRASIL 06/2026" />
+        </div>
+
+        <!-- Nível do Técnico & Valor Base (Canto Superior Direito) -->
+        <div class="form-group">
+          <label class="form-label" for="selectTechLevel">Nível do Técnico (Canto Superior Direito):</label>
+          <select id="selectTechLevel" class="form-select">
+            <option value="LVL_1">Nível 01 — R$ 6.000,00 (Setor 01 Santos)</option>
+            <option value="LVL_2">Nível 02 — R$ 5.250,00 (SMSU / Setor 04 Santos)</option>
+            <option value="LVL_3">Nível 03 — R$ 4.250,00 (CRSN / Setores 02, 03, 05, 06 Santos)</option>
+            <option value="CUSTOM">Personalizado / Outro Valor</option>
+          </select>
         </div>
 
         <div class="form-group">
-          <label class="form-label" for="inputContractValue">Valor Base Total do Contrato (R$):</label>
-          <input type="number" id="inputContractValue" class="form-input" value="6000.00" step="100" />
+          <label class="form-label" for="inputContractValue">Valor do Nível do Técnico (R$):</label>
+          <input type="number" id="inputContractValue" class="form-input" value="4250.00" step="50" />
         </div>
 
-        <!-- Sanfona com Itens Complementares (EPI, Instalação, Excedente) -->
+        <!-- Sanfona com Todas as Tarefas Operacionais (Editáveis) -->
         <details class="param-accordion" open>
-          <summary>Detalhamento de Pesos &amp; Indicadores Adicionais</summary>
+          <summary>Detalhamento de Tarefas &amp; Pesos (100% Editável)</summary>
           <div class="accordion-body">
+
+            <!-- PMOC Mensal (Prevista, Realizada, Peso %) -->
+            <div class="form-group">
+              <label class="form-label">PMOC Mensal (Prevista, Realizada, Peso %):</label>
+              <div class="form-grid-3">
+                <input type="number" id="inputMensalPrevista" class="form-input" placeholder="Prevista" value="402" title="PMOC Mensal Prevista" />
+                <input type="number" id="inputMensalRealizada" class="form-input" placeholder="Realizada" value="211" title="PMOC Mensal Realizada" />
+                <input type="number" id="inputMensalPeso" class="form-input" placeholder="Peso %" value="5" title="Peso % (Padrão 5%)" />
+              </div>
+            </div>
+
+            <!-- PMOC Semestral (Prevista, Realizada, Peso %) -->
+            <div class="form-group">
+              <label class="form-label">PMOC Semestral (Prevista, Realizada, Peso %):</label>
+              <div class="form-grid-3">
+                <input type="number" id="inputSemestralPrevista" class="form-input" placeholder="Prevista" value="80" title="PMOC Semestral Prevista" />
+                <input type="number" id="inputSemestralRealizada" class="form-input" placeholder="Realizada" value="0" title="PMOC Semestral Realizada" />
+                <input type="number" id="inputSemestralPeso" class="form-input" placeholder="Peso %" value="50" title="Peso % (Padrão 50%)" />
+              </div>
+            </div>
+
+            <!-- Corretivas (Prevista, Realizada, Peso %) -->
+            <div class="form-group">
+              <label class="form-label">Corretivas (Prevista, Realizada, Peso %):</label>
+              <div class="form-grid-3">
+                <input type="number" id="inputCorretivaPrevista" class="form-input" placeholder="Prevista" value="0" title="Corretivas Previstas" />
+                <input type="number" id="inputCorretivaRealizada" class="form-input" placeholder="Realizada" value="0" title="Corretivas Realizadas" />
+                <input type="number" id="inputCorretivaPeso" class="form-input" placeholder="Peso %" value="40" title="Peso % (Padrão 40%)" />
+              </div>
+            </div>
             
-            <!-- EPI: preenchimento sempre manual (não consta na planilha) -->
+            <!-- EPI: preenchimento sempre manual (não consta na planilha, padrão 5%) -->
             <div class="form-group">
               <label class="form-label">
                 EPI — Preenchimento Manual
@@ -162,36 +203,31 @@
               <div class="form-grid-3">
                 <input type="number" id="inputEpiPrevista" class="form-input" placeholder="Previstos" value="22" title="Itens de EPI Previstos" />
                 <input type="number" id="inputEpiRealizada" class="form-input" placeholder="Entregues" value="9" title="Itens de EPI Entregues" />
-                <input type="number" id="inputEpiPeso" class="form-input" placeholder="Peso %" value="10" title="Peso % Contratual do EPI" />
+                <input type="number" id="inputEpiPeso" class="form-input" placeholder="Peso %" value="5" title="Peso % Contratual do EPI (Padrão 5%)" />
               </div>
             </div>
 
-            <!-- Instalação/Desinstalação -->
+            <!-- Excedente (Regra: soma mensal + semestral > 500) -->
             <div class="form-group">
-              <label class="form-label">Inst/Desins (% Desempenho e Peso %):</label>
-              <div class="form-grid-2">
-                <input type="number" id="inputInstPerf" class="form-input" placeholder="% Desempenho" value="100" />
-                <input type="number" id="inputInstPeso" class="form-input" placeholder="Peso %" value="5" />
-              </div>
-            </div>
-
-            <!-- Excedente -->
-            <div class="form-group">
-              <label class="form-label">Excedente (Qtd, Tarifa R$, Unitário R$):</label>
+              <label class="form-label">
+                Excedente (Qtd &gt; 500 prev., Tarifa R$, Unitário R$):
+              </label>
               <div class="form-grid-3">
-                <input type="number" id="inputExcedenteQtd" class="form-input" placeholder="Qtd" value="0" />
+                <input type="number" id="inputExcedenteQtd" class="form-input" placeholder="Qtd" value="0" title="Qtd Excedente (Mensal + Semestral > 500)" />
                 <input type="number" id="inputExcedenteTarifa" class="form-input" placeholder="Tarifa R$" value="10.75" step="0.05" />
                 <input type="number" id="inputExcedenteUnit" class="form-input" placeholder="Unit R$" value="3.50" step="0.05" />
               </div>
             </div>
 
-            <!-- Incentivo Veicular -->
+            <!-- Incentivo Veicular (Regra: 100% = R$1.000 | 90-99% = R$750 | <90% = R$0) -->
             <div class="form-group">
-              <label class="form-label">Incentivo Veicular (% Desempenho, Base R$, Reconhecido R$):</label>
+              <label class="form-label">
+                Incentivo Veicular (% Média, Base R$, Reconhecido R$):
+              </label>
               <div class="form-grid-3">
-                <input type="number" id="inputIncentivoMeta" class="form-input" placeholder="% Meta" value="59" />
+                <input type="number" id="inputIncentivoMeta" class="form-input" placeholder="% Média" value="59" title="Média de Produtividade dos Itens" />
                 <input type="number" id="inputIncentivoBase" class="form-input" placeholder="Base R$" value="1000.00" />
-                <input type="number" id="inputIncentivoRec" class="form-input" placeholder="Reconhecido R$" value="0.00" />
+                <input type="number" id="inputIncentivoRec" class="form-input" placeholder="Reconhecido R$" value="0.00" title="100% -> R$1.000 | 90-99% -> R$750 | <90% -> R$0" />
               </div>
             </div>
 
