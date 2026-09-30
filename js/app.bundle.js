@@ -1,6 +1,7 @@
 /**
  * SISTEMA DE MEDIÇÃO DE DESEMPENHO E FATURAMENTO - MAR BRASIL
- * Versão Consolidada com Gestão de Contratos, Níveis de Técnicos e Cálculos Dinâmicos
+ * Versão Consolidada com Gestão de Contratos, Níveis de Técnicos, Cálculos Dinâmicos
+ * e Preparação para Envio de Relatórios por WhatsApp (Evolution API / Cloudflare Worker)
  * Princípios de Clean Code: Responsabilidade Única, Funções Puras, Sem Dependências Desnecessárias.
  */
 
@@ -8,8 +9,10 @@
   'use strict';
 
   /* ==========================================================================
-     1. FORMATAÇÃO E HELPERS MATEMÁTICOS
+     1. CONSTANTES E HELPERS DE TELEFONE, COMPETÊNCIA E FORMATAÇÃO
      ========================================================================== */
+  const SENDER_PHONE = '5513991498882'; // Remetente institucional fixo (nunca pode ser destinatário)
+
   const Formatter = {
     currency(value, showDashForZero = false) {
       if (showDashForZero && (!value || Math.abs(value) < 0.001)) {
@@ -34,6 +37,112 @@
     }
   };
 
+  /** Normaliza qualquer formato de telefone para 55 + DDD + número (12 ou 13 dígitos) */
+  function normalizePhone(phoneStr) {
+    if (!phoneStr) return '';
+    let cleaned = String(phoneStr).replace(/\D/g, '');
+    if (!cleaned) return '';
+    if (cleaned.startsWith('0')) cleaned = cleaned.substring(1);
+    if ((cleaned.length === 10 || cleaned.length === 11) && !cleaned.startsWith('55')) {
+      cleaned = '55' + cleaned;
+    }
+    return cleaned;
+  }
+
+  /** Valida número de telefone para WhatsApp com regras estritas */
+  function validatePhone(phoneStr) {
+    const norm = normalizePhone(phoneStr);
+    if (!norm) {
+      return { valid: false, error: 'Telefone não informado' };
+    }
+    if (norm.length !== 12 && norm.length !== 13) {
+      return { valid: false, error: 'Telefone deve ter DDD + 8 ou 9 dígitos (ex: (13) 99999-9999)' };
+    }
+    if (!norm.startsWith('55')) {
+      return { valid: false, error: 'Código de país deve ser 55 (Brasil)' };
+    }
+    if (norm === SENDER_PHONE) {
+      return { valid: false, error: 'O telefone do técnico não pode ser igual ao número remetente (+55 13 99149-8882)' };
+    }
+    return { valid: true, normalized: norm };
+  }
+
+  /** Formata telefone para exibição amigável: +55 (13) 99999-9999 */
+  function formatPhoneDisplay(phoneStr) {
+    const norm = normalizePhone(phoneStr);
+    if (!norm || norm.length < 12) return phoneStr || '—';
+    const ddd = norm.substring(2, 4);
+    const rest = norm.substring(4);
+    if (rest.length === 9) {
+      return `+55 (${ddd}) ${rest.substring(0, 5)}-${rest.substring(5)}`;
+    } else if (rest.length === 8) {
+      return `+55 (${ddd}) ${rest.substring(0, 4)}-${rest.substring(4)}`;
+    }
+    return norm;
+  }
+
+  /** Mascara telefone para exibição de segurança: +55 (13) •••••-9999 */
+  function maskPhoneDisplay(phoneStr) {
+    const norm = normalizePhone(phoneStr);
+    if (!norm || norm.length < 12) return '—';
+    const ddd = norm.substring(2, 4);
+    const rest = norm.substring(4);
+    const last4 = rest.slice(-4);
+    return `+55 (${ddd}) •••••-${last4}`;
+  }
+
+  /** Detecta automaticamente competência (MM/AAAA) a partir do nome do arquivo */
+  function detectCompetenceFromFilename(filename) {
+    if (!filename) return null;
+    const upper = filename.toUpperCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+
+    const months = [
+      { name: 'JANEIRO', mm: '01' },
+      { name: 'FEVEREIRO', mm: '02' },
+      { name: 'MARCO', mm: '03' },
+      { name: 'ABRIL', mm: '04' },
+      { name: 'MAIO', mm: '05' },
+      { name: 'JUNHO', mm: '06' },
+      { name: 'JULHO', mm: '07' },
+      { name: 'AGOSTO', mm: '08' },
+      { name: 'SETEMBRO', mm: '09' },
+      { name: 'OUTUBRO', mm: '10' },
+      { name: 'NOVEMBRO', mm: '11' },
+      { name: 'DEZEMBRO', mm: '12' }
+    ];
+
+    const yearMatch = upper.match(/20\d{2}/);
+    const year = yearMatch ? yearMatch[0] : '2026';
+
+    for (const m of months) {
+      if (upper.includes(m.name)) {
+        return `${m.mm}/${year}`;
+      }
+    }
+
+    const numericMatch = upper.match(/(0[1-9]|1[0-2])[_\-\.](20\d{2})/);
+    if (numericMatch) {
+      return `${numericMatch[1]}/${numericMatch[2]}`;
+    }
+
+    return null;
+  }
+
+  /** Gera nome de arquivo padronizado para PDF (sem espaços, acentos ou barras) */
+  function getPdfFilename(sectorCode, competence) {
+    const cleanSector = String(sectorCode || 'SETOR')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9]/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '');
+
+    const cleanComp = String(competence || '08/2026').replace('/', '-');
+    return `Relatorio_Produtividade_${cleanSector}_${cleanComp}.pdf`;
+  }
+
   /* ==========================================================================
      2. TABELA DE NÍVEIS DOS TÉCNICOS & REGRAS (MAR BRASIL)
      ========================================================================== */
@@ -43,12 +152,6 @@
     LVL_3: { id: 'LVL_3', label: 'Nível 03', value: 4250.0, description: 'CRSN PSP 6018/25 & STS 36693/22 - Setores 02, 03, 05, 06' }
   };
 
-  /**
-   * Identifica o nível do técnico com base no setor e contrato:
-   * - Nível 01 (R$ 6.000,00): Setor 01 do STS 36693/22
-   * - Nível 02 (R$ 5.250,00): SMSU PSP 6029/25 e Setor 04 do STS 36693/22
-   * - Nível 03 (R$ 4.250,00): CRSN PSP 6018/25 e Setores 02, 03, 05 e 06 do STS 36693/22
-   */
   function resolveTechLevelBySector(setorStr) {
     const norm = (setorStr || '').toUpperCase();
 
@@ -90,23 +193,11 @@
       return Math.min(1.0, Math.max(0.0, real / prev));
     }
 
-    /**
-     * Regra do Excedente (Ponto 05):
-     * Preenchido somente se a soma das preventivas mensais e semestrais for > 500.
-     * Caso contrário, é zerado.
-     */
     static computeExcedenteQty(mensalRealizada, semestralRealizada) {
       const soma = (Number(mensalRealizada) || 0) + (Number(semestralRealizada) || 0);
       return soma > 500 ? (soma - 500) : 0;
     }
 
-    /**
-     * Regra do Incentivo Veicular (Ponto 02):
-     * Média da produtividade dos itens do técnico (Mensal, Semestral, Corretiva e EPI).
-     * - Média 100%: Incentivo de 100% (R$ 1.000,00)
-     * - Média 90% a 99%: R$ 750,00
-     * - Média < 90%: R$ 0,00
-     */
     static computeIncentivo(perfMensal, perfSemestral, perfCorretiva, perfEPI, baseValue = 1000.0) {
       const items = [perfMensal, perfSemestral, perfCorretiva, perfEPI];
       const avg = items.reduce((acc, val) => acc + val, 0) / items.length;
@@ -130,7 +221,7 @@
 
     static calculate(params) {
       const {
-        contractValue = 0.0, // Nível do Técnico (canto superior direito)
+        contractValue = 0.0,
         pmocMensal = { prevista: 0, realizada: 0, peso: 0.05 },
         pmocSemestral = { prevista: 0, realizada: 0, peso: 0.50 },
         corretiva = { prevista: 0, realizada: 0, peso: 0.40 },
@@ -139,36 +230,27 @@
         incentivoVeicular = { metaPerformance: 0.0, baseValue: 1000.0, reconhecido: 0 }
       } = params;
 
-      // 1. Desempenho Operacional (0 a 1)
       const perfMensal = this.computePerformance(pmocMensal.prevista, pmocMensal.realizada);
       const perfSemestral = this.computePerformance(pmocSemestral.prevista, pmocSemestral.realizada);
       const perfCorretiva = this.computePerformance(corretiva.prevista, corretiva.realizada);
       const perfEPI = this.computePerformance(epi.prevista, epi.realizada);
 
-      // 2. Valores Base (calculados a partir do Nível do Técnico)
       const baseMensal = contractValue * (Number(pmocMensal.peso) || 0.05);
       const baseSemestral = contractValue * (Number(pmocSemestral.peso) || 0.50);
       const baseCorretiva = contractValue * (Number(corretiva.peso) || 0.40);
       const baseEPI = contractValue * (Number(epi.peso) || 0.05);
 
-      // 3. Valores Reconhecidos
       const recMensal = baseMensal * perfMensal;
       const recSemestral = baseSemestral * perfSemestral;
       const recCorretiva = baseCorretiva * perfCorretiva;
       const recEPI = baseEPI * perfEPI;
 
-      // 4. Excedente
       const qtdExcedente = Number(excedente.quantidade) || 0;
       const unitExcedente = Number(excedente.unitario) || 0;
       const recExcedente = qtdExcedente * unitExcedente;
 
-      // 5. Subtotal (sem Inst/Desins que foi removida)
       const subtotal = recMensal + recSemestral + recCorretiva + recEPI + recExcedente;
-
-      // 6. Incentivo Veicular
       const recIncentivo = Number(incentivoVeicular.reconhecido) || 0;
-
-      // 7. Total Final
       const total = subtotal + recIncentivo;
 
       return {
@@ -362,6 +444,15 @@
       return found ? found.name : 'Não Definido';
     }
 
+    static getTechnician(technicians, techId) {
+      if (!techId) return null;
+      return technicians.find(t => t.id === techId) || null;
+    }
+
+    /**
+     * Resolve dados do setor e devolve o técnico COMPLETO (com objeto technician e id),
+     * preservando technicianName e todos os campos anteriores.
+     */
     static resolveSectorInfo(config, setorStr) {
       if (!setorStr) {
         return {
@@ -370,6 +461,8 @@
           sector: null,
           clientName: '—',
           clientFullName: 'Aguardando seleção de contrato',
+          technicianId: null,
+          technician: null,
           technicianName: '—',
           sectorDisplayName: '—',
           techLevel: TECH_LEVELS.LVL_3,
@@ -391,13 +484,18 @@
               cleanStr.includes(secFull) ||
               (secFull && cleanStr.replace(/[^A-Z0-9]/g, '').includes(secFull.replace(/[^A-Z0-9]/g, '')))
             ) {
-              const techName = this.getTechName(config.technicians, sec.technicianId || contract.technicianId);
+              const techId = sec.technicianId || contract.technicianId;
+              const techObj = this.getTechnician(config.technicians, techId);
+              const techName = techObj ? techObj.name : 'Não Definido';
+
               return {
                 company: contract.company || config.company || 'Mar Brasil',
                 contract,
                 sector: sec,
                 clientName: contract.clientName,
                 clientFullName: contract.clientFullName,
+                technicianId: techId,
+                technician: techObj,
                 technicianName: techName,
                 sectorDisplayName: sec.code || sec.fullName,
                 techLevel: sec.techLevel ? (TECH_LEVELS[sec.techLevel] || detectedLevel) : detectedLevel,
@@ -411,8 +509,10 @@
         const strCode = cleanStr.replace(/[^A-Z0-9]/g, '');
         if (strCode.includes(contractCode)) {
           let techSummary = 'Equipe Técnica Especializada';
+          let mainTech = null;
           if (contract.technicianId) {
-            techSummary = this.getTechName(config.technicians, contract.technicianId);
+            mainTech = this.getTechnician(config.technicians, contract.technicianId);
+            techSummary = mainTech ? mainTech.name : 'Equipe Técnica Especializada';
           } else if (contract.sectors && contract.sectors.length > 0) {
             techSummary = `${contract.sectors.length} Setores • Múltiplos Técnicos`;
           }
@@ -423,6 +523,8 @@
             sector: null,
             clientName: contract.clientName,
             clientFullName: contract.clientFullName,
+            technicianId: contract.technicianId || null,
+            technician: mainTech,
             technicianName: techSummary,
             sectorDisplayName: 'Consolidado Geral',
             techLevel: detectedLevel,
@@ -437,6 +539,8 @@
         sector: null,
         clientName: 'Contratante',
         clientFullName: 'Órgão Contratante',
+        technicianId: null,
+        technician: null,
         technicianName: 'Técnico Responsável',
         sectorDisplayName: setorStr,
         techLevel: detectedLevel,
@@ -452,7 +556,7 @@
     contractBadge: 'MAR BRASIL — SISTEMA LIMPO',
     contractTitle: 'Medição de Desempenho - Mar Brasil',
     contractSubtitle: 'Sistema limpo. Faça o upload de uma nova planilha de medição ou selecione um contrato para emitir o relatório.',
-    periodLabel: 'VALORES - MAR BRASIL 06/2026',
+    periodLabel: 'VALORES - MAR BRASIL 08/2026',
     company: 'Mar Brasil',
     clientName: '—',
     clientFullName: 'Aguardando importação de planilha ou seleção de contrato',
@@ -470,12 +574,12 @@
     contractBadge: 'CONTRATO STS 36693/22',
     contractTitle: 'Medição de Desempenho - Mar Brasil',
     contractSubtitle: 'Avaliação objetiva da execução contratual de manutenção (PMOC e correlatos) da SEDUC Santos realizada pela Mar Brasil, com conversão direta de performance operacional em valor financeiro reconhecido.',
-    periodLabel: 'VALORES - MAR BRASIL 06/2026',
+    periodLabel: 'VALORES - MAR BRASIL 08/2026',
     company: 'Mar Brasil',
     clientName: 'SEDUC Santos',
     clientFullName: 'Secretaria de Educação de Santos',
     technicianName: 'GB Climatização (Setor 01)',
-    contractValue: 6000.0, // Nível 01
+    contractValue: 6000.0,
     pmocMensal: { prevista: 402, realizada: 211, peso: 0.05 },
     pmocSemestral: { prevista: 80, realizada: 0, peso: 0.50 },
     corretiva: { prevista: 0, realizada: 0, peso: 0.40 },
@@ -521,14 +625,6 @@
       return isNaN(num) ? 0 : num;
     }
 
-    /**
-     * Mapeamento posicional fixo da planilha (colunas A a N):
-     * A(0)=Setor | B(1)=Equipamentos Ativos
-     * C(2)=Mensal Prev | D(3)=Mensal Real | E(4)=% [ignorado] | F(5)=Faltam [ignorado]
-     * G(6)=Semestral Prev | H(7)=Semestral Real | I(8)=% [ignorado] | J(9)=Faltam [ignorado]
-     * K(10)=Corretivas Prev | L(11)=Corretivas Real | M(12)=% [ignorado] | N(13)=Faltam [ignorado]
-     * EPI: sempre manual — não consta na planilha.
-     */
     static POSITIONAL_MAP = {
       setor: 0,
       equipamentosAtivos: 1,
@@ -552,6 +648,8 @@
         else if (/semestral.*real/.test(norm)) map.semestralRealizada = index;
         else if (/corretiv.*prev/.test(norm)) map.corretivasPrevista = index;
         else if (/corretiv.*real/.test(norm)) map.corretivasRealizada = index;
+        else if (/epi.*prev/.test(norm)) map.epiPrevista = index;
+        else if (/epi.*(real|entreg)/.test(norm)) map.epiRealizada = index;
       });
       return map;
     }
@@ -560,7 +658,7 @@
       const byName = this.mapHeadersByName(headers);
       const required = ['setor', 'mensalPrevista', 'mensalRealizada', 'semestralPrevista', 'semestralRealizada'];
       const isComplete = required.every(k => byName[k] !== undefined);
-      return isComplete ? byName : { ...this.POSITIONAL_MAP };
+      return isComplete ? byName : { ...this.POSITIONAL_MAP, ...byName };
     }
 
     static async parseWorkbook(dataBuffer) {
@@ -601,6 +699,9 @@
         const setor = String(row[columnMap.setor] ?? '').trim();
         if (!setor) continue;
 
+        const hasEpiPrev = columnMap.epiPrevista !== undefined && row[columnMap.epiPrevista] !== '';
+        const hasEpiReal = columnMap.epiRealizada !== undefined && row[columnMap.epiRealizada] !== '';
+
         rows.push({
           id: `row-${r}`,
           setor,
@@ -610,7 +711,10 @@
           semestralPrevista:   this.parseNumber(row[columnMap.semestralPrevista]),
           semestralRealizada:  this.parseNumber(row[columnMap.semestralRealizada]),
           corretivasPrevista:  this.parseNumber(row[columnMap.corretivasPrevista]),
-          corretivasRealizada: this.parseNumber(row[columnMap.corretivasRealizada])
+          corretivasRealizada: this.parseNumber(row[columnMap.corretivasRealizada]),
+          epiPrevista:         hasEpiPrev ? this.parseNumber(row[columnMap.epiPrevista]) : null,
+          epiRealizada:        hasEpiReal ? this.parseNumber(row[columnMap.epiRealizada]) : null,
+          epiFromSpreadsheet:  hasEpiPrev || hasEpiReal
         });
       }
 
@@ -695,7 +799,7 @@
   class ReportRenderer {
     static renderDonut(percentage, title, desc) {
       const radius = 58;
-      const circumference = 2 * Math.PI * radius; // ~364.42
+      const circumference = 2 * Math.PI * radius;
       const clampedPct = Math.min(100, Math.max(0, percentage));
       const offset = circumference * (1 - clampedPct / 100);
 
@@ -782,7 +886,7 @@
 
           <section class="financial-section">
             <div class="financial-header">
-              <span class="financial-label">${data.periodLabel || 'VALORES - MAR BRASIL 06/2026'}</span>
+              <span class="financial-label">${data.periodLabel || 'VALORES - MAR BRASIL 08/2026'}</span>
               <span class="financial-total-base" title="Valor base do nível do técnico">${Formatter.currency(data.contractValue || 0, false)}</span>
             </div>
 
@@ -829,6 +933,8 @@
   class MeasurementApp {
     constructor() {
       this.config = ContractStore.load();
+      this.competence = '08/2026'; // Competência padrão dinâmica
+      this.sectorEpiMap = {};     // Mapeamento de EPI por setor { [setor]: { prevista, realizada, peso, isCustom } }
       this.state = JSON.parse(JSON.stringify(DEFAULT_REPORT_DATA));
       
       this.spreadsheetData = {
@@ -877,6 +983,7 @@
 
       // Inputs de Parâmetros
       this.inputContractBadge = document.getElementById('inputContractBadge');
+      this.inputCompetence = document.getElementById('inputCompetence');
       this.inputPeriodLabel = document.getElementById('inputPeriodLabel');
       this.selectTechLevel = document.getElementById('selectTechLevel');
       this.inputContractValue = document.getElementById('inputContractValue');
@@ -897,6 +1004,7 @@
       this.inputEpiPrevista = document.getElementById('inputEpiPrevista');
       this.inputEpiRealizada = document.getElementById('inputEpiRealizada');
       this.inputEpiPeso = document.getElementById('inputEpiPeso');
+      this.epiSectorBadge = document.getElementById('epiSectorBadge');
 
       this.inputExcedenteQtd = document.getElementById('inputExcedenteQtd');
       this.inputExcedenteTarifa = document.getElementById('inputExcedenteTarifa');
@@ -906,7 +1014,7 @@
       this.inputIncentivoBase = document.getElementById('inputIncentivoBase');
       this.inputIncentivoRec = document.getElementById('inputIncentivoRec');
 
-      // Elementos do Modal
+      // Elementos do Modal de Contratos & Técnicos
       this.configModal = document.getElementById('configModal');
       this.btnCloseConfigModal = document.getElementById('btnCloseConfigModal');
       this.btnCloseConfigModalBottom = document.getElementById('btnCloseConfigModalBottom');
@@ -950,20 +1058,32 @@
       this.btnPrint.addEventListener('click', () => window.print());
       this.btnQuickPrint.addEventListener('click', () => window.print());
       
-      this.btnDownloadPdf.addEventListener('click', () => {
+      // Download do PDF com nome padronizado
+      this.btnDownloadPdf.addEventListener('click', async () => {
         const paper = document.querySelector('.report-paper');
-        const filename = `relatorio_medicao_${(this.state.contractBadge || 'MAR_BRASIL').replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
-        if (typeof window.html2pdf === 'function') {
-          const opt = {
-            margin: [10, 12, 10, 12],
-            filename: filename,
-            image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { scale: 2.2, useCORS: true, letterRendering: true, logging: false },
-            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-          };
-          window.html2pdf().set(opt).from(paper).save().catch(() => window.print());
-        } else {
+        if (!paper) return;
+
+        const originalText = this.btnDownloadPdf.textContent;
+        this.btnDownloadPdf.textContent = '⏳ Gerando PDF...';
+        this.btnDownloadPdf.disabled = true;
+
+        try {
+          const blob = await MeasurementApp.generatePdfBlob(paper);
+          const filename = getPdfFilename(this.state.sectorCode || this.state.contractBadge, this.competence);
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        } catch (e) {
+          console.error('Erro ao gerar PDF:', e);
           window.print();
+        } finally {
+          this.btnDownloadPdf.textContent = originalText;
+          this.btnDownloadPdf.disabled = false;
         }
       });
 
@@ -989,6 +1109,17 @@
       });
 
       this.contractSectorSelect.addEventListener('change', () => this.onSectorChange());
+
+      // Alteração na Competência (MM/AAAA)
+      if (this.inputCompetence) {
+        this.inputCompetence.addEventListener('input', () => {
+          this.competence = this.inputCompetence.value.trim() || '08/2026';
+          if (this.inputPeriodLabel) {
+            this.inputPeriodLabel.value = `VALORES - MAR BRASIL ${this.competence}`;
+          }
+          this.syncStateFromInputs(false);
+        });
+      }
 
       // Mudança no Nível do Técnico
       if (this.selectTechLevel) {
@@ -1025,7 +1156,22 @@
 
       operationalInputs.forEach(input => {
         if (input) {
-          input.addEventListener('input', () => this.syncStateFromInputs(true));
+          input.addEventListener('input', () => {
+            // Se o usuário mexer no EPI, salvar no mapa do setor atual
+            if ((input === this.inputEpiPrevista || input === this.inputEpiRealizada) && this.state.sectorCode) {
+              this.sectorEpiMap[this.state.sectorCode] = {
+                prevista: parseInt(this.inputEpiPrevista.value, 10) || 0,
+                realizada: parseInt(this.inputEpiRealizada.value, 10) || 0,
+                peso: (parseFloat(this.inputEpiPeso.value) || 5) / 100,
+                isCustom: true
+              };
+              if (this.epiSectorBadge) {
+                this.epiSectorBadge.textContent = ' (personalizado)';
+                this.epiSectorBadge.style.color = '#0284c7';
+              }
+            }
+            this.syncStateFromInputs(true);
+          });
         }
       });
 
@@ -1149,7 +1295,7 @@
         this.renderContractsList();
       });
 
-      // Formulário Técnico
+      // Formulário Técnico com Validação e Normalização de Telefone
       this.btnShowAddTech.addEventListener('click', () => {
         this.formTechId.value = '';
         this.formTechName.value = '';
@@ -1165,7 +1311,7 @@
       this.btnSaveTechForm.addEventListener('click', () => {
         const id = this.formTechId.value || `tech-${Date.now()}`;
         const name = this.formTechName.value.trim();
-        const phone = this.formTechPhone.value.trim();
+        const rawPhone = this.formTechPhone.value.trim();
         const notes = this.formTechNotes.value.trim();
 
         if (!name) {
@@ -1173,13 +1319,23 @@
           return;
         }
 
+        let normalizedPhone = '';
+        if (rawPhone) {
+          const valResult = validatePhone(rawPhone);
+          if (!valResult.valid) {
+            alert(`Telefone inválido: ${valResult.error}`);
+            return;
+          }
+          normalizedPhone = valResult.normalized;
+        }
+
         const existingIdx = this.config.technicians.findIndex(t => t.id === id);
         if (existingIdx >= 0) {
           this.config.technicians[existingIdx].name = name;
-          this.config.technicians[existingIdx].phone = phone;
+          this.config.technicians[existingIdx].phone = normalizedPhone;
           this.config.technicians[existingIdx].notes = notes;
         } else {
-          this.config.technicians.push({ id, name, phone, notes });
+          this.config.technicians.push({ id, name, phone: normalizedPhone, notes });
         }
 
         ContractStore.save(this.config);
@@ -1193,7 +1349,8 @@
       this.config.technicians.forEach(t => {
         const opt = document.createElement('option');
         opt.value = t.id;
-        opt.textContent = t.name;
+        const phoneFormatted = t.phone ? ` (${formatPhoneDisplay(t.phone)})` : '';
+        opt.textContent = `${t.name}${phoneFormatted}`;
         if (t.id === selectedId) opt.selected = true;
         selectEl.appendChild(opt);
       });
@@ -1292,7 +1449,7 @@
           <tr>
             <th>Nome do Técnico / Empresa</th>
             <th>Atribuição / Setores</th>
-            <th>Telefone / Contato</th>
+            <th>Telefone WhatsApp</th>
             <th style="text-align: right;">Ações</th>
           </tr>
         </thead>
@@ -1302,10 +1459,15 @@
       const tbody = table.querySelector('tbody');
       this.config.technicians.forEach(tech => {
         const tr = document.createElement('tr');
+        const phoneFormatted = formatPhoneDisplay(tech.phone);
+        const phoneBadge = tech.phone 
+          ? `<span style="font-family: monospace; color: #16a34a; font-weight: 600;">📱 ${phoneFormatted}</span>`
+          : `<span style="color: #94a3b8; font-style: italic;">Sem WhatsApp</span>`;
+
         tr.innerHTML = `
           <td><strong>${tech.name}</strong></td>
           <td style="color: #64748b; font-size: 11.5px;">${tech.notes || '—'}</td>
-          <td style="color: #475569;">${tech.phone || '—'}</td>
+          <td>${phoneBadge}</td>
           <td style="text-align: right;">
             <button type="button" class="btn-icon" data-action="edit-tech" data-id="${tech.id}">✏️</button>
             <button type="button" class="btn-icon danger" data-action="delete-tech" data-id="${tech.id}">🗑️</button>
@@ -1315,7 +1477,7 @@
         tr.querySelector('[data-action="edit-tech"]').addEventListener('click', () => {
           this.formTechId.value = tech.id;
           this.formTechName.value = tech.name;
-          this.formTechPhone.value = tech.phone || '';
+          this.formTechPhone.value = tech.phone ? formatPhoneDisplay(tech.phone) : '';
           this.formTechNotes.value = tech.notes || '';
           this.techFormBox.classList.add('active');
           this.techFormBox.scrollIntoView({ behavior: 'smooth' });
@@ -1344,20 +1506,17 @@
       const hasSpreadsheet = this.spreadsheetData && this.spreadsheetData.rows && this.spreadsheetData.rows.length > 0;
 
       if (!hasSpreadsheet) {
-        // Opção explícita de sistema limpo quando não há planilha
         const optCleared = document.createElement('option');
         optCleared.value = 'CLEARED';
         optCleared.textContent = '⚪ Sistema Limpo (Aguardando Planilha)';
         this.contractSectorSelect.appendChild(optCleared);
       } else {
-        // 1. Consolidado Geral (todos os contratos e setores da planilha)
         const optDefault = document.createElement('option');
         optDefault.value = 'PRINT_DEFAULT';
         optDefault.textContent = '⭐ Consolidado Geral (Todos os Contratos)';
         this.contractSectorSelect.appendChild(optDefault);
       }
 
-      // 2. Consolidado por Contrato
       const optGroupContracts = document.createElement('optgroup');
       optGroupContracts.label = '── Contratos Cadastrados ──';
       this.config.contracts.forEach(contract => {
@@ -1373,7 +1532,6 @@
       });
       this.contractSectorSelect.appendChild(optGroupContracts);
 
-      // 3. Setores Individuais (apenas se houver planilha carregada)
       if (hasSpreadsheet) {
         const optGroupSectors = document.createElement('optgroup');
         optGroupSectors.label = '── Setores Individuais da Planilha ──';
@@ -1389,7 +1547,6 @@
       }
     }
 
-    /** Agrega todas as linhas da planilha em um único consolidado. */
     computeGlobalTotals() {
       const zero = { equipamentosAtivos: 0, mensalPrevista: 0, mensalRealizada: 0, semestralPrevista: 0, semestralRealizada: 0, corretivasPrevista: 0, corretivasRealizada: 0 };
       if (!this.spreadsheetData || !this.spreadsheetData.rows || this.spreadsheetData.rows.length === 0) return null;
@@ -1405,12 +1562,111 @@
       }, { ...zero });
     }
 
+    /**
+     * FUNÇÃO PURA (Seção 5):
+     * Constrói o estado completo de um setor individual sem mexer no DOM.
+     * Retorna o mesmo objeto `state` utilizado pela renderização.
+     */
+    buildStateForRow(row, overrides = {}) {
+      const resolved = ContractStore.resolveSectorInfo(this.config, row.setor);
+      const comp = overrides.competence || this.competence || '08/2026';
+
+      // Resolução de EPI: overrides > mapa específico do setor > planilha > padrão
+      const defaultEpi = { prevista: 22, realizada: 9, peso: 0.05, isDefault: true };
+      let sectorEpi = defaultEpi;
+
+      if (overrides.epi) {
+        sectorEpi = { ...overrides.epi, isCustom: true };
+      } else if (this.sectorEpiMap && this.sectorEpiMap[row.setor]) {
+        sectorEpi = { ...this.sectorEpiMap[row.setor], isCustom: true };
+      } else if (row.epiFromSpreadsheet && row.epiPrevista !== null) {
+        sectorEpi = {
+          prevista: row.epiPrevista,
+          realizada: row.epiRealizada || 0,
+          peso: 0.05,
+          isSpreadsheet: true
+        };
+      }
+
+      const pmocMensal = {
+        prevista: overrides.mensalPrevista !== undefined ? overrides.mensalPrevista : row.mensalPrevista,
+        realizada: overrides.mensalRealizada !== undefined ? overrides.mensalRealizada : row.mensalRealizada,
+        peso: overrides.mensalPeso !== undefined ? overrides.mensalPeso : 0.05
+      };
+
+      const pmocSemestral = {
+        prevista: overrides.semestralPrevista !== undefined ? overrides.semestralPrevista : row.semestralPrevista,
+        realizada: overrides.semestralRealizada !== undefined ? overrides.semestralRealizada : row.semestralRealizada,
+        peso: overrides.semestralPeso !== undefined ? overrides.semestralPeso : 0.50
+      };
+
+      const corretiva = {
+        prevista: overrides.corretivaPrevista !== undefined ? overrides.corretivaPrevista : row.corretivasPrevista,
+        realizada: overrides.corretivaRealizada !== undefined ? overrides.corretivaRealizada : row.corretivasRealizada,
+        peso: overrides.corretivaPeso !== undefined ? overrides.corretivaPeso : 0.40
+      };
+
+      const epi = {
+        prevista: sectorEpi.prevista !== undefined ? sectorEpi.prevista : 22,
+        realizada: sectorEpi.realizada !== undefined ? sectorEpi.realizada : 9,
+        peso: sectorEpi.peso !== undefined ? sectorEpi.peso : 0.05,
+        isDefault: !!sectorEpi.isDefault,
+        isCustom: !!sectorEpi.isCustom,
+        isSpreadsheet: !!sectorEpi.isSpreadsheet
+      };
+
+      const qtdExcedente = overrides.excedenteQtd !== undefined
+        ? overrides.excedenteQtd
+        : MeasurementCalculator.computeExcedenteQty(pmocMensal.realizada, pmocSemestral.realizada);
+
+      const excedente = {
+        quantidade: qtdExcedente,
+        tarifa: overrides.excedenteTarifa !== undefined ? overrides.excedenteTarifa : 10.75,
+        unitario: overrides.excedenteUnit !== undefined ? overrides.excedenteUnit : 3.50
+      };
+
+      const perfM = MeasurementCalculator.computePerformance(pmocMensal.prevista, pmocMensal.realizada);
+      const perfS = MeasurementCalculator.computePerformance(pmocSemestral.prevista, pmocSemestral.realizada);
+      const perfC = MeasurementCalculator.computePerformance(corretiva.prevista, corretiva.realizada);
+      const perfE = MeasurementCalculator.computePerformance(epi.prevista, epi.realizada);
+
+      const incentivoVeicular = overrides.incentivoVeicular
+        ? overrides.incentivoVeicular
+        : MeasurementCalculator.computeIncentivo(perfM, perfS, perfC, perfE, 1000.0);
+
+      const contractValue = overrides.contractValue !== undefined
+        ? overrides.contractValue
+        : (resolved.techLevel ? resolved.techLevel.value : 4250.0);
+
+      return {
+        contractBadge: overrides.contractBadge || (resolved.contract ? `${resolved.contract.code} • ${resolved.sectorDisplayName}` : `SETOR: ${row.setor}`),
+        contractTitle: overrides.contractTitle || `Medição de Desempenho - ${resolved.company || 'Mar Brasil'}`,
+        contractSubtitle: overrides.contractSubtitle || (resolved.contract ? resolved.contract.description : DEFAULT_REPORT_DATA.contractSubtitle),
+        periodLabel: overrides.periodLabel || `VALORES - MAR BRASIL ${comp}`,
+        company: resolved.company || 'Mar Brasil',
+        clientName: resolved.clientName,
+        clientFullName: resolved.clientFullName,
+        technicianId: resolved.technicianId,
+        technician: resolved.technician,
+        technicianName: resolved.technicianName,
+        sectorDisplayName: resolved.sectorDisplayName,
+        sectorCode: row.setor,
+        contractValue,
+        pmocMensal,
+        pmocSemestral,
+        corretiva,
+        epi,
+        excedente,
+        incentivoVeicular
+      };
+    }
+
     onSectorChange() {
       const val = this.contractSectorSelect.value;
 
-      // Estado 100% Zerado
       if (val === 'CLEARED') {
         this.state = JSON.parse(JSON.stringify(EMPTY_REPORT_DATA));
+        this.state.periodLabel = `VALORES - MAR BRASIL ${this.competence}`;
         this.updateSidebarInfo('Mar Brasil', '—', '—', 'Sistema Limpo');
         this.syncInputsFromState();
         this.updateQuickStats({ equipamentos: 0, mensalPrev: 0, mensalReal: 0, semestralPrev: 0, semestralReal: 0, corretivaPrev: 0, corretivaReal: 0 });
@@ -1425,9 +1681,8 @@
           this.state.contractBadge = 'CONSOLIDADO GERAL — MAR BRASIL';
           this.state.contractTitle = 'Medição de Desempenho - Mar Brasil';
           this.state.contractSubtitle = DEFAULT_REPORT_DATA.contractSubtitle;
-          this.state.periodLabel = 'VALORES - MAR BRASIL 06/2026';
+          this.state.periodLabel = `VALORES - MAR BRASIL ${this.competence}`;
 
-          // Planilha carregada: usa dados reais agregados de todos os contratos
           this.state.pmocMensal.prevista      = totals.mensalPrevista;
           this.state.pmocMensal.realizada     = totals.mensalRealizada;
           this.state.pmocSemestral.prevista   = totals.semestralPrevista;
@@ -1436,11 +1691,10 @@
           this.state.corretiva.realizada      = totals.corretivasRealizada;
           this.state.technicianName           = `${this.spreadsheetData.rows.length} Setores · Todos os Contratos`;
           this.state.contractValue            = 6000.0;
+          this.state.sectorCode               = 'CONSOLIDADO_GERAL';
           
-          // Excedente calculado para o consolidado
           this.state.excedente.quantidade = MeasurementCalculator.computeExcedenteQty(totals.mensalRealizada, totals.semestralRealizada);
 
-          // Incentivo calculado pela média
           const perfM = MeasurementCalculator.computePerformance(totals.mensalPrevista, totals.mensalRealizada);
           const perfS = MeasurementCalculator.computePerformance(totals.semestralPrevista, totals.semestralRealizada);
           const perfC = MeasurementCalculator.computePerformance(totals.corretivasPrevista, totals.corretivasRealizada);
@@ -1459,8 +1713,8 @@
             corretivaReal: totals.corretivasRealizada
           });
         } else {
-          // Sem planilha: exibe estado zerado limpo
           this.state = JSON.parse(JSON.stringify(EMPTY_REPORT_DATA));
+          this.state.periodLabel = `VALORES - MAR BRASIL ${this.competence}`;
           this.updateSidebarInfo('Mar Brasil', '—', '—', 'Sistema Limpo');
           this.syncInputsFromState();
           this.updateQuickStats({ equipamentos: 0, mensalPrev: 0, mensalReal: 0, semestralPrev: 0, semestralReal: 0, corretivaPrev: 0, corretivaReal: 0 });
@@ -1476,9 +1730,9 @@
           this.state.contractBadge = `CONTRATO ${contract.code}`;
           this.state.contractTitle = `Medição de Desempenho - ${contract.company || 'Mar Brasil'}`;
           this.state.contractSubtitle = contract.description;
-          this.state.periodLabel = `VALORES - MAR BRASIL 06/2026`;
+          this.state.periodLabel = `VALORES - MAR BRASIL ${this.competence}`;
+          this.state.sectorCode = contract.code;
 
-          // Nível representativo do contrato
           const techLevel = resolveTechLevelBySector(contract.code + ' ' + (contract.clientName || ''));
           this.state.contractValue = techLevel.value;
 
@@ -1490,7 +1744,6 @@
 
           this.updateSidebarInfo(contract.company || 'Mar Brasil', contract.clientName, techName, 'Consolidado do Contrato');
 
-          // Busca dados agregados filtrando apenas as linhas deste contrato
           const contractNorm = contract.code.toUpperCase().replace(/[^A-Z0-9]/g, '');
           const clientNorm = (contract.clientName || '').toUpperCase();
           const contractRows = (this.spreadsheetData.rows || []).filter(row => {
@@ -1517,10 +1770,8 @@
             this.state.corretiva.prevista       = totals.corretivasPrevista;
             this.state.corretiva.realizada      = totals.corretivasRealizada;
 
-            // Excedente calculado para o contrato
             this.state.excedente.quantidade = MeasurementCalculator.computeExcedenteQty(totals.mensalRealizada, totals.semestralRealizada);
 
-            // Incentivo calculado pela média
             const perfM = MeasurementCalculator.computePerformance(totals.mensalPrevista, totals.mensalRealizada);
             const perfS = MeasurementCalculator.computePerformance(totals.semestralPrevista, totals.semestralRealizada);
             const perfC = MeasurementCalculator.computePerformance(totals.corretivasPrevista, totals.corretivasRealizada);
@@ -1537,7 +1788,6 @@
               corretivaReal: totals.corretivasRealizada
             });
           } else {
-            // Sem linhas para o contrato na planilha (mantém zerado para edição livre)
             this.state.pmocMensal.prevista = 0;
             this.state.pmocMensal.realizada = 0;
             this.state.pmocSemestral.prevista = 0;
@@ -1561,35 +1811,15 @@
         const idx = parseInt(val.replace('ROW_', ''), 10);
         const row = this.spreadsheetData.rows[idx];
         if (row) {
-          const resolved = ContractStore.resolveSectorInfo(this.config, row.setor);
+          // Uso da função pura buildStateForRow (Seção 5)
+          this.state = this.buildStateForRow(row);
 
-          this.state.contractBadge = resolved.contract ? `${resolved.contract.code} • ${resolved.sectorDisplayName}` : `SETOR: ${row.setor}`;
-          this.state.contractTitle = `Medição de Desempenho - ${resolved.company || 'Mar Brasil'}`;
-          this.state.contractSubtitle = resolved.contract ? resolved.contract.description : DEFAULT_REPORT_DATA.contractSubtitle;
-          this.state.periodLabel = `VALORES - MAR BRASIL 06/2026`;
-          
-          // Valor do nível do técnico atribuído ao setor
-          this.state.contractValue = resolved.techLevel ? resolved.techLevel.value : 4250.0;
-          this.state.technicianName = resolved.technicianName;
-
-          this.state.pmocMensal.prevista = row.mensalPrevista;
-          this.state.pmocMensal.realizada = row.mensalRealizada;
-          this.state.pmocSemestral.prevista = row.semestralPrevista;
-          this.state.pmocSemestral.realizada = row.semestralRealizada;
-          this.state.corretiva.prevista = row.corretivasPrevista;
-          this.state.corretiva.realizada = row.corretivasRealizada;
-
-          // Regra do Excedente (Ponto 05): mensal + semestral > 500
-          this.state.excedente.quantidade = MeasurementCalculator.computeExcedenteQty(row.mensalRealizada, row.semestralRealizada);
-
-          // Regra do Incentivo Veicular (Ponto 02): média das 4 produtividades
-          const perfM = MeasurementCalculator.computePerformance(row.mensalPrevista, row.mensalRealizada);
-          const perfS = MeasurementCalculator.computePerformance(row.semestralPrevista, row.semestralRealizada);
-          const perfC = MeasurementCalculator.computePerformance(row.corretivasPrevista, row.corretivasRealizada);
-          const perfE = MeasurementCalculator.computePerformance(this.state.epi.prevista, this.state.epi.realizada);
-          this.state.incentivoVeicular = MeasurementCalculator.computeIncentivo(perfM, perfS, perfC, perfE, 1000.0);
-
-          this.updateSidebarInfo(resolved.company || 'Mar Brasil', resolved.clientName, resolved.technicianName, resolved.sectorDisplayName);
+          this.updateSidebarInfo(
+            this.state.company || 'Mar Brasil',
+            this.state.clientName,
+            this.state.technicianName,
+            this.state.sectorDisplayName
+          );
 
           this.syncInputsFromState();
           this.updateQuickStats({
@@ -1623,6 +1853,14 @@
         this.fileInfoNotice.style.display = 'block';
         this.activeFileName.textContent = `${file.name} (${parsed.rows.length} setores encontrados)`;
 
+        // Detecção de competência pelo nome do arquivo
+        const detectedComp = detectCompetenceFromFilename(file.name);
+        if (detectedComp) {
+          this.competence = detectedComp;
+          if (this.inputCompetence) this.inputCompetence.value = detectedComp;
+          if (this.inputPeriodLabel) this.inputPeriodLabel.value = `VALORES - MAR BRASIL ${detectedComp}`;
+        }
+
         this.populateContractSelect();
         this.contractSectorSelect.value = 'PRINT_DEFAULT';
         this.onSectorChange();
@@ -1645,6 +1883,7 @@
 
     syncInputsFromState() {
       if (this.inputContractBadge) this.inputContractBadge.value = this.state.contractBadge;
+      if (this.inputCompetence) this.inputCompetence.value = this.competence;
       if (this.inputPeriodLabel) this.inputPeriodLabel.value = this.state.periodLabel;
       if (this.inputContractValue) this.inputContractValue.value = Number(this.state.contractValue || 0).toFixed(2);
 
@@ -1672,6 +1911,19 @@
       if (this.inputEpiRealizada) this.inputEpiRealizada.value = this.state.epi.realizada;
       if (this.inputEpiPeso) this.inputEpiPeso.value = Math.round((this.state.epi.peso || 0.05) * 100);
 
+      if (this.epiSectorBadge) {
+        if (this.state.epi && this.state.epi.isCustom) {
+          this.epiSectorBadge.textContent = ' (personalizado)';
+          this.epiSectorBadge.style.color = '#0284c7';
+        } else if (this.state.epi && this.state.epi.isSpreadsheet) {
+          this.epiSectorBadge.textContent = ' (planilha)';
+          this.epiSectorBadge.style.color = '#16a34a';
+        } else {
+          this.epiSectorBadge.textContent = ' (padrão)';
+          this.epiSectorBadge.style.color = '#64748b';
+        }
+      }
+
       if (this.inputExcedenteQtd) this.inputExcedenteQtd.value = this.state.excedente.quantidade;
       if (this.inputExcedenteTarifa) this.inputExcedenteTarifa.value = this.state.excedente.tarifa;
       if (this.inputExcedenteUnit) this.inputExcedenteUnit.value = this.state.excedente.unitario;
@@ -1683,7 +1935,8 @@
 
     syncStateFromInputs(autoRecomputeIncentive = false) {
       if (this.inputContractBadge) this.state.contractBadge = this.inputContractBadge.value || 'CONTRATO STS 36693/22';
-      if (this.inputPeriodLabel) this.state.periodLabel = this.inputPeriodLabel.value || 'VALORES - MAR BRASIL 06/2026';
+      if (this.inputCompetence) this.competence = this.inputCompetence.value.trim() || '08/2026';
+      if (this.inputPeriodLabel) this.state.periodLabel = this.inputPeriodLabel.value || `VALORES - MAR BRASIL ${this.competence}`;
       
       const parsedVal = parseFloat(this.inputContractValue.value) || 0.0;
       this.state.contractValue = parsedVal;
@@ -1745,40 +1998,89 @@
     }
 
     loadDefaultSample() {
+      this.competence = '08/2026';
       this.spreadsheetData = {
         rows: JSON.parse(JSON.stringify(SAMPLE_SPREADSHEET_ROWS)),
         groups: ExcelParser.groupRowsByContract(SAMPLE_SPREADSHEET_ROWS)
       };
       this.state = JSON.parse(JSON.stringify(DEFAULT_REPORT_DATA));
+      this.state.periodLabel = `VALORES - MAR BRASIL ${this.competence}`;
       this.populateContractSelect();
       this.contractSectorSelect.value = 'PRINT_DEFAULT';
       this.onSectorChange();
     }
 
     clearSpreadsheetData() {
-      // 1. Esvazia todos os dados da planilha
       this.spreadsheetData = { rows: [], groups: {} };
+      this.sectorEpiMap = {};
 
-      // 2. Limpa badges e indicador de arquivo
       this.fileBadge.style.display = 'none';
       this.fileInfoNotice.style.display = 'none';
       this.activeFileName.textContent = '';
       this.fileInput.value = '';
 
-      // 3. Define estado 100% zerado
       this.state = JSON.parse(JSON.stringify(EMPTY_REPORT_DATA));
+      this.state.periodLabel = `VALORES - MAR BRASIL ${this.competence}`;
 
-      // 4. Atualiza seletor de contratos com a opção limpa
       this.populateContractSelect();
       this.contractSectorSelect.value = 'CLEARED';
-
-      // 5. Atualiza sidebar, inputs e relatório visual
       this.onSectorChange();
     }
 
     update() {
       const computed = MeasurementCalculator.calculate(this.state);
       ReportRenderer.renderReport(this.reportContainer, this.state, computed);
+    }
+
+    /* ==========================================================================
+       9. GERAÇÃO DE PDFS (EXTRAÇÃO PURA - SEÇÃO 5)
+       ========================================================================== */
+    /**
+     * Gera o Blob do PDF a partir de um elemento HTML usando as opções contratuais:
+     * margem [10, 12, 10, 12], JPEG 0.98, scale 2.2, formato A4 retrato.
+     */
+    static async generatePdfBlob(element) {
+      if (typeof window.html2pdf !== 'function') {
+        throw new Error('Biblioteca html2pdf não carregada.');
+      }
+      const opt = {
+        margin: [10, 12, 10, 12],
+        filename: 'relatorio.pdf',
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2.2, useCORS: true, letterRendering: true, logging: false },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+      return window.html2pdf().set(opt).from(element).outputPdf('blob');
+    }
+
+    /**
+     * Renderiza o relatório em container invisível fora da tela e gera o Blob PDF
+     * sem alterar a UI visível ao usuário.
+     */
+    static async generatePdfBlobForState(state) {
+      const offscreenWrapper = document.createElement('div');
+      offscreenWrapper.className = 'offscreen-pdf-renderer';
+      offscreenWrapper.style.position = 'fixed';
+      offscreenWrapper.style.left = '-10000px';
+      offscreenWrapper.style.top = '0';
+      offscreenWrapper.style.width = '794px';
+      offscreenWrapper.style.zIndex = '-9999';
+      offscreenWrapper.style.pointerEvents = 'none';
+
+      document.body.appendChild(offscreenWrapper);
+
+      try {
+        const computed = MeasurementCalculator.calculate(state);
+        ReportRenderer.renderReport(offscreenWrapper, state, computed);
+        const paper = offscreenWrapper.querySelector('.report-paper');
+        if (!paper) throw new Error('Falha ao renderizar relatório offscreen.');
+        const blob = await MeasurementApp.generatePdfBlob(paper);
+        return blob;
+      } finally {
+        if (offscreenWrapper.parentNode) {
+          offscreenWrapper.parentNode.removeChild(offscreenWrapper);
+        }
+      }
     }
   }
 

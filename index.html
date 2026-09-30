@@ -138,9 +138,15 @@
           <input type="text" id="inputContractBadge" class="form-input" value="CONTRATO STS36693/22" />
         </div>
 
-        <div class="form-group">
-          <label class="form-label" for="inputPeriodLabel">Rótulo da Tabela / Período:</label>
-          <input type="text" id="inputPeriodLabel" class="form-input" value="VALORES - MAR BRASIL 06/2026" />
+        <div class="form-grid-2">
+          <div class="form-group">
+            <label class="form-label" for="inputCompetence">Competência (MM/AAAA):</label>
+            <input type="text" id="inputCompetence" class="form-input" value="08/2026" placeholder="08/2026" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="inputPeriodLabel">Rótulo da Tabela / Período:</label>
+            <input type="text" id="inputPeriodLabel" class="form-input" value="VALORES - MAR BRASIL 08/2026" />
+          </div>
         </div>
 
         <!-- Nível do Técnico & Valor Base (Canto Superior Direito) -->
@@ -198,7 +204,7 @@
             <div class="form-group">
               <label class="form-label">
                 EPI — Preenchimento Manual
-                <span style="font-weight:400; color:#64748b;"> (não consta na planilha)</span>
+                <span id="epiSectorBadge" style="font-weight:400; color:#64748b;"> (padrão)</span>
               </label>
               <div class="form-grid-3">
                 <input type="number" id="inputEpiPrevista" class="form-input" placeholder="Previstos" value="22" title="Itens de EPI Previstos" />
