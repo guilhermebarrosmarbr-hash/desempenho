@@ -150,13 +150,16 @@
           <summary>Detalhamento de Pesos &amp; Indicadores Adicionais</summary>
           <div class="accordion-body">
             
-            <!-- EPI -->
+            <!-- EPI: preenchimento sempre manual (não consta na planilha) -->
             <div class="form-group">
-              <label class="form-label">EPI (Itens Previstos x Entregues e Peso %):</label>
+              <label class="form-label">
+                EPI — Preenchimento Manual
+                <span style="font-weight:400; color:#64748b;"> (não consta na planilha)</span>
+              </label>
               <div class="form-grid-3">
-                <input type="number" id="inputEpiPrevista" class="form-input" placeholder="Previstos" value="22" title="Itens Previstos" />
-                <input type="number" id="inputEpiRealizada" class="form-input" placeholder="Entregues" value="9" title="Itens Entregues" />
-                <input type="number" id="inputEpiPeso" class="form-input" placeholder="Peso %" value="10" title="Peso % Contratual" />
+                <input type="number" id="inputEpiPrevista" class="form-input" placeholder="Previstos" value="22" title="Itens de EPI Previstos" />
+                <input type="number" id="inputEpiRealizada" class="form-input" placeholder="Entregues" value="9" title="Itens de EPI Entregues" />
+                <input type="number" id="inputEpiPeso" class="form-input" placeholder="Peso %" value="10" title="Peso % Contratual do EPI" />
               </div>
             </div>
 

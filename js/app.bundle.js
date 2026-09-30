@@ -428,33 +428,47 @@
       return isNaN(num) ? 0 : num;
     }
 
-    static mapHeaders(headers) {
+    /**
+     * Mapeamento posicional fixo da planilha (colunas A a N):
+     * A(0)=Setor | B(1)=Equipamentos Ativos
+     * C(2)=Mensal Prev | D(3)=Mensal Real | E(4)=% [ignorado] | F(5)=Faltam [ignorado]
+     * G(6)=Semestral Prev | H(7)=Semestral Real | I(8)=% [ignorado] | J(9)=Faltam [ignorado]
+     * K(10)=Corretivas Prev | L(11)=Corretivas Real | M(12)=% [ignorado] | N(13)=Faltam [ignorado]
+     * EPI: sempre manual — não consta na planilha.
+     */
+    static POSITIONAL_MAP = {
+      setor: 0,
+      equipamentosAtivos: 1,
+      mensalPrevista: 2,
+      mensalRealizada: 3,
+      semestralPrevista: 6,
+      semestralRealizada: 7,
+      corretivasPrevista: 10,
+      corretivasRealizada: 11
+    };
+
+    static mapHeadersByName(headers) {
       const map = {};
       headers.forEach((h, index) => {
         const norm = this.normalizeHeader(h);
-        if (/^(setor|contrato|unidade|local|posto)/.test(norm)) {
-          map.setor = index;
-        } else if (/equipamento.*ativo|ativos/.test(norm)) {
-          map.equipamentosAtivos = index;
-        } else if (/mensal.*prev/.test(norm)) {
-          map.mensalPrevista = index;
-        } else if (/mensal.*real/.test(norm)) {
-          map.mensalRealizada = index;
-        } else if (/semestral.*prev/.test(norm)) {
-          map.semestralPrevista = index;
-        } else if (/semestral.*real/.test(norm)) {
-          map.semestralRealizada = index;
-        } else if (/corretiv.*prev/.test(norm)) {
-          map.corretivasPrevista = index;
-        } else if (/corretiv.*real/.test(norm)) {
-          map.corretivasRealizada = index;
-        } else if (/epi.*prev/.test(norm)) {
-          map.epiPrevista = index;
-        } else if (/epi.*real|epi.*entreg/.test(norm)) {
-          map.epiRealizada = index;
-        }
+        if (/^(setor|contrato|unidade|local|posto)/.test(norm)) map.setor = index;
+        else if (/equipamento.*ativo|ativos/.test(norm)) map.equipamentosAtivos = index;
+        else if (/mensal.*prev/.test(norm)) map.mensalPrevista = index;
+        else if (/mensal.*real/.test(norm)) map.mensalRealizada = index;
+        else if (/semestral.*prev/.test(norm)) map.semestralPrevista = index;
+        else if (/semestral.*real/.test(norm)) map.semestralRealizada = index;
+        else if (/corretiv.*prev/.test(norm)) map.corretivasPrevista = index;
+        else if (/corretiv.*real/.test(norm)) map.corretivasRealizada = index;
       });
       return map;
+    }
+
+    /** Usa mapeamento por nome se completo; caso contrário usa posicional fixo. */
+    static resolveColumnMap(headers) {
+      const byName = this.mapHeadersByName(headers);
+      const required = ['setor', 'mensalPrevista', 'mensalRealizada', 'semestralPrevista', 'semestralRealizada'];
+      const isComplete = required.every(k => byName[k] !== undefined);
+      return isComplete ? byName : { ...this.POSITIONAL_MAP };
     }
 
     static async parseWorkbook(dataBuffer) {
@@ -485,28 +499,27 @@
       }
 
       const headerRow = rawMatrix[headerRowIdx];
-      const columnMap = this.mapHeaders(headerRow);
+      const columnMap = this.resolveColumnMap(headerRow);
       const rows = [];
 
       for (let r = headerRowIdx + 1; r < rawMatrix.length; r++) {
         const row = rawMatrix[r];
         if (!row || row.length === 0) continue;
 
-        const setor = columnMap.setor !== undefined ? String(row[columnMap.setor] || '').trim() : '';
+        const setor = String(row[columnMap.setor] ?? '').trim();
         if (!setor) continue;
 
         rows.push({
           id: `row-${r}`,
           setor,
-          equipamentosAtivos: columnMap.equipamentosAtivos !== undefined ? this.parseNumber(row[columnMap.equipamentosAtivos]) : 0,
-          mensalPrevista: columnMap.mensalPrevista !== undefined ? this.parseNumber(row[columnMap.mensalPrevista]) : 0,
-          mensalRealizada: columnMap.mensalRealizada !== undefined ? this.parseNumber(row[columnMap.mensalRealizada]) : 0,
-          semestralPrevista: columnMap.semestralPrevista !== undefined ? this.parseNumber(row[columnMap.semestralPrevista]) : 0,
-          semestralRealizada: columnMap.semestralRealizada !== undefined ? this.parseNumber(row[columnMap.semestralRealizada]) : 0,
-          corretivasPrevista: columnMap.corretivasPrevista !== undefined ? this.parseNumber(row[columnMap.corretivasPrevista]) : 0,
-          corretivasRealizada: columnMap.corretivasRealizada !== undefined ? this.parseNumber(row[columnMap.corretivasRealizada]) : 0,
-          epiPrevista: columnMap.epiPrevista !== undefined ? this.parseNumber(row[columnMap.epiPrevista]) : null,
-          epiRealizada: columnMap.epiRealizada !== undefined ? this.parseNumber(row[columnMap.epiRealizada]) : null
+          equipamentosAtivos:  this.parseNumber(row[columnMap.equipamentosAtivos]),
+          mensalPrevista:      this.parseNumber(row[columnMap.mensalPrevista]),
+          mensalRealizada:     this.parseNumber(row[columnMap.mensalRealizada]),
+          semestralPrevista:   this.parseNumber(row[columnMap.semestralPrevista]),
+          semestralRealizada:  this.parseNumber(row[columnMap.semestralRealizada]),
+          corretivasPrevista:  this.parseNumber(row[columnMap.corretivasPrevista]),
+          corretivasRealizada: this.parseNumber(row[columnMap.corretivasRealizada])
+          // EPI: sempre manual — não lido da planilha
         });
       }
 
