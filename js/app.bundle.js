@@ -85,7 +85,7 @@
       const real = Number(realizada) || 0;
 
       if (prev <= 0) {
-        return real >= 0 ? 1.0 : 0.0;
+        return real > 0 ? 1.0 : 0.0;
       }
       return Math.min(1.0, Math.max(0.0, real / prev));
     }
@@ -130,13 +130,13 @@
 
     static calculate(params) {
       const {
-        contractValue = 4250.0, // Nível do Técnico (canto superior direito)
-        pmocMensal = { prevista: 402, realizada: 211, peso: 0.05 },
-        pmocSemestral = { prevista: 80, realizada: 0, peso: 0.50 },
+        contractValue = 0.0, // Nível do Técnico (canto superior direito)
+        pmocMensal = { prevista: 0, realizada: 0, peso: 0.05 },
+        pmocSemestral = { prevista: 0, realizada: 0, peso: 0.50 },
         corretiva = { prevista: 0, realizada: 0, peso: 0.40 },
-        epi = { prevista: 22, realizada: 9, peso: 0.05 },
+        epi = { prevista: 0, realizada: 0, peso: 0.05 },
         excedente = { quantidade: 0, tarifa: 10.75, unitario: 3.50 },
-        incentivoVeicular = { metaPerformance: 0.59, baseValue: 1000.0, reconhecido: 0 }
+        incentivoVeicular = { metaPerformance: 0.0, baseValue: 1000.0, reconhecido: 0 }
       } = params;
 
       // 1. Desempenho Operacional (0 a 1)
@@ -200,28 +200,28 @@
               item: 'PMOC MENSAL',
               performance: Formatter.percentage(perfMensal),
               peso: Formatter.percentage(pmocMensal.peso),
-              valorBase: Formatter.currency(baseMensal),
+              valorBase: Formatter.currency(baseMensal, true),
               valorReconhecido: Formatter.currency(recMensal, true)
             },
             {
               item: 'PMOC SEMESTRAL',
               performance: Formatter.percentage(perfSemestral),
               peso: Formatter.percentage(pmocSemestral.peso),
-              valorBase: Formatter.currency(baseSemestral),
+              valorBase: Formatter.currency(baseSemestral, true),
               valorReconhecido: Formatter.currency(recSemestral, true)
             },
             {
               item: 'CORRETIVA',
               performance: Formatter.percentage(perfCorretiva),
               peso: Formatter.percentage(corretiva.peso),
-              valorBase: Formatter.currency(baseCorretiva),
+              valorBase: Formatter.currency(baseCorretiva, true),
               valorReconhecido: Formatter.currency(recCorretiva, true)
             },
             {
               item: 'EPI',
               performance: Formatter.percentage(perfEPI),
               peso: Formatter.percentage(epi.peso),
-              valorBase: Formatter.currency(baseEPI),
+              valorBase: Formatter.currency(baseEPI, true),
               valorReconhecido: Formatter.currency(recEPI, true)
             },
             {
@@ -229,7 +229,7 @@
               performance: `${qtdExcedente}`,
               peso: Formatter.currency(excedente.tarifa),
               valorBase: Formatter.currency(unitExcedente),
-              valorReconhecido: Formatter.currency(recExcedente, false)
+              valorReconhecido: Formatter.currency(recExcedente, true)
             }
           ],
           subtotal: Formatter.currency(subtotal),
@@ -368,11 +368,11 @@
           company: config.company || 'Mar Brasil',
           contract: null,
           sector: null,
-          clientName: 'SEDUC Santos',
-          clientFullName: 'Secretaria de Educação de Santos',
-          technicianName: 'GB Climatização',
-          sectorDisplayName: 'Setor 01',
-          techLevel: TECH_LEVELS.LVL_1,
+          clientName: '—',
+          clientFullName: 'Aguardando seleção de contrato',
+          technicianName: '—',
+          sectorDisplayName: '—',
+          techLevel: TECH_LEVELS.LVL_3,
           isConsolidated: false
         };
       }
@@ -446,8 +446,26 @@
   }
 
   /* ==========================================================================
-     5. DADOS DE DEMONSTRAÇÃO DO PRINT (MAR BRASIL)
+     5. DADOS DE DEMONSTRAÇÃO E ESTADO ZERADO (MAR BRASIL)
      ========================================================================== */
+  const EMPTY_REPORT_DATA = {
+    contractBadge: 'MAR BRASIL — SISTEMA LIMPO',
+    contractTitle: 'Medição de Desempenho - Mar Brasil',
+    contractSubtitle: 'Sistema limpo. Faça o upload de uma nova planilha de medição ou selecione um contrato para emitir o relatório.',
+    periodLabel: 'VALORES - MAR BRASIL 06/2026',
+    company: 'Mar Brasil',
+    clientName: '—',
+    clientFullName: 'Aguardando importação de planilha ou seleção de contrato',
+    technicianName: '—',
+    contractValue: 0.0,
+    pmocMensal: { prevista: 0, realizada: 0, peso: 0.05 },
+    pmocSemestral: { prevista: 0, realizada: 0, peso: 0.50 },
+    corretiva: { prevista: 0, realizada: 0, peso: 0.40 },
+    epi: { prevista: 0, realizada: 0, peso: 0.05 },
+    excedente: { quantidade: 0, tarifa: 10.75, unitario: 3.50 },
+    incentivoVeicular: { metaPerformance: 0.0, baseValue: 1000.0, reconhecido: 0.0 }
+  };
+
   const DEFAULT_REPORT_DATA = {
     contractBadge: 'CONTRATO STS 36693/22',
     contractTitle: 'Medição de Desempenho - Mar Brasil',
@@ -463,7 +481,7 @@
     corretiva: { prevista: 0, realizada: 0, peso: 0.40 },
     epi: { prevista: 22, realizada: 9, peso: 0.05 },
     excedente: { quantidade: 0, tarifa: 10.75, unitario: 3.50 },
-    incentivoVeicular: { metaPerformance: 0.59, baseValue: 1000.0, reconhecido: 0 }
+    incentivoVeicular: { metaPerformance: 0.59, baseValue: 1000.0, reconhecido: 0.0 }
   };
 
   const SAMPLE_SPREADSHEET_ROWS = [
@@ -726,7 +744,7 @@
       if (!container) return;
       const { gauges, table } = computed;
 
-      const techBadgeHtml = data.technicianName ? `
+      const techBadgeHtml = data.technicianName && data.technicianName !== '—' ? `
         <span class="technician-badge">
           <span class="badge-icon">👷</span>
           <span class="badge-label">Responsável Técnico:</span>
@@ -739,7 +757,7 @@
           <header class="report-header">
             <div class="header-left">
               <div class="badges-row">
-                <span class="contract-badge">${data.contractBadge || 'CONTRATO STS 36693/22'}</span>
+                <span class="contract-badge">${data.contractBadge || 'MAR BRASIL'}</span>
                 ${techBadgeHtml}
               </div>
               
@@ -765,7 +783,7 @@
           <section class="financial-section">
             <div class="financial-header">
               <span class="financial-label">${data.periodLabel || 'VALORES - MAR BRASIL 06/2026'}</span>
-              <span class="financial-total-base" title="Valor base do nível do técnico">${Formatter.currency(data.contractValue || 4250.0)}</span>
+              <span class="financial-total-base" title="Valor base do nível do técnico">${Formatter.currency(data.contractValue || 0, false)}</span>
             </div>
 
             <table class="report-table">
@@ -1323,15 +1341,25 @@
     populateContractSelect() {
       this.contractSectorSelect.innerHTML = '';
 
-      // 1. Consolidado Geral (todos os contratos e setores)
-      const optDefault = document.createElement('option');
-      optDefault.value = 'PRINT_DEFAULT';
-      optDefault.textContent = '⭐ Consolidado Geral (Todos os Contratos)';
-      this.contractSectorSelect.appendChild(optDefault);
+      const hasSpreadsheet = this.spreadsheetData && this.spreadsheetData.rows && this.spreadsheetData.rows.length > 0;
+
+      if (!hasSpreadsheet) {
+        // Opção explícita de sistema limpo quando não há planilha
+        const optCleared = document.createElement('option');
+        optCleared.value = 'CLEARED';
+        optCleared.textContent = '⚪ Sistema Limpo (Aguardando Planilha)';
+        this.contractSectorSelect.appendChild(optCleared);
+      } else {
+        // 1. Consolidado Geral (todos os contratos e setores da planilha)
+        const optDefault = document.createElement('option');
+        optDefault.value = 'PRINT_DEFAULT';
+        optDefault.textContent = '⭐ Consolidado Geral (Todos os Contratos)';
+        this.contractSectorSelect.appendChild(optDefault);
+      }
 
       // 2. Consolidado por Contrato
       const optGroupContracts = document.createElement('optgroup');
-      optGroupContracts.label = '── Consolidado por Contrato ──';
+      optGroupContracts.label = '── Contratos Cadastrados ──';
       this.config.contracts.forEach(contract => {
         const techText = contract.technicianId
           ? ` — ${ContractStore.getTechName(this.config.technicians, contract.technicianId)}`
@@ -1346,9 +1374,9 @@
       this.contractSectorSelect.appendChild(optGroupContracts);
 
       // 3. Setores Individuais (apenas se houver planilha carregada)
-      if (this.spreadsheetData && this.spreadsheetData.rows && this.spreadsheetData.rows.length > 0) {
+      if (hasSpreadsheet) {
         const optGroupSectors = document.createElement('optgroup');
-        optGroupSectors.label = '── Setores Individuais ──';
+        optGroupSectors.label = '── Setores Individuais da Planilha ──';
         this.spreadsheetData.rows.forEach((row, idx) => {
           const resolved = ContractStore.resolveSectorInfo(this.config, row.setor);
           const levelLabel = resolved.techLevel ? resolved.techLevel.label : 'Nível 03';
@@ -1380,15 +1408,25 @@
     onSectorChange() {
       const val = this.contractSectorSelect.value;
 
-      if (val === 'PRINT_DEFAULT') {
-        this.state = JSON.parse(JSON.stringify(DEFAULT_REPORT_DATA));
-        this.state.contractBadge = 'CONSOLIDADO GERAL — MAR BRASIL';
-        this.state.contractTitle = 'Medição de Desempenho - Mar Brasil';
-        this.state.contractSubtitle = DEFAULT_REPORT_DATA.contractSubtitle;
-        this.state.periodLabel = 'VALORES - MAR BRASIL 06/2026';
+      // Estado 100% Zerado
+      if (val === 'CLEARED') {
+        this.state = JSON.parse(JSON.stringify(EMPTY_REPORT_DATA));
+        this.updateSidebarInfo('Mar Brasil', '—', '—', 'Sistema Limpo');
+        this.syncInputsFromState();
+        this.updateQuickStats({ equipamentos: 0, mensalPrev: 0, mensalReal: 0, semestralPrev: 0, semestralReal: 0, corretivaPrev: 0, corretivaReal: 0 });
+        this.update();
+        return;
+      }
 
+      if (val === 'PRINT_DEFAULT') {
         const totals = this.computeGlobalTotals();
         if (totals) {
+          this.state = JSON.parse(JSON.stringify(DEFAULT_REPORT_DATA));
+          this.state.contractBadge = 'CONSOLIDADO GERAL — MAR BRASIL';
+          this.state.contractTitle = 'Medição de Desempenho - Mar Brasil';
+          this.state.contractSubtitle = DEFAULT_REPORT_DATA.contractSubtitle;
+          this.state.periodLabel = 'VALORES - MAR BRASIL 06/2026';
+
           // Planilha carregada: usa dados reais agregados de todos os contratos
           this.state.pmocMensal.prevista      = totals.mensalPrevista;
           this.state.pmocMensal.realizada     = totals.mensalRealizada;
@@ -1397,6 +1435,7 @@
           this.state.corretiva.prevista       = totals.corretivasPrevista;
           this.state.corretiva.realizada      = totals.corretivasRealizada;
           this.state.technicianName           = `${this.spreadsheetData.rows.length} Setores · Todos os Contratos`;
+          this.state.contractValue            = 6000.0;
           
           // Excedente calculado para o consolidado
           this.state.excedente.quantidade = MeasurementCalculator.computeExcedenteQty(totals.mensalRealizada, totals.semestralRealizada);
@@ -1420,12 +1459,11 @@
             corretivaReal: totals.corretivasRealizada
           });
         } else {
-          // Sem planilha: usa dados de demonstração
-          this.state.technicianName = 'Múltiplos Setores • Equipe Especializada';
-          this.state.excedente.quantidade = MeasurementCalculator.computeExcedenteQty(this.state.pmocMensal.realizada, this.state.pmocSemestral.realizada);
-          this.updateSidebarInfo('Mar Brasil', 'SEDUC Santos', 'Múltiplos Setores (Santos)', 'Dados de Demonstração');
+          // Sem planilha: exibe estado zerado limpo
+          this.state = JSON.parse(JSON.stringify(EMPTY_REPORT_DATA));
+          this.updateSidebarInfo('Mar Brasil', '—', '—', 'Sistema Limpo');
           this.syncInputsFromState();
-          this.updateQuickStats({ equipamentos: 402, mensalPrev: 402, mensalReal: 211, semestralPrev: 80, semestralReal: 0, corretivaPrev: 0, corretivaReal: 0 });
+          this.updateQuickStats({ equipamentos: 0, mensalPrev: 0, mensalReal: 0, semestralPrev: 0, semestralReal: 0, corretivaPrev: 0, corretivaReal: 0 });
         }
         this.update();
         return;
@@ -1498,6 +1536,19 @@
               corretivaPrev: totals.corretivasPrevista,
               corretivaReal: totals.corretivasRealizada
             });
+          } else {
+            // Sem linhas para o contrato na planilha (mantém zerado para edição livre)
+            this.state.pmocMensal.prevista = 0;
+            this.state.pmocMensal.realizada = 0;
+            this.state.pmocSemestral.prevista = 0;
+            this.state.pmocSemestral.realizada = 0;
+            this.state.corretiva.prevista = 0;
+            this.state.corretiva.realizada = 0;
+            this.state.epi.prevista = 0;
+            this.state.epi.realizada = 0;
+            this.state.excedente.quantidade = 0;
+            this.state.incentivoVeicular = { metaPerformance: 0.0, baseValue: 1000.0, reconhecido: 0.0 };
+            this.updateQuickStats({ equipamentos: 0, mensalPrev: 0, mensalReal: 0, semestralPrev: 0, semestralReal: 0, corretivaPrev: 0, corretivaReal: 0 });
           }
 
           this.syncInputsFromState();
@@ -1573,6 +1624,7 @@
         this.activeFileName.textContent = `${file.name} (${parsed.rows.length} setores encontrados)`;
 
         this.populateContractSelect();
+        this.contractSectorSelect.value = 'PRINT_DEFAULT';
         this.onSectorChange();
       } catch (err) {
         alert(`Erro ao ler planilha: ${err.message}`);
@@ -1581,9 +1633,9 @@
     }
 
     updateQuickStats(stats) {
-      const perfMensal = stats.mensalPrev > 0 ? Math.round((stats.mensalReal / stats.mensalPrev) * 100) : 100;
+      const perfMensal = stats.mensalPrev > 0 ? Math.round((stats.mensalReal / stats.mensalPrev) * 100) : 0;
       const perfSemestral = stats.semestralPrev > 0 ? Math.round((stats.semestralReal / stats.semestralPrev) * 100) : 0;
-      const perfCorretiva = stats.corretivaPrev > 0 ? Math.round((stats.corretivaReal / stats.corretivaPrev) * 100) : 100;
+      const perfCorretiva = stats.corretivaPrev > 0 ? Math.round((stats.corretivaReal / stats.corretivaPrev) * 100) : 0;
 
       this.pillEquipamentos.textContent = `${stats.equipamentos} ativos`;
       this.pillMensal.textContent = `${stats.mensalReal} / ${stats.mensalPrev} (${perfMensal}%)`;
@@ -1594,7 +1646,7 @@
     syncInputsFromState() {
       if (this.inputContractBadge) this.inputContractBadge.value = this.state.contractBadge;
       if (this.inputPeriodLabel) this.inputPeriodLabel.value = this.state.periodLabel;
-      if (this.inputContractValue) this.inputContractValue.value = this.state.contractValue;
+      if (this.inputContractValue) this.inputContractValue.value = Number(this.state.contractValue || 0).toFixed(2);
 
       if (this.selectTechLevel) {
         const val = Number(this.state.contractValue);
@@ -1626,14 +1678,14 @@
 
       if (this.inputIncentivoMeta) this.inputIncentivoMeta.value = Math.round(this.state.incentivoVeicular.metaPerformance * 100);
       if (this.inputIncentivoBase) this.inputIncentivoBase.value = this.state.incentivoVeicular.baseValue;
-      if (this.inputIncentivoRec) this.inputIncentivoRec.value = this.state.incentivoVeicular.reconhecido;
+      if (this.inputIncentivoRec) this.inputIncentivoRec.value = Number(this.state.incentivoVeicular.reconhecido || 0).toFixed(2);
     }
 
     syncStateFromInputs(autoRecomputeIncentive = false) {
       if (this.inputContractBadge) this.state.contractBadge = this.inputContractBadge.value || 'CONTRATO STS 36693/22';
       if (this.inputPeriodLabel) this.state.periodLabel = this.inputPeriodLabel.value || 'VALORES - MAR BRASIL 06/2026';
       
-      const parsedVal = parseFloat(this.inputContractValue.value) || 4250.0;
+      const parsedVal = parseFloat(this.inputContractValue.value) || 0.0;
       this.state.contractValue = parsedVal;
 
       if (this.selectTechLevel) {
@@ -1672,7 +1724,7 @@
         const inc = MeasurementCalculator.computeIncentivo(perfM, perfS, perfC, perfE, baseVal);
         this.state.incentivoVeicular = inc;
         if (this.inputIncentivoMeta) this.inputIncentivoMeta.value = Math.round(inc.metaPerformance * 100);
-        if (this.inputIncentivoRec) this.inputIncentivoRec.value = inc.reconhecido;
+        if (this.inputIncentivoRec) this.inputIncentivoRec.value = Number(inc.reconhecido || 0).toFixed(2);
       } else {
         if (this.inputIncentivoMeta) this.state.incentivoVeicular.metaPerformance = (parseFloat(this.inputIncentivoMeta.value) || 0) / 100;
         if (this.inputIncentivoBase) this.state.incentivoVeicular.baseValue = parseFloat(this.inputIncentivoBase.value) || 1000.0;
@@ -1693,35 +1745,34 @@
     }
 
     loadDefaultSample() {
+      this.spreadsheetData = {
+        rows: JSON.parse(JSON.stringify(SAMPLE_SPREADSHEET_ROWS)),
+        groups: ExcelParser.groupRowsByContract(SAMPLE_SPREADSHEET_ROWS)
+      };
       this.state = JSON.parse(JSON.stringify(DEFAULT_REPORT_DATA));
+      this.populateContractSelect();
       this.contractSectorSelect.value = 'PRINT_DEFAULT';
-      this.syncInputsFromState();
-      this.updateSidebarInfo('Mar Brasil', 'SEDUC Santos', 'GB Climatização', 'Setor 01');
-      this.updateQuickStats({
-        equipamentos: 402,
-        mensalPrev: 402,
-        mensalReal: 211,
-        semestralPrev: 80,
-        semestralReal: 0,
-        corretivaPrev: 0,
-        corretivaReal: 0
-      });
-      this.update();
+      this.onSectorChange();
     }
 
     clearSpreadsheetData() {
-      // Reseta os dados da planilha para o estado vazio
+      // 1. Esvazia todos os dados da planilha
       this.spreadsheetData = { rows: [], groups: {} };
 
-      // Oculta indicadores de arquivo
+      // 2. Limpa badges e indicador de arquivo
       this.fileBadge.style.display = 'none';
       this.fileInfoNotice.style.display = 'none';
       this.activeFileName.textContent = '';
       this.fileInput.value = '';
 
-      // Volta para o Consolidado Geral e re-renderiza
+      // 3. Define estado 100% zerado
+      this.state = JSON.parse(JSON.stringify(EMPTY_REPORT_DATA));
+
+      // 4. Atualiza seletor de contratos com a opção limpa
       this.populateContractSelect();
-      this.contractSectorSelect.value = 'PRINT_DEFAULT';
+      this.contractSectorSelect.value = 'CLEARED';
+
+      // 5. Atualiza sidebar, inputs e relatório visual
       this.onSectorChange();
     }
 
