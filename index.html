@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Medição de Desempenho - GWSB | Sistema Gerador de Relatório PDF</title>
+  <link rel="stylesheet" href="styles.css">
+  <!-- Bibliotecas Locais para Funcionamento 100% Offline -->
+  <script src="xlsx.full.min.js"></script>
+  <script src="html2pdf.bundle.min.js"></script>
+</head>
+<body>
+
+  <!-- Barra Superior -->
+  <nav class="app-navbar">
+    <div class="brand-title-wrap">
+      <svg class="brand-icon-mini" viewBox="0 0 100 100" fill="none">
+        <polygon points="50,12 85,32 50,52 15,32" fill="#f59e0b" />
+        <polygon points="15,32 50,52 50,90 15,70" fill="#ea580c" />
+        <polygon points="50,52 85,32 85,70 50,90" fill="#c2410c" />
+      </svg>
+      <div>
+        <h1 class="app-title">Mar Brasil &bull; Medição e PMOC</h1>
+        <p class="app-subtitle">Contratos Ativos: Santos (SEDUC), CRSN e SMSU &bull; Emissão de PDF</p>
+      </div>
+    </div>
+
+    <div class="nav-actions">
+      <button type="button" class="btn btn-outline" id="btnOpenConfigModal" title="Gerenciar contratos, setores e técnicos cadastrados">
+        ⚙️ Contratos &amp; Técnicos
+      </button>
+      <button type="button" class="btn btn-outline" id="btnDownloadTemplate" title="Baixar planilha de exemplo com as colunas certas">
+        📥 Baixar Modelo Excel
+      </button>
+      <button type="button" class="btn btn-secondary" id="btnLoadSample" title="Restaurar dados exatos do print de exemplo">
+        ⚡ Dados do Print
+      </button>
+      <button type="button" class="btn btn-primary" id="btnPrint" title="Abre a impressão em modo A4 com fidelidade vetorial máxima">
+        🖨️ Imprimir / Salvar PDF
+      </button>
+      <button type="button" class="btn btn-outline" id="btnDownloadPdf" title="Baixa o arquivo PDF direto para a pasta de downloads">
+        📄 Baixar PDF
+      </button>
+    </div>
+  </nav>
+
+  <!-- Container Principal -->
+  <main class="app-container">
+
+    <!-- Painel Lateral Esquerdo: Alimentação e Ajustes -->
+    <aside class="controls-sidebar">
+      
+      <!-- Card 1: Importação de Planilha -->
+      <section class="card">
+        <h2 class="card-title">
+          <span>📂 1. Alimentar Planilha</span>
+          <span id="fileBadge" style="font-size: 11px; font-weight: normal; color: #16a34a; display: none;">✓ Carregada</span>
+        </h2>
+        
+        <div class="dropzone" id="excelDropzone">
+          <div class="dropzone-icon">📊</div>
+          <div class="dropzone-text">Arraste a planilha de medição aqui</div>
+          <div class="dropzone-hint">ou clique para selecionar (.xlsx, .xls, .csv)</div>
+          <input type="file" id="excelFileInput" class="file-input-hidden" accept=".xlsx, .xls, .csv" />
+        </div>
+
+        <div id="fileInfoNotice" style="margin-top: 10px; font-size: 11.5px; color: #475569; display: none;">
+          Arquivo ativo: <strong id="activeFileName"></strong>
+        </div>
+      </section>
+
+      <!-- Card 2: Seleção de Contrato / Setor -->
+      <section class="card">
+        <h2 class="card-title">
+          <span>🏢 2. Seleção de Contrato / Setor</span>
+        </h2>
+        
+        <div class="form-group">
+          <label class="form-label" for="contractSectorSelect">Contrato ou Setor a Gerar Relatório:</label>
+          <select id="contractSectorSelect" class="form-select">
+            <option value="SAMPLE">STS36693/22 - Consolidado (Print Exemplo)</option>
+          </select>
+        </div>
+
+        <!-- Box Informativo do Contrato e Técnico Selecionado -->
+        <div class="contract-info-box" id="sidebarContractInfo">
+          <div class="info-row">
+            <span class="info-row-label">Empresa Prestadora:</span>
+            <span class="info-row-value" id="sidebarCompany">Mar Brasil</span>
+          </div>
+          <div class="info-row">
+            <span class="info-row-label">Órgão Contratante:</span>
+            <span class="info-row-value" id="sidebarClient">SEDUC Santos</span>
+          </div>
+          <div class="info-row">
+            <span class="info-row-label">Técnico Responsável:</span>
+            <span class="info-row-value tech-name" id="sidebarTech">GB Climatização</span>
+          </div>
+          <div class="info-row">
+            <span class="info-row-label">Abrangência / Setor:</span>
+            <span class="info-row-value" id="sidebarSector">Setor 01</span>
+          </div>
+        </div>
+
+        <!-- Indicadores Rápidos do Setor Escolhido -->
+        <div class="stats-badge-grid" id="quickStatsGrid">
+          <div class="stat-pill">
+            <div class="stat-pill-label">Equipamentos</div>
+            <div class="stat-pill-val" id="pillEquipamentos">402 ativos</div>
+          </div>
+          <div class="stat-pill">
+            <div class="stat-pill-label">PMOC Mensal</div>
+            <div class="stat-pill-val" id="pillMensal">211 / 402 (52%)</div>
+          </div>
+          <div class="stat-pill">
+            <div class="stat-pill-label">PMOC Semestral</div>
+            <div class="stat-pill-val" id="pillSemestral">0 / 80 (0%)</div>
+          </div>
+          <div class="stat-pill">
+            <div class="stat-pill-label">Corretivas</div>
+            <div class="stat-pill-val" id="pillCorretivas">0 / 0 (100%)</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Card 3: Parâmetros Financeiros e Complementares -->
+      <section class="card">
+        <h2 class="card-title">
+          <span>⚙️ 3. Parâmetros e Indicadores</span>
+        </h2>
+
+        <!-- Identificação do Documento -->
+        <div class="form-group">
+          <label class="form-label" for="inputContractBadge">Badge do Contrato (topo esquerdo):</label>
+          <input type="text" id="inputContractBadge" class="form-input" value="CONTRATO STS36693/22" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="inputPeriodLabel">Rótulo da Tabela / Período:</label>
+          <input type="text" id="inputPeriodLabel" class="form-input" value="VALORES - GWSB 06/2026" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="inputContractValue">Valor Base Total do Contrato (R$):</label>
+          <input type="number" id="inputContractValue" class="form-input" value="6000.00" step="100" />
+        </div>
+
+        <!-- Sanfona com Itens Complementares (EPI, Instalação, Excedente) -->
+        <details class="param-accordion" open>
+          <summary>Detalhamento de Pesos &amp; Indicadores Adicionais</summary>
+          <div class="accordion-body">
+            
+            <!-- EPI -->
+            <div class="form-group">
+              <label class="form-label">EPI (Itens Previstos x Entregues e Peso %):</label>
+              <div class="form-grid-3">
+                <input type="number" id="inputEpiPrevista" class="form-input" placeholder="Previstos" value="22" title="Itens Previstos" />
+                <input type="number" id="inputEpiRealizada" class="form-input" placeholder="Entregues" value="9" title="Itens Entregues" />
+                <input type="number" id="inputEpiPeso" class="form-input" placeholder="Peso %" value="10" title="Peso % Contratual" />
+              </div>
+            </div>
+
+            <!-- Instalação/Desinstalação -->
+            <div class="form-group">
+              <label class="form-label">Inst/Desins (% Desempenho e Peso %):</label>
+              <div class="form-grid-2">
+                <input type="number" id="inputInstPerf" class="form-input" placeholder="% Desempenho" value="100" />
+                <input type="number" id="inputInstPeso" class="form-input" placeholder="Peso %" value="5" />
+              </div>
+            </div>
+
+            <!-- Excedente -->
+            <div class="form-group">
+              <label class="form-label">Excedente (Qtd, Tarifa R$, Unitário R$):</label>
+              <div class="form-grid-3">
+                <input type="number" id="inputExcedenteQtd" class="form-input" placeholder="Qtd" value="0" />
+                <input type="number" id="inputExcedenteTarifa" class="form-input" placeholder="Tarifa R$" value="10.75" step="0.05" />
+                <input type="number" id="inputExcedenteUnit" class="form-input" placeholder="Unit R$" value="3.50" step="0.05" />
+              </div>
+            </div>
+
+            <!-- Incentivo Veicular -->
+            <div class="form-group">
+              <label class="form-label">Incentivo Veicular (% Desempenho, Base R$, Reconhecido R$):</label>
+              <div class="form-grid-3">
+                <input type="number" id="inputIncentivoMeta" class="form-input" placeholder="% Meta" value="59" />
+                <input type="number" id="inputIncentivoBase" class="form-input" placeholder="Base R$" value="1000.00" />
+                <input type="number" id="inputIncentivoRec" class="form-input" placeholder="Reconhecido R$" value="0.00" />
+              </div>
+            </div>
+
+          </div>
+        </details>
+      </section>
+
+    </aside>
+
+    <!-- Área Direita: Visualização do Relatório Oficial (A4 Preview) -->
+    <section class="preview-viewport">
+      <div class="preview-toolbar">
+        <span class="preview-info">📄 Pré-visualização do Relatório Oficial (Formato A4)</span>
+        <button type="button" class="btn btn-primary" id="btnQuickPrint" style="font-size: 12px; padding: 6px 12px;">
+          🖨️ Imprimir Página
+        </button>
+      </div>
+
+      <!-- Container do Relatório Gerado -->
+      <div id="reportContainer">
+        <!-- Renderizado dinamicamente via ReportRenderer.js -->
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Modal de Gerenciamento de Contratos & Técnicos -->
+  <div id="configModal" class="modal-backdrop">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h3 class="modal-title">
+          <span>⚙️ Gestão de Contratos, Setores e Técnicos</span>
+          <span style="font-size: 11px; font-weight: normal; color: var(--text-muted);">(Mar Brasil)</span>
+        </h3>
+        <button type="button" class="modal-close-btn" id="btnCloseConfigModal" title="Fechar">&times;</button>
+      </div>
+
+      <div class="modal-tabs">
+        <button type="button" class="modal-tab-btn active" id="tabBtnContracts" data-target="paneContracts">📋 Contratos &amp; Setores</button>
+        <button type="button" class="modal-tab-btn" id="tabBtnTechs" data-target="paneTechs">👷 Técnicos &amp; Parceiros</button>
+      </div>
+
+      <div class="modal-body">
+        
+        <!-- Painel 1: Contratos & Setores -->
+        <div id="paneContracts" class="tab-pane active">
+          <div class="list-section-header">
+            <div>
+              <strong style="font-size: 13.5px; color: var(--text-primary);">Contratos Cadastrados</strong>
+              <div class="section-subtitle">Gerencie os contratos da Mar Brasil e a distribuição dos seus setores</div>
+            </div>
+            <button type="button" class="btn btn-primary" id="btnShowAddContract" style="font-size: 12px; padding: 6px 12px;">
+              + Novo Contrato
+            </button>
+          </div>
+
+          <!-- Formulário de Adicionar / Editar Contrato -->
+          <div id="contractFormBox" class="modal-form-box">
+            <h4 class="modal-form-title" id="contractFormTitle">Cadastrar Novo Contrato</h4>
+            <input type="hidden" id="formContractId" />
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label class="form-label" for="formContractCode">Código do Contrato:</label>
+                <input type="text" id="formContractCode" class="form-input" placeholder="ex: STS 36693/22" />
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="formClientName">Nome Curto do Órgão / Cliente:</label>
+                <input type="text" id="formClientName" class="form-input" placeholder="ex: SEDUC Santos" />
+              </div>
+            </div>
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label class="form-label" for="formClientFullName">Nome Completo do Órgão:</label>
+                <input type="text" id="formClientFullName" class="form-input" placeholder="ex: Secretaria de Educação de Santos" />
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="formContractValue">Valor Base Contratual (R$):</label>
+                <input type="number" id="formContractValue" class="form-input" placeholder="6000.00" step="100" />
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="formContractDesc">Descrição da Avaliação:</label>
+              <input type="text" id="formContractDesc" class="form-input" placeholder="Avaliação objetiva da execução contratual..." />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="formContractTech">Técnico Padrão (caso não tenha subsetores):</label>
+              <select id="formContractTech" class="form-select"></select>
+            </div>
+            
+            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px;">
+              <button type="button" class="btn btn-secondary" id="btnCancelContractForm">Cancelar</button>
+              <button type="button" class="btn btn-primary" id="btnSaveContractForm">Salvar Contrato</button>
+            </div>
+          </div>
+
+          <!-- Lista de Contratos -->
+          <div id="contractsListContainer" style="margin-top: 14px;"></div>
+        </div>
+
+        <!-- Painel 2: Técnicos & Parceiros -->
+        <div id="paneTechs" class="tab-pane">
+          <div class="list-section-header">
+            <div>
+              <strong style="font-size: 13.5px; color: var(--text-primary);">Técnicos &amp; Empresas Parceiras</strong>
+              <div class="section-subtitle">Profissionais e prestadores responsáveis pela execução do PMOC</div>
+            </div>
+            <button type="button" class="btn btn-primary" id="btnShowAddTech" style="font-size: 12px; padding: 6px 12px;">
+              + Novo Técnico
+            </button>
+          </div>
+
+          <!-- Formulário de Adicionar / Editar Técnico -->
+          <div id="techFormBox" class="modal-form-box">
+            <h4 class="modal-form-title" id="techFormTitle">Cadastrar Novo Técnico</h4>
+            <input type="hidden" id="formTechId" />
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label class="form-label" for="formTechName">Nome da Empresa / Técnico:</label>
+                <input type="text" id="formTechName" class="form-input" placeholder="ex: GB Climatização" />
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="formTechPhone">Contato / Telefone (opcional):</label>
+                <input type="text" id="formTechPhone" class="form-input" placeholder="(13) 99999-9999" />
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="formTechNotes">Observações / Atribuição:</label>
+              <input type="text" id="formTechNotes" class="form-input" placeholder="ex: Responsável pelo Setor 01" />
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px;">
+              <button type="button" class="btn btn-secondary" id="btnCancelTechForm">Cancelar</button>
+              <button type="button" class="btn btn-primary" id="btnSaveTechForm">Salvar Técnico</button>
+            </div>
+          </div>
+
+          <!-- Tabela de Técnicos -->
+          <div id="techniciansListContainer" style="margin-top: 14px;"></div>
+        </div>
+
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="btnResetConfig" title="Restaura os 3 contratos oficiais e os 8 técnicos padrão da Mar Brasil">
+          🔄 Restaurar Padrões Mar Brasil
+        </button>
+        <button type="button" class="btn btn-primary" id="btnCloseConfigModalBottom">
+          Fechar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Script Principal Universal (Compatível com file:// direto e HTTP) -->
+  <script src="js/app.bundle.js"></script>
+</body>
+</html>

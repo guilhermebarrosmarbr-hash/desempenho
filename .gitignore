@@ -1,0 +1,7 @@
+# Sistema Operacional
+.DS_Store
+Thumbs.db
+
+# Logs e Temporários
+*.log
+scratch/
