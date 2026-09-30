@@ -602,6 +602,10 @@ details.param-accordion summary {
   font-weight: 700;
 }
 
+.font-black {
+  font-weight: 900;
+}
+
 /* Box de Informações de Contrato e Técnico na Sidebar */
 .contract-info-box {
   background: #f8fafc;

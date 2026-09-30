@@ -2,6 +2,8 @@
 .DS_Store
 Thumbs.db
 
+# Scripts de ambiente local (não fazem parte do deploy)
+*.bat
+
 # Logs e Temporários
 *.log
-scratch/
