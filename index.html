@@ -27,7 +27,13 @@
 
     <div class="nav-actions">
       <button type="button" class="btn btn-outline" id="btnOpenConfigModal" title="Gerenciar contratos, setores e técnicos cadastrados">
-        ⚙️ Contratos &amp; Técnicos
+        ⚙️ Contratos &amp; Setores
+      </button>
+      <button type="button" class="btn btn-outline" id="btnOpenTechsModalDirect" title="Gerenciar técnicos e configurar seus números de telefone do WhatsApp">
+        👷 Telefones dos Técnicos
+      </button>
+      <button type="button" class="btn btn-outline" id="btnOpenWhatsAppConfigDirect" title="Configurar conexão do WhatsApp (Evolution API / Cloudflare Worker)">
+        ⚙️ Configurar WhatsApp
       </button>
       <button type="button" class="btn btn-outline" id="btnDownloadTemplate" title="Baixar planilha de exemplo com as colunas certas">
         📥 Baixar Modelo Excel
@@ -35,14 +41,17 @@
       <button type="button" class="btn btn-danger" id="btnClearData" title="Limpa a planilha carregada e retorna ao estado inicial">
         🗑️ Limpar Dados
       </button>
-      <button type="button" class="btn btn-secondary" id="btnLoadSample" title="Restaurar dados exatos do print de exemplo">
-        ⚡ Dados do Print
+      <button type="button" class="btn btn-secondary" id="btnLoadSample" title="Restaurar dados exatos de exemplo da Mar Brasil (15 setores)">
+        ⚡ Carregar Exemplo (Demo)
       </button>
       <button type="button" class="btn btn-primary" id="btnPrint" title="Abre a impressão em modo A4 com fidelidade vetorial máxima">
         🖨️ Imprimir / Salvar PDF
       </button>
       <button type="button" class="btn btn-outline" id="btnDownloadPdf" title="Baixa o arquivo PDF direto para a pasta de downloads">
         📄 Baixar PDF
+      </button>
+      <button type="button" class="btn btn-whatsapp" id="btnOpenWhatsAppModal" title="Enviar relatórios de produtividade por WhatsApp">
+        📲 Enviar por WhatsApp
       </button>
     </div>
   </nav>
@@ -247,9 +256,14 @@
     <section class="preview-viewport">
       <div class="preview-toolbar">
         <span class="preview-info">📄 Pré-visualização do Relatório Oficial (Formato A4)</span>
-        <button type="button" class="btn btn-primary" id="btnQuickPrint" style="font-size: 12px; padding: 6px 12px;">
-          🖨️ Imprimir Página
-        </button>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button type="button" class="btn btn-sm btn-whatsapp" id="btnSendCurrentSector" style="display: none; font-size: 12px; padding: 6px 12px;" title="Enviar este setor selecionado por WhatsApp">
+            📲 Enviar este setor
+          </button>
+          <button type="button" class="btn btn-primary" id="btnQuickPrint" style="font-size: 12px; padding: 6px 12px;">
+            🖨️ Imprimir Página
+          </button>
+        </div>
       </div>
 
       <!-- Container do Relatório Gerado -->
@@ -355,8 +369,9 @@
                 <input type="text" id="formTechName" class="form-input" placeholder="ex: GB Climatização" />
               </div>
               <div class="form-group">
-                <label class="form-label" for="formTechPhone">Contato / Telefone (opcional):</label>
-                <input type="text" id="formTechPhone" class="form-input" placeholder="(13) 99999-9999" />
+                <label class="form-label" for="formTechPhone">Contato / Telefone (WhatsApp):</label>
+                <input type="text" id="formTechPhone" class="form-input" placeholder="(13) 99149-8882 ou 13991498882" />
+                <span style="font-size: 11px; color: #64748b;">DDD + Número (12 ou 13 dígitos). O remetente oficial é +55 13 99149-8882.</span>
               </div>
             </div>
             <div class="form-group">
@@ -382,6 +397,226 @@
         </button>
         <button type="button" class="btn btn-primary" id="btnCloseConfigModalBottom">
           Fechar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 2: Envio de Relatórios por WhatsApp (Evolution API) -->
+  <div id="whatsAppModal" class="modal-backdrop">
+    <div class="modal-container modal-xl">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <h3 class="modal-title" style="margin: 0;">
+            <span>📲 Enviar Relatórios por WhatsApp</span>
+          </h3>
+          <span class="badge" id="waCompetenceBadge" style="background: #e0f2fe; color: #0369a1; font-weight: 700; padding: 3px 8px; border-radius: 4px; font-size: 11.5px;">Competência: --</span>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button type="button" class="btn btn-outline btn-sm" id="btnOpenWhatsAppConfig" title="Configurar conexão do Worker e Evolution API" style="font-size: 12px; padding: 4px 10px;">
+            ⚙️ Configurações
+          </button>
+          <button type="button" class="modal-close-btn" id="btnCloseWhatsAppModal" title="Fechar">&times;</button>
+        </div>
+      </div>
+
+      <!-- Banner de Modo Teste -->
+      <div class="wa-test-banner">
+        <div class="wa-test-header">
+          <label class="wa-checkbox-label">
+            <input type="checkbox" id="chkTestMode" />
+            <strong style="color: #92400e;">🧪 Ativar Modo de Teste</strong>
+          </label>
+          <span style="font-size: 12px; color: #78350f;">
+            Proteção para validação: nenhum técnico real receberá mensagens enquanto o modo teste estiver ligado.
+          </span>
+        </div>
+        <div id="testModeInputs" class="wa-test-inputs" style="display: none;">
+          <label style="font-size: 12px; font-weight: 600; color: #92400e;" for="inputTestPhone">
+            Telefone Destinatário de Teste:
+          </label>
+          <input type="text" id="inputTestPhone" class="form-input" placeholder="ex: 13999998888 ou (13) 99999-8888" style="max-width: 280px; font-size: 13px;" />
+          <span style="font-size: 11.5px; color: #b45309;">
+            Todas as mensagens selecionadas irão <strong>exclusivamente para este número</strong> com a tag <code>[TESTE]</code> na legenda.
+          </span>
+        </div>
+      </div>
+
+      <div class="modal-body" style="padding: 16px 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+          <div style="font-size: 13px; color: #475569;">
+            Selecione os setores que deseja enviar. Cada técnico receberá seu próprio relatório PDF oficial.
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button type="button" class="btn btn-outline btn-sm" id="btnSelectAllValid" style="font-size: 11.5px; padding: 4px 8px;">
+              ✓ Selecionar Válidos
+            </button>
+            <button type="button" class="btn btn-outline btn-sm" id="btnDeselectAll" style="font-size: 11.5px; padding: 4px 8px;">
+              ✗ Desmarcar Todos
+            </button>
+          </div>
+        </div>
+
+        <!-- Tabela de Conferência de Setores -->
+        <div class="wa-table-wrapper">
+          <table class="wa-table">
+            <thead>
+              <tr>
+                <th style="width: 36px; text-align: center;"><input type="checkbox" id="chkSelectAllHeader" title="Marcar/Desmarcar todos" /></th>
+                <th>Setor</th>
+                <th>Técnico Responsável</th>
+                <th>Telefone WhatsApp</th>
+                <th title="Produtividade calculada: Mensal / Semestral / Corretiva">Produtividade</th>
+                <th title="EPI deste setor (previstos / entregues)">EPI (Prev./Entreg.)</th>
+                <th>Histórico / Status</th>
+                <th style="text-align: right; min-width: 140px;">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="waTableBody">
+              <!-- Preenchido dinamicamente via JS -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Barra de Progresso do Envio em Lote -->
+        <div id="waProgressContainer" class="wa-progress-box" style="display: none;">
+          <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; margin-bottom: 6px;">
+            <span id="waProgressLabel">Enviando relatórios...</span>
+            <span id="waProgressPercent">0%</span>
+          </div>
+          <div class="wa-progress-track">
+            <div id="waProgressBar" class="wa-progress-bar" style="width: 0%;"></div>
+          </div>
+          <div style="font-size: 11px; color: #64748b; margin-top: 4px;">
+            ⏱️ Intervalo aleatório de segurança de 4 a 10 segundos entre cada mensagem (anti-bloqueio WhatsApp).
+          </div>
+        </div>
+
+        <!-- Log Box de Mensagens de Envio -->
+        <div id="waLogBox" class="wa-log-box" style="display: none;"></div>
+      </div>
+
+      <div class="modal-footer" style="justify-content: space-between;">
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button type="button" class="btn btn-warning btn-sm" id="btnRetryFailed" style="display: none;">
+            🔄 Reenviar Falhas (<span id="retryFailedCount">0</span>)
+          </button>
+          <span id="waSelectedCountText" style="font-size: 12.5px; color: #475569; font-weight: 600;">
+            0 setores selecionados
+          </span>
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <button type="button" class="btn btn-secondary" id="btnCloseWhatsAppModalBottom">
+            Fechar
+          </button>
+          <button type="button" class="btn btn-whatsapp" id="btnStartBatchSend" disabled>
+            📲 Enviar Selecionados (0)
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 3: Confirmação Prévia de Envio (Trava de Segurança Financeira) -->
+  <div id="whatsAppConfirmModal" class="modal-backdrop">
+    <div class="modal-container modal-md">
+      <div class="modal-header" style="background-color: #fef2f2; border-bottom: 1px solid #fee2e2;">
+        <h3 class="modal-title" style="color: #991b1b;">
+          <span>⚠️ Confirmação de Envio — Mar Brasil</span>
+        </h3>
+        <button type="button" class="modal-close-btn" id="btnCloseWhatsAppConfirm">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 18px 20px;">
+        <div class="alert-box-warning" style="margin-bottom: 14px;">
+          <div style="font-weight: 700; color: #991b1b; margin-bottom: 4px;">Atenção: Conferência de Destinatários</div>
+          <div style="font-size: 12px; color: #7f1d1d; line-height: 1.45;">
+            Os relatórios em PDF contêm <strong>valores financeiros e produtividade contratual</strong>. Verifique abaixo se cada setor está vinculado ao técnico e telefone corretos.
+          </div>
+        </div>
+
+        <div id="waConfirmTestAlert" style="display: none; background: #fef3c7; border: 1px solid #fde68a; border-radius: 6px; padding: 10px; margin-bottom: 12px; font-size: 12px; color: #92400e;">
+          <strong>🧪 MODO TESTE ATIVO:</strong> Todos os relatórios desta lista serão enviados exclusivamente para <strong id="waConfirmTestTarget">--</strong> com a tag [TESTE].
+        </div>
+
+        <div style="font-size: 12.5px; font-weight: 700; color: #1e293b; margin-bottom: 8px;">
+          Setores a Enviar (<span id="waConfirmItemCount">0</span>):
+        </div>
+
+        <div id="waConfirmList" class="wa-confirm-list-box">
+          <!-- Lista dos setores confirmados -->
+        </div>
+
+        <div style="margin-top: 12px; font-size: 11.5px; color: #64748b; line-height: 1.4;">
+          Remetente oficial: <strong>+55 13 99149-8882</strong> (Instância Evolution API)<br>
+          Tempo estimado total: <strong id="waEstimatedTime">--</strong>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="btnCancelWhatsAppConfirm">
+          Cancelar
+        </button>
+        <button type="button" class="btn btn-whatsapp" id="btnExecuteWhatsAppSend">
+          Confirmar e Iniciar Envio
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 4: Configurações do Worker & Evolution API -->
+  <div id="whatsAppConfigModal" class="modal-backdrop">
+    <div class="modal-container modal-md">
+      <div class="modal-header">
+        <h3 class="modal-title">
+          <span>⚙️ Configuração do Envio por WhatsApp</span>
+        </h3>
+        <button type="button" class="modal-close-btn" id="btnCloseWhatsAppConfig">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 18px 20px;">
+        <div style="font-size: 12.5px; color: #475569; margin-bottom: 16px; line-height: 1.45;">
+          Como este site é estático e público no GitHub Pages, as credenciais da Evolution API ficam guardadas com segurança no seu <strong>Cloudflare Worker</strong>.
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="inputWorkerUrl">URL do Cloudflare Worker:</label>
+          <input type="url" id="inputWorkerUrl" class="form-input" placeholder="https://pmoc-whatsapp-proxy.guilherme-barrosmarbr.workers.dev" />
+          <span style="font-size: 11px; color: #64748b;">Endereço público do worker publicado no Cloudflare.</span>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="inputWorkerToken">Token de Acesso (Bearer Token):</label>
+          <input type="password" id="inputWorkerToken" class="form-input" placeholder="marbrasilpmoc2025" />
+          <span style="font-size: 11px; color: #64748b;">Salvo exclusivamente no seu navegador (localStorage). Nunca no código-fonte.</span>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Remetente Oficial (Evolution API):</label>
+          <input type="text" class="form-input" value="+55 13 99149-8882 (Instância Conectada)" disabled style="background-color: #f8fafc; color: #64748b;" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="inputCaptionTemplate">Modelo da Mensagem (Legenda do PDF):</label>
+          <textarea id="inputCaptionTemplate" class="form-input" rows="3" style="resize: vertical; font-size: 12.5px; font-family: inherit;"></textarea>
+          <span style="font-size: 11px; color: #64748b;">Tags disponíveis: <code>{tecnico}</code>, <code>{competencia}</code>, <code>{setor}</code></span>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-light); gap: 10px; flex-wrap: wrap;">
+          <div style="display: flex; gap: 8px;">
+            <button type="button" class="btn btn-outline btn-sm" id="btnTestWorkerConnection">
+              ⚡ Testar Conexão com Worker
+            </button>
+            <button type="button" class="btn btn-outline btn-sm" id="btnRestoreDefaultWaConfig" title="Preencher com os dados do Worker oficial da Mar Brasil">
+              🔄 Restaurar URL Padrão
+            </button>
+          </div>
+          <span id="workerStatusBadge" style="font-size: 12px; font-weight: 600;"></span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="btnCancelWhatsAppConfig">
+          Cancelar
+        </button>
+        <button type="button" class="btn btn-primary" id="btnSaveWhatsAppConfig">
+          Salvar Configurações
         </button>
       </div>
     </div>

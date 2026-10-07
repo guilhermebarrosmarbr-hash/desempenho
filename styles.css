@@ -938,6 +938,178 @@ details.param-accordion summary {
 }
 
 /* ==========================================================================
+   MODAIS WHATSAPP E INTEGRAÇÃO EVOLUTION API
+   ========================================================================== */
+.btn-whatsapp {
+  background-color: #25d366;
+  border-color: #128c7e;
+  color: #ffffff;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn-whatsapp:hover:not(:disabled) {
+  background-color: #20ba5a;
+  border-color: #0e6b60;
+  color: #ffffff;
+}
+.btn-whatsapp:disabled {
+  background-color: #8be0a6;
+  border-color: #8be0a6;
+  color: #e2e8f0;
+  cursor: not-allowed;
+}
+
+.modal-xl {
+  max-width: 1040px;
+}
+.modal-md {
+  max-width: 600px;
+}
+
+.wa-test-banner {
+  background-color: #fffbeb;
+  border-bottom: 1px solid #fef3c7;
+  padding: 12px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.wa-test-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.wa-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13.5px;
+}
+.wa-test-inputs {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px dashed #fcd34d;
+}
+
+.wa-table-wrapper {
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  margin-bottom: 16px;
+}
+.wa-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.wa-table th {
+  background-color: #f8fafc;
+  color: #475569;
+  font-weight: 700;
+  padding: 10px 12px;
+  text-align: left;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 1px solid var(--border-light);
+}
+.wa-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-light);
+  vertical-align: middle;
+}
+.wa-table tr:last-child td {
+  border-bottom: none;
+}
+.wa-table tr:hover {
+  background-color: #f1f5f9;
+}
+.wa-row-disabled {
+  background-color: #fef2f2 !important;
+  opacity: 0.8;
+}
+
+.wa-progress-box {
+  background-color: #f8fafc;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+.wa-progress-track {
+  width: 100%;
+  height: 10px;
+  background-color: #e2e8f0;
+  border-radius: 5px;
+  overflow: hidden;
+}
+.wa-progress-bar {
+  height: 100%;
+  background-color: #25d366;
+  border-radius: 5px;
+  transition: width 0.3s ease;
+}
+
+.wa-log-box {
+  max-height: 140px;
+  overflow-y: auto;
+  background-color: #0f172a;
+  color: #f8fafc;
+  font-family: monospace;
+  font-size: 11.5px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  margin-bottom: 16px;
+}
+.wa-log-entry {
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+.log-success { color: #4ade80; }
+.log-error { color: #f87171; }
+.log-info { color: #93c5fd; }
+
+.wa-confirm-list-box {
+  max-height: 250px;
+  overflow-y: auto;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background-color: #f8fafc;
+  padding: 8px 12px;
+}
+.wa-confirm-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--border-light);
+  font-size: 12px;
+}
+.wa-confirm-item:last-child {
+  border-bottom: none;
+}
+
+.badge-status {
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-block;
+}
+.status-pending { background-color: #fef3c7; color: #92400e; }
+.status-generating { background-color: #e0f2fe; color: #0369a1; }
+.status-sending { background-color: #ede9fe; color: #5b21b6; }
+.status-success { background-color: #dcfce7; color: #166534; }
+.status-error { background-color: #fee2e2; color: #991b1b; }
+.status-blocked { background-color: #f1f5f9; color: #475569; text-decoration: line-through; }
+
+/* ==========================================================================
    ESTILOS DE IMPRESSÃO (@MEDIA PRINT) - VETORIAL DE ALTA DEFINIÇÃO
    ========================================================================== */
 @media print {

@@ -36,4 +36,7 @@ planilha_medicao_pmoc_exemplo.csv — Modelo de planilha
 - ✅ Tabela financeira com cálculo automático de valores reconhecidos
 - ✅ Gestão escalável de contratos, setores e técnicos (persistida no localStorage)
 - ✅ Exportação em PDF de alta qualidade (formato A4)
+- ✅ Envio em Lote via WhatsApp (Integração com Evolution API via Cloudflare Worker)
 - ✅ Funciona 100% offline (bibliotecas embutidas)
+
+Consulte o guia `docs/EVOLUTION_SETUP.md` para configurar a integração do WhatsApp usando o Cloudflare Worker.

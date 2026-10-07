@@ -335,7 +335,34 @@
   /* ==========================================================================
      4. REPOSITÓRIO E GESTÃO DE CONTRATOS E TÉCNICOS (MAR BRASIL)
      ========================================================================== */
-  const STORAGE_KEY = 'MAR_BRASIL_PMOC_CONFIG_V2';
+  function sanitizeMojibake(obj) {
+    if (typeof obj === 'string') {
+      return obj
+        .replace(/\u00C3\u00A7/g, 'ç').replace(/\u00C3\u0087/g, 'Ç')
+        .replace(/\u00C3\u00A3/g, 'ã').replace(/\u00C3\u0083/g, 'Ã')
+        .replace(/\u00C3\u00A9/g, 'é').replace(/\u00C3\u0089/g, 'É')
+        .replace(/\u00C3\u00AA/g, 'ê').replace(/\u00C3\u008A/g, 'Ê')
+        .replace(/\u00C3\u00AD/g, 'í').replace(/\u00C3\u008D/g, 'Í')
+        .replace(/\u00C3\u00B3/g, 'ó').replace(/\u00C3\u0093/g, 'Ó')
+        .replace(/\u00C3\u00B4/g, 'ô').replace(/\u00C3\u0094/g, 'Ô')
+        .replace(/\u00C3\u00BA/g, 'ú').replace(/\u00C3\u009A/g, 'Ú')
+        .replace(/\u00C3\u00A1/g, 'á').replace(/\u00C3\u0081/g, 'Á')
+        .replace(/\u00C3\u00A0/g, 'à').replace(/\u00C3\u0080/g, 'À')
+        .replace(/\u00E2\u0080\u0094/g, '—').replace(/\u00E2\u0080\u0093/g, '–')
+        .replace(/\u00E2\u0080\u00A2/g, '•').replace(/\u00C2\u00B7/g, '·')
+        .replace(/\u00E2\u009C\u0085/g, '✅').replace(/\u00E2\u009A\u00A1/g, '⚡')
+        .replace(/\u00E2\u008C\u0080/g, '❌').replace(/\u00E2\u008F\u00B3/g, '⏳')
+        .replace(/\u00E2\u009A\u00A0/g, '⚠️');
+    }
+    if (Array.isArray(obj)) return obj.map(sanitizeMojibake);
+    if (obj && typeof obj === 'object') {
+      const res = {};
+      for (const k of Object.keys(obj)) res[k] = sanitizeMojibake(obj[k]);
+      return res;
+    }
+    return obj;
+  }
+  const STORAGE_KEY = 'MAR_BRASIL_PMOC_CONFIG_V3';
 
   const INITIAL_TECHNICIANS = [
     { id: 'tech-gb', name: 'GB Climatização', phone: '', notes: 'Responsável Setor 01 Santos (Nível 01)' },
@@ -400,10 +427,17 @@
   class ContractStore {
     static load() {
       try {
-        const stored = localStorage.getItem(STORAGE_KEY);
+        let stored = localStorage.getItem(STORAGE_KEY);
+        if (!stored) {
+          // Migra da V2 se existir
+          const v2 = localStorage.getItem('MAR_BRASIL_PMOC_CONFIG_V2');
+          if (v2) stored = v2;
+        }
         if (stored) {
-          const parsed = JSON.parse(stored);
+          let parsed = JSON.parse(stored);
           if (parsed && Array.isArray(parsed.contracts) && Array.isArray(parsed.technicians)) {
+            parsed = sanitizeMojibake(parsed);
+            this.save(parsed);
             return parsed;
           }
         }
@@ -803,24 +837,17 @@
       const clampedPct = Math.min(100, Math.max(0, percentage));
       const offset = circumference * (1 - clampedPct / 100);
 
+      const svgRaw = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="160" height="160">
+        <circle cx="80" cy="80" r="${radius}" stroke="#ffedd5" fill="none" stroke-width="18" />
+        <circle cx="80" cy="80" r="${radius}" stroke="#f97316" fill="none" stroke-width="18" stroke-dasharray="${circumference.toFixed(2)}" stroke-dashoffset="${offset.toFixed(2)}" transform="rotate(-90 80 80)" stroke-linecap="butt" />
+        <text x="80" y="90" font-family="Inter, sans-serif" font-weight="800" font-size="34px" fill="#0f172a" text-anchor="middle">${clampedPct}%</text>
+      </svg>`;
+      const svgBase64 = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgRaw)));
+
       return `
         <div class="gauge-card">
           <div class="gauge-svg-container">
-            <svg class="gauge-svg" viewBox="0 0 160 160">
-              <circle cx="80" cy="80" r="${radius}" class="gauge-track" />
-              <circle
-                cx="80"
-                cy="80"
-                r="${radius}"
-                class="gauge-progress"
-                stroke-dasharray="${circumference.toFixed(2)}"
-                stroke-dashoffset="${offset.toFixed(2)}"
-                transform="rotate(-90 80 80)"
-              />
-              <text x="80" y="88" class="gauge-value" text-anchor="middle">
-                ${clampedPct}%
-              </text>
-            </svg>
+            <img src="${svgBase64}" style="width: 100%; height: 100%; display: block;" />
           </div>
           <div class="gauge-info">
             <h3 class="gauge-title">${title}</h3>
@@ -831,17 +858,17 @@
     }
 
     static renderCubeLogo() {
-      return `
-        <svg class="brand-cube-logo" viewBox="0 0 100 100" fill="none">
-          <polygon points="50,12 85,32 50,52 15,32" fill="#f59e0b" />
-          <polygon points="50,22 75,36 50,50 25,36" fill="#fbbf24" />
-          <polygon points="15,32 50,52 50,90 15,70" fill="#ea580c" />
-          <polygon points="25,40 45,52 45,82 25,65" fill="#f97316" />
-          <polygon points="50,52 85,32 85,70 50,90" fill="#c2410c" />
-          <polygon points="55,52 75,40 75,65 55,82" fill="#ea580c" />
-          <polygon points="50,42 64,50 50,58 36,50" fill="#fef3c7" opacity="0.9" />
-        </svg>
-      `;
+      const svgRaw = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+        <polygon points="50,12 85,32 50,52 15,32" fill="#f59e0b" />
+        <polygon points="50,22 75,36 50,50 25,36" fill="#fbbf24" />
+        <polygon points="15,32 50,52 50,90 15,70" fill="#ea580c" />
+        <polygon points="25,40 45,52 45,82 25,65" fill="#f97316" />
+        <polygon points="50,52 85,32 85,70 50,90" fill="#c2410c" />
+        <polygon points="55,52 75,40 75,65 55,82" fill="#ea580c" />
+        <polygon points="50,42 64,50 50,58 36,50" fill="#fef3c7" opacity="0.9" />
+      </svg>`;
+      const svgBase64 = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgRaw)));
+      return `<img src="${svgBase64}" class="brand-cube-logo" style="width: 100%; height: 100%; display: block;" />`;
     }
 
     static renderReport(container, data, computed) {
@@ -933,6 +960,8 @@
   class MeasurementApp {
     constructor() {
       this.config = ContractStore.load();
+      this.waConfig = this.loadWaConfig();
+      this.waHistory = this.loadWaHistory();
       this.competence = '08/2026'; // Competência padrão dinâmica
       this.sectorEpiMap = {};     // Mapeamento de EPI por setor { [setor]: { prevista, realizada, peso, isCustom } }
       this.state = JSON.parse(JSON.stringify(DEFAULT_REPORT_DATA));
@@ -945,8 +974,15 @@
       this.initElements();
       this.initEvents();
       this.initModalEvents();
+      this.initWhatsAppEvents();
       this.populateContractSelect();
       this.onSectorChange();
+
+      // Indicadores iniciais dos dados de exemplo
+      if (this.fileBadge) this.fileBadge.style.display = 'inline-block';
+      if (this.fileInfoNotice) this.fileInfoNotice.style.display = 'block';
+      if (this.activeFileName) this.activeFileName.textContent = 'Dados do Print de Exemplo (15 setores)';
+      if (this.btnOpenWhatsAppModal) this.btnOpenWhatsAppModal.disabled = false;
     }
 
     initElements() {
@@ -954,6 +990,7 @@
       
       // Botões Navbar
       this.btnOpenConfigModal = document.getElementById('btnOpenConfigModal');
+      this.btnOpenTechsModalDirect = document.getElementById('btnOpenTechsModalDirect');
       this.btnDownloadTemplate = document.getElementById('btnDownloadTemplate');
       this.btnLoadSample = document.getElementById('btnLoadSample');
       this.btnPrint = document.getElementById('btnPrint');
@@ -1049,9 +1086,74 @@
       this.formTechName = document.getElementById('formTechName');
       this.formTechPhone = document.getElementById('formTechPhone');
       this.formTechNotes = document.getElementById('formTechNotes');
+
+      // Elementos WhatsApp - Navbar e Toolbar
+      this.btnOpenWhatsAppModal = document.getElementById('btnOpenWhatsAppModal');
+      this.btnOpenWhatsAppConfigDirect = document.getElementById('btnOpenWhatsAppConfigDirect');
+      this.btnSendCurrentSector = document.getElementById('btnSendCurrentSector');
+      
+      // Modais WhatsApp
+      this.whatsAppModal = document.getElementById('whatsAppModal');
+      this.whatsAppConfirmModal = document.getElementById('whatsAppConfirmModal');
+      this.whatsAppConfigModal = document.getElementById('whatsAppConfigModal');
+      
+      // Elementos UI WhatsApp Modal 2 (Principal)
+      this.waCompetenceBadge = document.getElementById('waCompetenceBadge');
+      this.btnOpenWhatsAppConfig = document.getElementById('btnOpenWhatsAppConfig');
+      this.btnCloseWhatsAppModal = document.getElementById('btnCloseWhatsAppModal');
+      this.btnCloseWhatsAppModalBottom = document.getElementById('btnCloseWhatsAppModalBottom');
+      this.chkTestMode = document.getElementById('chkTestMode');
+      this.testModeInputs = document.getElementById('testModeInputs');
+      this.inputTestPhone = document.getElementById('inputTestPhone');
+      
+      this.btnSelectAllValid = document.getElementById('btnSelectAllValid');
+      this.btnDeselectAll = document.getElementById('btnDeselectAll');
+      this.chkSelectAllHeader = document.getElementById('chkSelectAllHeader');
+      this.waTableBody = document.getElementById('waTableBody');
+      
+      this.waProgressContainer = document.getElementById('waProgressContainer');
+      this.waProgressBar = document.getElementById('waProgressBar');
+      this.waProgressPercent = document.getElementById('waProgressPercent');
+      this.waProgressLabel = document.getElementById('waProgressLabel');
+      this.waLogBox = document.getElementById('waLogBox');
+      
+      this.btnRetryFailed = document.getElementById('btnRetryFailed');
+      this.retryFailedCount = document.getElementById('retryFailedCount');
+      this.waSelectedCountText = document.getElementById('waSelectedCountText');
+      this.btnStartBatchSend = document.getElementById('btnStartBatchSend');
+      
+      // Elementos UI WhatsApp Confirm Modal 3
+      this.btnCloseWhatsAppConfirm = document.getElementById('btnCloseWhatsAppConfirm');
+      this.waConfirmTestAlert = document.getElementById('waConfirmTestAlert');
+      this.waConfirmTestTarget = document.getElementById('waConfirmTestTarget');
+      this.waConfirmItemCount = document.getElementById('waConfirmItemCount');
+      this.waConfirmList = document.getElementById('waConfirmList');
+      this.waEstimatedTime = document.getElementById('waEstimatedTime');
+      this.btnCancelWhatsAppConfirm = document.getElementById('btnCancelWhatsAppConfirm');
+      this.btnExecuteWhatsAppSend = document.getElementById('btnExecuteWhatsAppSend');
+
+      // Elementos UI WhatsApp Config Modal 4
+      this.btnCloseWhatsAppConfig = document.getElementById('btnCloseWhatsAppConfig');
+      this.inputWorkerUrl = document.getElementById('inputWorkerUrl');
+      this.inputWorkerToken = document.getElementById('inputWorkerToken');
+      this.inputCaptionTemplate = document.getElementById('inputCaptionTemplate');
+      this.btnTestWorkerConnection = document.getElementById('btnTestWorkerConnection');
+      this.workerStatusBadge = document.getElementById('workerStatusBadge');
+      this.btnCancelWhatsAppConfig = document.getElementById('btnCancelWhatsAppConfig');
+      this.btnSaveWhatsAppConfig = document.getElementById('btnSaveWhatsAppConfig');
+      this.btnRestoreDefaultWaConfig = document.getElementById('btnRestoreDefaultWaConfig');
     }
 
     initEvents() {
+      if (this.btnOpenTechsModalDirect) {
+        this.btnOpenTechsModalDirect.addEventListener('click', () => {
+          if (this.configModal) {
+            this.renderTechniciansList();
+            this.configModal.classList.add('active');
+            if (this.tabBtnTechs) this.tabBtnTechs.click();
+          }
+        });
+      }
       this.btnDownloadTemplate.addEventListener('click', () => ExcelParser.downloadTemplate());
       this.btnLoadSample.addEventListener('click', () => this.loadDefaultSample());
       this.btnClearData.addEventListener('click', () => this.clearSpreadsheetData());
@@ -1674,6 +1776,7 @@
         return;
       }
 
+      if (this.btnSendCurrentSector) this.btnSendCurrentSector.style.display = 'none';
       if (val === 'PRINT_DEFAULT') {
         const totals = this.computeGlobalTotals();
         if (totals) {
@@ -1811,6 +1914,7 @@
         const idx = parseInt(val.replace('ROW_', ''), 10);
         const row = this.spreadsheetData.rows[idx];
         if (row) {
+          if (this.btnSendCurrentSector) this.btnSendCurrentSector.style.display = 'inline-block';
           // Uso da função pura buildStateForRow (Seção 5)
           this.state = this.buildStateForRow(row);
 
@@ -1852,6 +1956,7 @@
         this.fileBadge.style.display = 'inline-block';
         this.fileInfoNotice.style.display = 'block';
         this.activeFileName.textContent = `${file.name} (${parsed.rows.length} setores encontrados)`;
+        if (this.btnOpenWhatsAppModal) this.btnOpenWhatsAppModal.disabled = false;
 
         // Detecção de competência pelo nome do arquivo
         const detectedComp = detectCompetenceFromFilename(file.name);
@@ -2005,9 +2110,24 @@
       };
       this.state = JSON.parse(JSON.stringify(DEFAULT_REPORT_DATA));
       this.state.periodLabel = `VALORES - MAR BRASIL ${this.competence}`;
+
+      if (this.fileBadge) this.fileBadge.style.display = 'inline-block';
+      if (this.fileInfoNotice) this.fileInfoNotice.style.display = 'block';
+      if (this.activeFileName) this.activeFileName.textContent = 'Dados do Print de Exemplo (15 setores)';
+      if (this.btnOpenWhatsAppModal) this.btnOpenWhatsAppModal.disabled = false;
+
       this.populateContractSelect();
       this.contractSectorSelect.value = 'PRINT_DEFAULT';
       this.onSectorChange();
+
+      // Feedback visual interativo no botão
+      if (this.btnLoadSample) {
+        const origText = this.btnLoadSample.innerHTML;
+        this.btnLoadSample.innerHTML = '✅ Dados Carregados!';
+        setTimeout(() => {
+          if (this.btnLoadSample) this.btnLoadSample.innerHTML = origText;
+        }, 1200);
+      }
     }
 
     clearSpreadsheetData() {
@@ -2025,6 +2145,642 @@
       this.populateContractSelect();
       this.contractSectorSelect.value = 'CLEARED';
       this.onSectorChange();
+
+      if (this.btnClearData) {
+        const origText = this.btnClearData.innerHTML;
+        this.btnClearData.innerHTML = '🗑️ Dados Zerados!';
+        setTimeout(() => {
+          if (this.btnClearData) this.btnClearData.innerHTML = origText;
+        }, 1200);
+      }
+    }
+
+    /* ==========================================================================
+       WHATSAPP INTEGRATION & WORKER API
+       ========================================================================== */
+    loadWaConfig() {
+      const DEFAULT_URL = 'https://pmoc-whatsapp-proxy.guilherme-barrosmarbr.workers.dev';
+      const DEFAULT_TOKEN = 'marbrasilpmoc2025';
+      const saved = localStorage.getItem('MAR_BRASIL_PMOC_WA_CONFIG_V1');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed && typeof parsed === 'object') {
+            if (!parsed.workerUrl || parsed.workerUrl.includes('pmoc-worker.guilhermebarros.workers.dev')) {
+              parsed.workerUrl = DEFAULT_URL;
+            }
+            if (!parsed.accessToken) {
+              parsed.accessToken = DEFAULT_TOKEN;
+            }
+            return parsed;
+          }
+        } catch (e) {
+          console.error('Erro ao ler WA Config', e);
+        }
+      }
+      return {
+        workerUrl: DEFAULT_URL,
+        accessToken: DEFAULT_TOKEN,
+        captionTemplate: 'Olá, {tecnico}! Segue o relatório de produtividade de {competencia} do {setor}.\nQualquer dúvida, responda esta mensagem. — Mar Brasil'
+      };
+    }
+
+    saveWaConfig(config) {
+      this.waConfig = config;
+      localStorage.setItem('MAR_BRASIL_PMOC_WA_CONFIG_V1', JSON.stringify(config));
+    }
+
+    loadWaHistory() {
+      const saved = localStorage.getItem('MAR_BRASIL_PMOC_ENVIOS_V1');
+      if (saved) {
+        try { return JSON.parse(saved); } catch(e) {}
+      }
+      return [];
+    }
+
+    recordWaHistory(item) {
+      this.waHistory.push({
+        ...item,
+        date: new Date().toISOString()
+      });
+      localStorage.setItem('MAR_BRASIL_PMOC_ENVIOS_V1', JSON.stringify(this.waHistory));
+    }
+
+    initWhatsAppEvents() {
+      const closeModals = () => {
+        if (this.whatsAppModal) this.whatsAppModal.classList.remove('active');
+        if (this.whatsAppConfirmModal) this.whatsAppConfirmModal.classList.remove('active');
+        if (this.whatsAppConfigModal) this.whatsAppConfigModal.classList.remove('active');
+      };
+
+      if (this.btnCloseWhatsAppModal) this.btnCloseWhatsAppModal.addEventListener('click', closeModals);
+      if (this.btnCloseWhatsAppModalBottom) this.btnCloseWhatsAppModalBottom.addEventListener('click', closeModals);
+      if (this.btnCloseWhatsAppConfirm) this.btnCloseWhatsAppConfirm.addEventListener('click', closeModals);
+      if (this.btnCancelWhatsAppConfirm) this.btnCancelWhatsAppConfirm.addEventListener('click', closeModals);
+      if (this.btnCloseWhatsAppConfig) this.btnCloseWhatsAppConfig.addEventListener('click', closeModals);
+      if (this.btnCancelWhatsAppConfig) this.btnCancelWhatsAppConfig.addEventListener('click', closeModals);
+
+      [this.whatsAppModal, this.whatsAppConfirmModal, this.whatsAppConfigModal].forEach(m => {
+        if (m) {
+          m.addEventListener('click', (e) => {
+            if (e.target === m) m.classList.remove('active');
+          });
+        }
+      });
+
+      if (this.btnOpenWhatsAppModal) {
+        this.btnOpenWhatsAppModal.addEventListener('click', () => this.openWhatsAppModal());
+      }
+      if (this.btnSendCurrentSector) {
+        this.btnSendCurrentSector.addEventListener('click', () => {
+          this.openWhatsAppModal(true);
+        });
+      }
+
+      const openConfigHandler = () => {
+        if (this.inputWorkerUrl) this.inputWorkerUrl.value = this.waConfig.workerUrl || '';
+        if (this.inputWorkerToken) this.inputWorkerToken.value = this.waConfig.accessToken || '';
+        if (this.inputCaptionTemplate) this.inputCaptionTemplate.value = this.waConfig.captionTemplate || '';
+        if (this.workerStatusBadge) this.workerStatusBadge.textContent = '';
+        if (this.whatsAppConfigModal) this.whatsAppConfigModal.classList.add('active');
+      };
+
+      if (this.btnOpenWhatsAppConfig) {
+        this.btnOpenWhatsAppConfig.addEventListener('click', openConfigHandler);
+      }
+      if (this.btnOpenWhatsAppConfigDirect) {
+        this.btnOpenWhatsAppConfigDirect.addEventListener('click', openConfigHandler);
+      }
+
+      if (this.btnRestoreDefaultWaConfig) {
+        this.btnRestoreDefaultWaConfig.addEventListener('click', () => {
+          if (this.inputWorkerUrl) this.inputWorkerUrl.value = 'https://pmoc-whatsapp-proxy.guilherme-barrosmarbr.workers.dev';
+          if (this.inputWorkerToken) this.inputWorkerToken.value = 'marbrasilpmoc2025';
+          if (this.workerStatusBadge) {
+            this.workerStatusBadge.textContent = 'Valores padrão preenchidos!';
+            this.workerStatusBadge.style.color = '#0284c7';
+          }
+        });
+      }
+
+      if (this.btnSaveWhatsAppConfig) {
+        this.btnSaveWhatsAppConfig.addEventListener('click', () => {
+          const cfg = {
+            workerUrl: this.inputWorkerUrl ? this.inputWorkerUrl.value.trim().replace(/\/$/, '') : '',
+            accessToken: this.inputWorkerToken ? this.inputWorkerToken.value.trim() : '',
+            captionTemplate: this.inputCaptionTemplate ? this.inputCaptionTemplate.value.trim() : ''
+          };
+          this.saveWaConfig(cfg);
+          if (this.whatsAppConfigModal) this.whatsAppConfigModal.classList.remove('active');
+          this.logWaEvent('Configurações do WhatsApp salvas com sucesso.', 'info');
+          alert('Configurações do WhatsApp salvas com sucesso!');
+        });
+      }
+
+      if (this.chkTestMode) {
+        this.chkTestMode.addEventListener('change', (e) => {
+          if (this.testModeInputs) {
+            this.testModeInputs.style.display = e.target.checked ? 'flex' : 'none';
+          }
+        });
+      }
+
+      if (this.chkSelectAllHeader) {
+        this.chkSelectAllHeader.addEventListener('change', (e) => {
+          const isChecked = e.target.checked;
+          const boxes = this.waTableBody.querySelectorAll('.wa-row-checkbox:not(:disabled)');
+          boxes.forEach(b => b.checked = isChecked);
+          this.updateWhatsAppSelectionCount();
+        });
+      }
+
+      if (this.btnSelectAllValid) {
+        this.btnSelectAllValid.addEventListener('click', () => {
+          if (this.chkSelectAllHeader) this.chkSelectAllHeader.checked = true;
+          const boxes = this.waTableBody.querySelectorAll('.wa-row-checkbox:not(:disabled)');
+          boxes.forEach(b => b.checked = true);
+          this.updateWhatsAppSelectionCount();
+        });
+      }
+
+      if (this.btnDeselectAll) {
+        this.btnDeselectAll.addEventListener('click', () => {
+          if (this.chkSelectAllHeader) this.chkSelectAllHeader.checked = false;
+          const boxes = this.waTableBody.querySelectorAll('.wa-row-checkbox');
+          boxes.forEach(b => b.checked = false);
+          this.updateWhatsAppSelectionCount();
+        });
+      }
+
+      if (this.waTableBody) {
+        this.waTableBody.addEventListener('change', (e) => {
+          if (e.target.classList.contains('wa-row-checkbox')) {
+            this.updateWhatsAppSelectionCount();
+          }
+        });
+      }
+
+      if (this.btnStartBatchSend) {
+        this.btnStartBatchSend.addEventListener('click', () => this.showConfirmModal());
+      }
+
+      if (this.btnExecuteWhatsAppSend) {
+        this.btnExecuteWhatsAppSend.addEventListener('click', () => this.startBatchSend());
+      }
+
+      if (this.btnRetryFailed) {
+        this.btnRetryFailed.addEventListener('click', () => this.retryFailedSends());
+      }
+
+      if (this.btnTestWorkerConnection) {
+        this.btnTestWorkerConnection.addEventListener('click', async () => {
+          const url = this.inputWorkerUrl ? this.inputWorkerUrl.value.trim().replace(/\/$/, '') : '';
+          const token = this.inputWorkerToken ? this.inputWorkerToken.value.trim() : '';
+          if (!url || !token) {
+            if (this.workerStatusBadge) {
+              this.workerStatusBadge.textContent = '❌ Preencha URL e Token';
+              this.workerStatusBadge.style.color = '#dc2626';
+            }
+            return;
+          }
+          this.btnTestWorkerConnection.disabled = true;
+          this.btnTestWorkerConnection.textContent = '⏳ Testando...';
+          try {
+            const res = await fetch(`${url}/status`, {
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+              const data = await res.json();
+              if (this.workerStatusBadge) {
+                this.workerStatusBadge.textContent = '✅ Conectado à Evolution API';
+                this.workerStatusBadge.style.color = '#16a34a';
+              }
+            } else {
+              if (this.workerStatusBadge) {
+                this.workerStatusBadge.textContent = `❌ Erro HTTP ${res.status}`;
+                this.workerStatusBadge.style.color = '#dc2626';
+              }
+            }
+          } catch(e) {
+            if (this.workerStatusBadge) {
+              this.workerStatusBadge.textContent = '❌ Falha na conexão (Verifique a URL)';
+              this.workerStatusBadge.style.color = '#dc2626';
+            }
+          } finally {
+            this.btnTestWorkerConnection.disabled = false;
+            this.btnTestWorkerConnection.textContent = '⚡ Testar Conexão com Worker';
+          }
+        });
+      }
+    }
+
+    logWaEvent(msg, type = 'info') {
+      if (!this.waLogBox) return;
+      const entry = document.createElement('div');
+      entry.className = `wa-log-entry log-${type}`;
+      const time = new Date().toLocaleTimeString();
+      entry.textContent = `[${time}] ${msg}`;
+      this.waLogBox.appendChild(entry);
+      this.waLogBox.scrollTop = this.waLogBox.scrollHeight;
+    }
+
+    openTechEdit(techId) {
+      if (this.whatsAppModal) this.whatsAppModal.classList.remove('active');
+      if (this.configModal) {
+        this.renderTechniciansList();
+        this.configModal.classList.add('active');
+        if (this.tabBtnTechs) this.tabBtnTechs.click();
+      }
+      if (techId) {
+        const tech = this.config.technicians.find(t => t.id === techId);
+        if (tech) {
+          this.formTechId.value = tech.id;
+          this.formTechName.value = tech.name;
+          this.formTechPhone.value = tech.phone ? formatPhoneDisplay(tech.phone) : '';
+          this.formTechNotes.value = tech.notes || '';
+          this.techFormBox.classList.add('active');
+          setTimeout(() => {
+            if (this.formTechPhone) {
+              this.formTechPhone.focus();
+              this.formTechPhone.select();
+            }
+          }, 150);
+          return;
+        }
+      }
+      this.formTechId.value = '';
+      this.formTechName.value = '';
+      this.formTechPhone.value = '';
+      this.formTechNotes.value = '';
+      this.techFormBox.classList.add('active');
+      setTimeout(() => {
+        if (this.formTechName) this.formTechName.focus();
+      }, 150);
+    }
+    openWhatsAppModal(singleSectorMode = false) {
+      if (this.waCompetenceBadge) {
+        this.waCompetenceBadge.textContent = `Competência: ${this.competence}`;
+      }
+      if (this.waTableBody) {
+        this.waTableBody.innerHTML = '';
+      }
+      this.waQueue = [];
+
+      if (!this.spreadsheetData || !this.spreadsheetData.rows || this.spreadsheetData.rows.length === 0) {
+        if (this.waTableBody) {
+          this.waTableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 32px 16px; color: #64748b; font-size: 13px;">
+            ⚠️ Nenhuma planilha de medição carregada no momento.<br><br>
+            Arraste um arquivo Excel na barra lateral ou clique no botão superior <strong>"⚡ Dados do Print"</strong> para preencher os setores.<br><br>
+            <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('btnOpenWhatsAppConfig').click()">
+              ⚙️ Configurar Conexão do Worker Agora
+            </button>
+          </td></tr>`;
+        }
+        if (this.whatsAppModal) this.whatsAppModal.classList.add('active');
+        return;
+      }
+
+      let currentSectorCode = null;
+      if (singleSectorMode && this.contractSectorSelect.value.startsWith('ROW_')) {
+        const idx = parseInt(this.contractSectorSelect.value.replace('ROW_', ''), 10);
+        if (this.spreadsheetData.rows[idx]) {
+          currentSectorCode = this.spreadsheetData.rows[idx].setor;
+        }
+      }
+
+      this.spreadsheetData.rows.forEach((row, idx) => {
+        const resolved = ContractStore.resolveSectorInfo(this.config, row.setor);
+        const tech = resolved.technician;
+        const state = this.buildStateForRow(row);
+        
+        let phoneValid = false;
+        let phoneDisplay = '<span style="color:#ef4444; font-weight:600;">Sem telefone</span>';
+        if (tech && tech.phone) {
+          const val = validatePhone(tech.phone);
+          if (val.valid) {
+            phoneValid = true;
+            phoneDisplay = `<span style="color:#166534; font-weight:600;">📱 ${formatPhoneDisplay(val.normalized)}</span> <button type="button" class="btn btn-outline btn-xs" style="font-size:10px; padding:2px 5px; margin-left:4px;" onclick="window.appInstance.openTechEdit('${tech.id}')" title="Alterar telefone deste técnico">✏️</button>`;
+          } else {
+            phoneDisplay = `<span style="color:#ef4444;" title="${val.error}">${val.error}</span> <button type="button" class="btn btn-outline btn-xs" style="font-size:10px; padding:2px 5px; margin-left:4px;" onclick="window.appInstance.openTechEdit('${tech.id}')" title="Corrigir telefone">✏️ Corrigir</button>`;
+          }
+        } else if (tech) {
+          phoneDisplay = `<span style="color:#ef4444; font-weight:600;">Sem telefone</span> <button type="button" class="btn btn-primary btn-xs" style="font-size:10px; padding:2px 6px; margin-left:4px;" onclick="window.appInstance.openTechEdit('${tech.id}')" title="Cadastrar telefone para este técnico">+ Cadastrar</button>`;
+        } else {
+          phoneDisplay = '<span style="color:#ef4444; font-weight:600;">Sem técnico vinculado</span>';
+        }
+
+        const perfM = MeasurementCalculator.computePerformance(state.pmocMensal.prevista, state.pmocMensal.realizada);
+        const perfS = MeasurementCalculator.computePerformance(state.pmocSemestral.prevista, state.pmocSemestral.realizada);
+        const perfC = MeasurementCalculator.computePerformance(state.corretiva.prevista, state.corretiva.realizada);
+        
+        const historyHits = this.waHistory.filter(h => h.setor === row.setor && h.competencia === this.competence && h.status === 'success');
+        let statusHtml = `<span class="badge-status status-pending" id="status-badge-${idx}">Pendente</span>`;
+        if (historyHits.length > 0) {
+          statusHtml = `<span class="badge-status status-success" id="status-badge-${idx}">Enviado (${historyHits.length}x)</span>`;
+        }
+
+        const isChecked = singleSectorMode ? (row.setor === currentSectorCode && phoneValid) : phoneValid;
+
+        const tr = document.createElement('tr');
+        if (!phoneValid) tr.className = 'wa-row-disabled';
+        tr.innerHTML = `
+          <td>
+            <input type="checkbox" class="wa-row-checkbox" data-idx="${idx}" ${!phoneValid ? 'disabled' : ''} ${isChecked ? 'checked' : ''} />
+          </td>
+          <td style="font-weight: 600;">${row.setor}</td>
+          <td>
+             ${resolved.technicianName}
+             ${!tech ? '<br><button type="button" class="btn btn-sm btn-outline" style="font-size:10px; padding:2px 4px; margin-top:2px;" onclick="document.getElementById(\'btnOpenConfigModal\').click()">Vincular</button>' : ''}
+          </td>
+          <td>${phoneDisplay}</td>
+          <td style="font-family: monospace;">${Math.round(perfM * 100)}% / ${Math.round(perfS * 100)}% / ${Math.round(perfC * 100)}%</td>
+          <td>${state.epi.prevista} / ${state.epi.realizada}</td>
+          <td id="status-cell-${idx}">${statusHtml}</td>
+          <td style="text-align: right;">
+             <button type="button" class="btn btn-outline btn-sm" title="Baixar PDF" onclick="MeasurementApp.downloadSector(${idx})" style="padding:4px 8px; font-size:12px;">📄 PDF</button>
+          </td>
+        `;
+        this.waTableBody.appendChild(tr);
+      });
+
+      this.updateWhatsAppSelectionCount();
+      if (this.waLogBox) {
+        this.waLogBox.style.display = 'none';
+        this.waLogBox.innerHTML = '';
+      }
+      if (this.waProgressContainer) {
+        this.waProgressContainer.style.display = 'none';
+      }
+      if (this.whatsAppModal) {
+        this.whatsAppModal.classList.add('active');
+      }
+
+      if (singleSectorMode && currentSectorCode) {
+        this.showConfirmModal();
+      }
+    }
+
+    updateWhatsAppSelectionCount() {
+      if (!this.waTableBody) return;
+      const boxes = this.waTableBody.querySelectorAll('.wa-row-checkbox:checked');
+      const count = boxes.length;
+      if (this.waSelectedCountText) {
+        this.waSelectedCountText.textContent = `${count} setores selecionados`;
+      }
+      
+      if (this.btnStartBatchSend) {
+        if (count > 0) {
+          this.btnStartBatchSend.disabled = false;
+          this.btnStartBatchSend.textContent = `📲 Enviar Selecionados (${count})`;
+        } else {
+          this.btnStartBatchSend.disabled = true;
+          this.btnStartBatchSend.textContent = '📲 Enviar Selecionados (0)';
+        }
+      }
+    }
+
+    showConfirmModal() {
+      const boxes = this.waTableBody.querySelectorAll('.wa-row-checkbox:checked');
+      if (boxes.length === 0) return;
+
+      this.waConfirmList.innerHTML = '';
+      this.waQueue = [];
+
+      const isTestMode = this.chkTestMode ? this.chkTestMode.checked : false;
+      const testPhone = isTestMode ? validatePhone(this.inputTestPhone ? this.inputTestPhone.value : '') : null;
+
+      if (isTestMode && (!testPhone || !testPhone.valid)) {
+        alert('Modo teste ativo, mas o telefone de teste é inválido. Corrija o telefone no banner de teste.');
+        return;
+      }
+
+      if (isTestMode) {
+        if (this.waConfirmTestAlert) this.waConfirmTestAlert.style.display = 'block';
+        if (this.waConfirmTestTarget) this.waConfirmTestTarget.textContent = formatPhoneDisplay(testPhone.normalized);
+      } else {
+        if (this.waConfirmTestAlert) this.waConfirmTestAlert.style.display = 'none';
+      }
+
+      boxes.forEach(box => {
+        const idx = parseInt(box.dataset.idx, 10);
+        const row = this.spreadsheetData.rows[idx];
+        const resolved = ContractStore.resolveSectorInfo(this.config, row.setor);
+        const phone = resolved.technician && resolved.technician.phone ? validatePhone(resolved.technician.phone).normalized : '';
+        const masked = maskPhoneDisplay(phone);
+        
+        const historyHits = this.waHistory.filter(h => h.setor === row.setor && h.competencia === this.competence && h.status === 'success');
+        let alertBadge = '';
+        if (historyHits.length > 0) {
+          alertBadge = '<span class="badge" style="background:#fee2e2; color:#991b1b; font-size:10px; padding: 2px 6px; border-radius: 4px; margin-left: 6px;">⚠️ Já enviado</span>';
+        }
+
+        const div = document.createElement('div');
+        div.className = 'wa-confirm-item';
+        div.innerHTML = `
+          <div>
+            <strong>${row.setor}</strong> <span>→ ${resolved.technicianName}</span>
+            ${alertBadge}
+          </div>
+          <div style="font-family: monospace; color: #475569;">
+            ${isTestMode ? formatPhoneDisplay(testPhone.normalized) : masked}
+          </div>
+        `;
+        this.waConfirmList.appendChild(div);
+        
+        this.waQueue.push({ idx, row, resolved, phone, testPhone: testPhone ? testPhone.normalized : null });
+      });
+
+      if (this.waConfirmItemCount) this.waConfirmItemCount.textContent = this.waQueue.length;
+      const minSecs = this.waQueue.length * 4;
+      const maxSecs = this.waQueue.length * 10;
+      if (this.waEstimatedTime) this.waEstimatedTime.textContent = `${minSecs} a ${maxSecs} segundos`;
+
+      if (this.whatsAppConfirmModal) this.whatsAppConfirmModal.classList.add('active');
+    }
+
+    async startBatchSend() {
+      if (this.whatsAppConfirmModal) this.whatsAppConfirmModal.classList.remove('active');
+      if (this.waLogBox) {
+        this.waLogBox.style.display = 'block';
+        this.waLogBox.innerHTML = '';
+      }
+      if (this.waProgressContainer) this.waProgressContainer.style.display = 'block';
+      if (this.btnStartBatchSend) {
+        this.btnStartBatchSend.disabled = true;
+        this.btnStartBatchSend.textContent = '⏳ Processando...';
+      }
+      if (this.btnCloseWhatsAppModal) this.btnCloseWhatsAppModal.style.display = 'none';
+      if (this.btnCloseWhatsAppModalBottom) this.btnCloseWhatsAppModalBottom.style.display = 'none';
+
+      const isTestMode = this.chkTestMode ? this.chkTestMode.checked : false;
+      this.logWaEvent(`🚀 INICIANDO LOTE: ${this.waQueue.length} relatórios (Modo Teste: ${isTestMode ? 'SIM' : 'NÃO'}).`, 'info');
+
+      for (let i = 0; i < this.waQueue.length; i++) {
+        const item = this.waQueue[i];
+        const percent = Math.round((i / this.waQueue.length) * 100);
+        if (this.waProgressBar) this.waProgressBar.style.width = `${percent}%`;
+        if (this.waProgressPercent) this.waProgressPercent.textContent = `${percent}%`;
+        if (this.waProgressLabel) this.waProgressLabel.textContent = `Processando ${item.row.setor} (${i+1}/${this.waQueue.length})...`;
+
+        await this.processSingleWaItem(item, isTestMode);
+
+        if (i < this.waQueue.length - 1) {
+          const delay = Math.floor(Math.random() * (10000 - 4000 + 1)) + 4000;
+          this.logWaEvent(`⏱️ Aguardando ${(delay/1000).toFixed(1)}s por segurança anti-bloqueio...`, 'info');
+          await new Promise(r => setTimeout(r, delay));
+        }
+      }
+
+      if (this.waProgressBar) this.waProgressBar.style.width = '100%';
+      if (this.waProgressPercent) this.waProgressPercent.textContent = '100%';
+      if (this.waProgressLabel) this.waProgressLabel.textContent = '✅ Envio em Lote Concluído';
+      
+      if (this.btnStartBatchSend) {
+        this.btnStartBatchSend.disabled = false;
+        this.btnStartBatchSend.textContent = `📲 Enviar Selecionados (${this.waQueue.length})`;
+      }
+      if (this.btnCloseWhatsAppModal) this.btnCloseWhatsAppModal.style.display = 'block';
+      if (this.btnCloseWhatsAppModalBottom) this.btnCloseWhatsAppModalBottom.style.display = 'block';
+      this.logWaEvent('🏁 Processamento finalizado.', 'info');
+    }
+
+    async processSingleWaItem(item, isTestMode) {
+      const { idx, row, resolved, phone, testPhone } = item;
+      const targetPhone = isTestMode ? testPhone : phone;
+      const badge = document.getElementById(`status-badge-${idx}`);
+      
+      if (badge) {
+        badge.className = 'badge-status status-generating';
+        badge.textContent = 'Gerando PDF...';
+      }
+
+      try {
+        const state = this.buildStateForRow(row);
+        const blob = await MeasurementApp.generatePdfBlobForState(state);
+        
+        if (badge) {
+          badge.className = 'badge-status status-sending';
+          badge.textContent = 'Enviando...';
+        }
+
+        const base64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const dataUrl = reader.result;
+            const b64 = dataUrl.split(',')[1];
+            resolve(b64);
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+
+        const template = this.waConfig.captionTemplate || 'Relatório de produtividade {competencia}';
+        const caption = template
+          .replace(/{tecnico}/g, resolved.technicianName)
+          .replace(/{competencia}/g, this.competence)
+          .replace(/{setor}/g, row.setor);
+
+        const finalCaption = isTestMode ? `[TESTE]\n${caption}` : caption;
+        const pdfFileName = getPdfFilename(row.setor, this.competence);
+
+        const url = this.waConfig.workerUrl ? this.waConfig.workerUrl.trim().replace(/\/$/, '') : null;
+        const token = this.waConfig.accessToken;
+
+        let success = false;
+        let messageId = null;
+
+        if (url && token) {
+          const res = await fetch(`${url}/send`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              phone: targetPhone,
+              base64Data: base64,
+              fileName: pdfFileName,
+              caption: finalCaption
+            })
+          });
+
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+          }
+          const data = await res.json();
+          messageId = data.messageId || 'sim-id';
+          success = true;
+        } else {
+          this.logWaEvent(`⚠️ Simulação local ativa (Worker não configurado). Enviando ${pdfFileName} para ${targetPhone}...`, 'info');
+          await new Promise(r => setTimeout(r, 1000));
+          success = true;
+          messageId = 'sim-local-id';
+        }
+
+        if (success) {
+          if (badge) {
+            badge.className = 'badge-status status-success';
+            badge.textContent = '✅ Enviado';
+          }
+          this.logWaEvent(`✅ Sucesso: ${row.setor} -> ${targetPhone}`, 'success');
+          this.recordWaHistory({
+            setor: row.setor,
+            competencia: this.competence,
+            technicianName: resolved.technicianName,
+            phone: targetPhone,
+            status: 'success',
+            messageId
+          });
+        }
+      } catch(err) {
+        if (badge) {
+          badge.className = 'badge-status status-error';
+          badge.textContent = `❌ Erro: ${err.message}`;
+        }
+        this.logWaEvent(`❌ Erro ${row.setor} -> ${targetPhone}: ${err.message}`, 'error');
+        this.recordWaHistory({
+          setor: row.setor,
+          competencia: this.competence,
+          technicianName: resolved.technicianName,
+          phone: targetPhone,
+          status: 'error',
+          error: err.message
+        });
+      }
+    }
+
+    retryFailedSends() {
+      const failed = this.waHistory.filter(h => h.competencia === this.competence && h.status === 'error');
+      if (failed.length === 0) {
+        alert('Não há envios com falha nesta competência.');
+        return;
+      }
+      failed.forEach(f => {
+        const idx = this.spreadsheetData.rows.findIndex(r => r.setor === f.setor);
+        if (idx !== -1) {
+          const cb = this.waTableBody.querySelector(`input[data-idx="${idx}"]`);
+          if (cb && !cb.disabled) cb.checked = true;
+        }
+      });
+      this.updateWhatsAppSelectionCount();
+      this.showConfirmModal();
+    }
+
+    static downloadSector(idx) {
+      if (window.appInstance && window.appInstance.spreadsheetData && window.appInstance.spreadsheetData.rows[idx]) {
+        const row = window.appInstance.spreadsheetData.rows[idx];
+        const state = window.appInstance.buildStateForRow(row);
+        MeasurementApp.generatePdfBlobForState(state).then(blob => {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = getPdfFilename(row.setor, window.appInstance.competence);
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        });
+      }
     }
 
     update() {
@@ -2086,9 +2842,9 @@
 
   // Inicialização segura
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => new MeasurementApp());
+    document.addEventListener('DOMContentLoaded', () => { window.appInstance = new MeasurementApp(); });
   } else {
-    new MeasurementApp();
+    window.appInstance = new MeasurementApp();
   }
 
 })();

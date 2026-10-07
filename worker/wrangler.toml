@@ -1,0 +1,22 @@
+name = "pmoc-whatsapp-proxy"
+main = "index.js"
+compatibility_date = "2023-12-01"
+workers_dev = true
+
+# Environment Variables (Non-sensitive)
+# Modifique esses valores localmente, mas NÃO commite credenciais de produção
+[vars]
+# EVOLUTION_INSTANCE_NAME = "minha-instancia"
+# EVOLUTION_API_URL = "https://api.meudominio.com"
+
+# ==============================================================================
+# SECRETS OBRIGATÓRIOS (Configure via CLI, NÃO escreva aqui)
+# ==============================================================================
+# FRONTEND_ACCESS_TOKEN (Token usado no painel de configuração do frontend)
+# EVOLUTION_API_KEY (Global API Key da Evolution API)
+#
+# Comandos para configurar em produção:
+# npx wrangler secret put FRONTEND_ACCESS_TOKEN
+# npx wrangler secret put EVOLUTION_API_KEY
+# npx wrangler secret put EVOLUTION_INSTANCE_NAME
+# npx wrangler secret put EVOLUTION_API_URL
