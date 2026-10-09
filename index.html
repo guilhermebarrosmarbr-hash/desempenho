@@ -25,30 +25,16 @@
       </div>
     </div>
 
+
     <div class="nav-actions">
       <button type="button" class="btn btn-outline" id="btnOpenConfigModal" title="Gerenciar contratos, setores e técnicos cadastrados">
-        ⚙️ Contratos &amp; Setores
-      </button>
-      <button type="button" class="btn btn-outline" id="btnOpenTechsModalDirect" title="Gerenciar técnicos e configurar seus números de telefone do WhatsApp">
-        👷 Telefones dos Técnicos
-      </button>
-      <button type="button" class="btn btn-outline" id="btnOpenWhatsAppConfigDirect" title="Configurar conexão do WhatsApp (Evolution API / Cloudflare Worker)">
-        ⚙️ Configurar WhatsApp
-      </button>
-      <button type="button" class="btn btn-outline" id="btnDownloadTemplate" title="Baixar planilha de exemplo com as colunas certas">
-        📥 Baixar Modelo Excel
+        ⚙️ Gestão de Contrato
       </button>
       <button type="button" class="btn btn-danger" id="btnClearData" title="Limpa a planilha carregada e retorna ao estado inicial">
         🗑️ Limpar Dados
       </button>
-      <button type="button" class="btn btn-secondary" id="btnLoadSample" title="Restaurar dados exatos de exemplo da Mar Brasil (15 setores)">
-        ⚡ Carregar Exemplo (Demo)
-      </button>
       <button type="button" class="btn btn-primary" id="btnPrint" title="Abre a impressão em modo A4 com fidelidade vetorial máxima">
         🖨️ Imprimir / Salvar PDF
-      </button>
-      <button type="button" class="btn btn-outline" id="btnDownloadPdf" title="Baixa o arquivo PDF direto para a pasta de downloads">
-        📄 Baixar PDF
       </button>
       <button type="button" class="btn btn-whatsapp" id="btnOpenWhatsAppModal" title="Enviar relatórios de produtividade por WhatsApp">
         📲 Enviar por WhatsApp
@@ -78,6 +64,13 @@
 
         <div id="fileInfoNotice" style="margin-top: 10px; font-size: 11.5px; color: #475569; display: none;">
           Arquivo ativo: <strong id="activeFileName"></strong>
+        </div>
+
+        <div style="text-align: center; margin: 15px 0;">
+          <strong style="color: #64748b; font-size: 12px; display: block; margin-bottom: 8px;">OU</strong>
+          <button type="button" class="btn btn-secondary" id="btnSyncAuvo" style="width: 100%; display: flex; justify-content: center; align-items: center; gap: 8px; font-weight: bold; color: #fff; background-color: #0f172a;">
+            ☁️ Sincronizar com Auvo (API)
+          </button>
         </div>
       </section>
 
@@ -623,6 +616,7 @@
   </div>
 
   <!-- Script Principal Universal (Compatível com file:// direto e HTTP) -->
+  <script src="js/auvo.js"></script>
   <script src="js/app.bundle.js"></script>
 </body>
 </html>

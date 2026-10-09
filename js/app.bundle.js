@@ -605,21 +605,21 @@
   };
 
   const DEFAULT_REPORT_DATA = {
-    contractBadge: 'CONTRATO STS 36693/22',
+    contractBadge: 'AGUARDANDO DADOS',
     contractTitle: 'Medição de Desempenho - Mar Brasil',
-    contractSubtitle: 'Avaliação objetiva da execução contratual de manutenção (PMOC e correlatos) da SEDUC Santos realizada pela Mar Brasil, com conversão direta de performance operacional em valor financeiro reconhecido.',
-    periodLabel: 'VALORES - MAR BRASIL 08/2026',
+    contractSubtitle: 'Carregue uma planilha ou sincronize com o Auvo para visualizar os dados de desempenho.',
+    periodLabel: 'VALORES - MAR BRASIL',
     company: 'Mar Brasil',
-    clientName: 'SEDUC Santos',
-    clientFullName: 'Secretaria de Educação de Santos',
-    technicianName: 'GB Climatização (Setor 01)',
-    contractValue: 6000.0,
-    pmocMensal: { prevista: 402, realizada: 211, peso: 0.05 },
-    pmocSemestral: { prevista: 80, realizada: 0, peso: 0.50 },
+    clientName: '',
+    clientFullName: '',
+    technicianName: 'Técnico Responsável',
+    contractValue: 0,
+    pmocMensal: { prevista: 0, realizada: 0, peso: 0.05 },
+    pmocSemestral: { prevista: 0, realizada: 0, peso: 0.50 },
     corretiva: { prevista: 0, realizada: 0, peso: 0.40 },
-    epi: { prevista: 22, realizada: 9, peso: 0.05 },
+    epi: { prevista: 0, realizada: 0, peso: 0.05 },
     excedente: { quantidade: 0, tarifa: 10.75, unitario: 3.50 },
-    incentivoVeicular: { metaPerformance: 0.59, baseValue: 1000.0, reconhecido: 0.0 }
+    incentivoVeicular: { metaPerformance: 0, baseValue: 1000.0, reconhecido: 0.0 }
   };
 
   const SAMPLE_SPREADSHEET_ROWS = [
@@ -962,13 +962,17 @@
       this.config = ContractStore.load();
       this.waConfig = this.loadWaConfig();
       this.waHistory = this.loadWaHistory();
-      this.competence = '08/2026'; // Competência padrão dinâmica
+      const _now = new Date();
+      const _mes = String(_now.getMonth() + 1).padStart(2, '0');
+      const _ano = _now.getFullYear();
+      this.competence = `${_mes}/${_ano}`; // Competência = mês atual
       this.sectorEpiMap = {};     // Mapeamento de EPI por setor { [setor]: { prevista, realizada, peso, isCustom } }
       this.state = JSON.parse(JSON.stringify(DEFAULT_REPORT_DATA));
       
+      // Iniciar com estado vazio - aguardando planilha ou sincronização Auvo
       this.spreadsheetData = {
-        rows: SAMPLE_SPREADSHEET_ROWS,
-        groups: ExcelParser.groupRowsByContract(SAMPLE_SPREADSHEET_ROWS)
+        rows: [],
+        groups: {}
       };
 
       this.initElements();
@@ -978,11 +982,9 @@
       this.populateContractSelect();
       this.onSectorChange();
 
-      // Indicadores iniciais dos dados de exemplo
-      if (this.fileBadge) this.fileBadge.style.display = 'inline-block';
-      if (this.fileInfoNotice) this.fileInfoNotice.style.display = 'block';
-      if (this.activeFileName) this.activeFileName.textContent = 'Dados do Print de Exemplo (15 setores)';
-      if (this.btnOpenWhatsAppModal) this.btnOpenWhatsAppModal.disabled = false;
+      // Iniciar com badge oculto
+      if (this.fileBadge) this.fileBadge.style.display = 'none';
+      if (this.fileInfoNotice) this.fileInfoNotice.style.display = 'none';
     }
 
     initElements() {
@@ -997,6 +999,7 @@
       this.btnQuickPrint = document.getElementById('btnQuickPrint');
       this.btnDownloadPdf = document.getElementById('btnDownloadPdf');
       this.btnClearData = document.getElementById('btnClearData');
+      this.btnSyncAuvo = document.getElementById('btnSyncAuvo');
 
       // Dropzone & Arquivo
       this.dropzone = document.getElementById('excelDropzone');
@@ -1154,40 +1157,13 @@
           }
         });
       }
-      this.btnDownloadTemplate.addEventListener('click', () => ExcelParser.downloadTemplate());
-      this.btnLoadSample.addEventListener('click', () => this.loadDefaultSample());
       this.btnClearData.addEventListener('click', () => this.clearSpreadsheetData());
+      if (this.btnSyncAuvo) this.btnSyncAuvo.addEventListener('click', () => this.syncAuvoData());
+      
       this.btnPrint.addEventListener('click', () => window.print());
       this.btnQuickPrint.addEventListener('click', () => window.print());
-      
-      // Download do PDF com nome padronizado
-      this.btnDownloadPdf.addEventListener('click', async () => {
-        const paper = document.querySelector('.report-paper');
-        if (!paper) return;
 
-        const originalText = this.btnDownloadPdf.textContent;
-        this.btnDownloadPdf.textContent = '⏳ Gerando PDF...';
-        this.btnDownloadPdf.disabled = true;
 
-        try {
-          const blob = await MeasurementApp.generatePdfBlob(paper);
-          const filename = getPdfFilename(this.state.sectorCode || this.state.contractBadge, this.competence);
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = filename;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-        } catch (e) {
-          console.error('Erro ao gerar PDF:', e);
-          window.print();
-        } finally {
-          this.btnDownloadPdf.textContent = originalText;
-          this.btnDownloadPdf.disabled = false;
-        }
-      });
 
       // Drag & Drop
       this.dropzone.addEventListener('click', () => this.fileInput.click());
@@ -1638,11 +1614,15 @@
         const optGroupSectors = document.createElement('optgroup');
         optGroupSectors.label = '── Setores Individuais da Planilha ──';
         this.spreadsheetData.rows.forEach((row, idx) => {
-          const resolved = ContractStore.resolveSectorInfo(this.config, row.setor);
-          const levelLabel = resolved.techLevel ? resolved.techLevel.label : 'Nível 03';
           const opt = document.createElement('option');
           opt.value = `ROW_${idx}`;
-          opt.textContent = `${row.setor}  ·  ${resolved.technicianName} [${levelLabel}] (${row.equipamentosAtivos} equip.)`;
+          if (row.isAuvo) {
+            opt.textContent = `${row.setor}  ·  ${row.techName || 'Sem Técnico'} (${row.equipamentosAtivos} equip.)`;
+          } else {
+            const resolved = ContractStore.resolveSectorInfo(this.config, row.setor);
+            const levelLabel = resolved.techLevel ? resolved.techLevel.label : 'Nível 03';
+            opt.textContent = `${row.setor}  ·  ${resolved.technicianName} [${levelLabel}] (${row.equipamentosAtivos} equip.)`;
+          }
           optGroupSectors.appendChild(opt);
         });
         this.contractSectorSelect.appendChild(optGroupSectors);
@@ -1740,6 +1720,45 @@
         ? overrides.contractValue
         : (resolved.techLevel ? resolved.techLevel.value : 4250.0);
 
+      // Auvo-specific row (each represents a technician/sector)
+      if (row.isAuvo) {
+        return {
+          contractBadge: `TÉCNICO: ${row.techName ? row.techName.toUpperCase() : 'SEM TÉCNICO'}`,
+          contractTitle: `Relatório de Produtividade Individual`,
+          contractSubtitle: `Período: ${comp} (Sincronizado via Auvo API)`,
+          periodLabel: `PRODUTIVIDADE - ${row.techName ? row.techName.toUpperCase() : 'SEM TÉCNICO'} - ${comp}`,
+          company: 'Integração Auvo Dashboard',
+          clientName: 'Atribuição Direta',
+          clientFullName: '',
+          technicianId: row.techId,
+          technician: null,
+          technicianName: row.techName || 'Sem Técnico',
+          sectorDisplayName: row.setor,
+          sectorCode: row.setor,
+          contractValue: 0,
+          pmocMensal: {
+            prevista: row.mensalPrevista || 0,
+            realizada: row.mensalRealizada || 0,
+            peso: 0.05
+          },
+          pmocSemestral: {
+            prevista: row.semestralPrevista || 0,
+            realizada: row.semestralRealizada || 0,
+            peso: 0.50
+          },
+          corretiva: {
+            prevista: row.corretivasPrevista || 0,
+            realizada: row.corretivasRealizada || 0,
+            peso: 0.40
+          },
+          epi: { prevista: 22, realizada: 22, peso: 0.05, isDefault: true },
+          excedente: { quantidade: 0, tarifa: 10.75, unitario: 3.50 },
+          incentivoVeicular: 0,
+          isAuvo: true
+        };
+      }
+
+      // Default handling (non‑Auvo rows)
       return {
         contractBadge: overrides.contractBadge || (resolved.contract ? `${resolved.contract.code} • ${resolved.sectorDisplayName}` : `SETOR: ${row.setor}`),
         contractTitle: overrides.contractTitle || `Medição de Desempenho - ${resolved.company || 'Mar Brasil'}`,
@@ -2153,6 +2172,53 @@
           if (this.btnClearData) this.btnClearData.innerHTML = origText;
         }, 1200);
       }
+    }
+
+    async syncAuvoData() {
+      if (!window.AuvoService) return;
+      const originalText = this.btnSyncAuvo.innerHTML;
+      this.btnSyncAuvo.innerHTML = '⏳ Sincronizando...';
+      this.btnSyncAuvo.disabled = true;
+
+      try {
+        const [mes, ano] = this.competence.split('/');
+        const startDate = `${ano}-${mes}-01`;
+        const lastDay = new Date(ano, mes, 0).getDate();
+        const endDate = `${ano}-${mes}-${lastDay}`;
+        
+        const auvoResult = await window.AuvoService.syncDashboard(startDate, endDate);
+        
+        this.spreadsheetData = {
+          rows: auvoResult.rows.map(row => ({
+            ...row,
+            isAuvo: true
+          })),
+          groups: {}
+        };
+        
+        this.fileBadge.style.display = 'inline-block';
+        this.fileInfoNotice.style.display = 'block';
+        this.activeFileName.textContent = `Auvo Dashboard: ${auvoResult.rows.length} Setores`;
+
+        
+        this.populateContractSelect();
+        if (this.contractSectorSelect.options.length > 0) {
+           this.contractSectorSelect.value = 'ROW_0';
+        }
+        this.onSectorChange();
+        
+        this.btnSyncAuvo.innerHTML = '✅ Auvo Sincronizado!';
+      } catch (err) {
+        alert(err.message);
+        this.btnSyncAuvo.innerHTML = '❌ Falha na Sincronização';
+      }
+      
+      setTimeout(() => {
+        if (this.btnSyncAuvo) {
+          this.btnSyncAuvo.innerHTML = originalText;
+          this.btnSyncAuvo.disabled = false;
+        }
+      }, 3000);
     }
 
     /* ==========================================================================

@@ -1,0 +1,18 @@
+{
+  "headers": [
+    {
+      "source": "/proxy-auvo/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, PUT, DELETE, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization, X-Requested-With" }
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/proxy-auvo/:path*",
+      "destination": "http://92.113.38.123:9000/:path*"
+    }
+  ]
+}
