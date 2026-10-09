@@ -109,6 +109,61 @@ class AuvoService {
   }
 
   /**
+   * Retorna lista de datas (YYYY-MM-DD) dos feriados nacionais do Brasil.
+   */
+  _getBrazilianHolidays(year) {
+    const holidays = [
+      year+'-01-01', year+'-04-21', year+'-05-01', year+'-09-07',
+      year+'-10-12', year+'-11-02', year+'-11-15', year+'-12-25'
+    ];
+    let a = year % 19; let b = Math.floor(year / 100); let c = year % 100;
+    let d = Math.floor(b / 4); let e = b % 4; let f = Math.floor((b + 8) / 25);
+    let g = Math.floor((b - f + 1) / 3); let h = (19 * a + b - d - g + 15) % 30;
+    let i = Math.floor(c / 4); let k = c % 4; let l = (32 + 2 * e + 2 * i - h - k) % 7;
+    let m = Math.floor((a + 11 * h + 22 * l) / 451);
+    let month = Math.floor((h + l - 7 * m + 114) / 31);
+    let day = ((h + l - 7 * m + 114) % 31) + 1;
+    const easter = new Date(Date.UTC(year, month - 1, day));
+    const addDays = (date, days) => {
+      const r = new Date(date);
+      r.setUTCDate(r.getUTCDate() + days);
+      return r.toISOString().split('T')[0];
+    };
+    holidays.push(addDays(easter, -47)); // Carnaval
+    holidays.push(addDays(easter, -2));  // Sexta-feira Santa
+    holidays.push(addDays(easter, 60));  // Corpus Christi
+    return holidays;
+  }
+
+  /**
+   * Conta dias úteis ignorando finais de semana e feriados.
+   */
+  _countBusinessDays(startDateStr, endDateStr) {
+    const start = new Date(startDateStr + 'T00:00:00Z');
+    const end = new Date(endDateStr + 'T23:59:59Z');
+    if (start > end) return 0;
+    
+    const startYear = start.getUTCFullYear();
+    const endYear = end.getUTCFullYear();
+    const holidays = new Set(this._getBrazilianHolidays(startYear));
+    if (endYear !== startYear) {
+      this._getBrazilianHolidays(endYear).forEach(h => holidays.add(h));
+    }
+    
+    let bdays = 0;
+    let d = new Date(start);
+    while (d <= end) {
+      const dow = d.getUTCDay();
+      const iso = d.toISOString().split('T')[0];
+      if (dow !== 0 && dow !== 6 && !holidays.has(iso)) {
+        bdays++;
+      }
+      d.setUTCDate(d.getUTCDate() + 1);
+    }
+    return bdays;
+  }
+
+  /**
    * Processa a resposta do Auvo baseando-se nas regras de negócio.
    * Agrupa por CONTRATO (uma linha = um contrato = um setor/técnico).
    * Exclui contratos B2B.
@@ -117,7 +172,8 @@ class AuvoService {
     const CATEGORIES = {
       MENSAL:    [175648, 225658, 212644, 221008, 75657],
       SEMESTRAL: [175652, 225657, 212645, 221009, 183425],
-      CORRETIVA: [175644, 225659, 212646, 221006, 75652]
+      CORRETIVA: [175644, 225659, 212646, 221006, 75652],
+      EPI:       [95888]
     };
 
     const startDateTime = new Date(startDateStr + 'T00:00:00Z').getTime();
@@ -168,6 +224,10 @@ class AuvoService {
       let mensalPrevista = Math.floor(ativos * (5 / 6));
       let semestralPrevista = Math.ceil(ativos * (1 / 6));
       
+      // A Prevista de EPI é a quantidade de dias úteis no período
+      let epiPrevista = this._countBusinessDays(startDateStr, endDateStr);
+      let epiRealizada = 0;
+      
       let mensalRealizada = 0;
       let semestralRealizada = 0;
       let corretivasPrevista = 0, corretivasRealizada = 0;
@@ -184,6 +244,7 @@ class AuvoService {
           if (CATEGORIES.MENSAL.includes(task.taskType)    || orient.includes('preventiva mensal')    || orient === 'mensal')    type = 'MENSAL';
           else if (CATEGORIES.SEMESTRAL.includes(task.taskType) || orient.includes('preventiva semestral') || orient === 'semestral') type = 'SEMESTRAL';
           else if (CATEGORIES.CORRETIVA.includes(task.taskType) || orient.includes('corretiva'))                                     type = 'CORRETIVA';
+          else if (CATEGORIES.EPI.includes(task.taskType)       || orient.includes('epi') || orient.includes('revisão de epi'))      type = 'EPI';
           if (!type) return;
 
           if (type === 'MENSAL' || type === 'SEMESTRAL') {
@@ -195,12 +256,19 @@ class AuvoService {
             } else {
               semestralRealizada += real;
             }
-          } else {
+          } else if (type === 'CORRETIVA') {
             // Corretiva: previsto e realizado só são contados se a tarefa foi finalizada (business rule do painel)
             const isFinished = task.taskStatus === 5 || ([1, 2, 3, 4, 6].includes(task.taskStatus) && !!task.signatureName);
             if (isFinished) {
               corretivasPrevista  += 1;
               corretivasRealizada += 1;
+            }
+          } else if (type === 'EPI') {
+            // EPI: contabilizado apenas para o técnico responsável pelo contrato
+            const taskUserId = task.idUserTo || task.userId;
+            if (taskUserId === primaryTechId) {
+              const isFinished = task.taskStatus === 5 || ([1, 2, 3, 4, 6].includes(task.taskStatus) && !!task.signatureName);
+              if (isFinished) epiRealizada += 1;
             }
           }
         });
@@ -216,18 +284,26 @@ class AuvoService {
         if (CATEGORIES.MENSAL.includes(task.taskType)    || orient.includes('preventiva mensal')    || orient === 'mensal')    type = 'MENSAL';
         else if (CATEGORIES.SEMESTRAL.includes(task.taskType) || orient.includes('preventiva semestral') || orient === 'semestral') type = 'SEMESTRAL';
         else if (CATEGORIES.CORRETIVA.includes(task.taskType) || orient.includes('corretiva'))                                     type = 'CORRETIVA';
+        else if (CATEGORIES.EPI.includes(task.taskType)       || orient.includes('epi') || orient.includes('revisão de epi'))      type = 'EPI';
         if (!type) return;
 
         if (type === 'MENSAL' || type === 'SEMESTRAL') {
           const real = this._countRealizado(task);
           if (type === 'MENSAL') { mensalRealizada += real; }
           else                   { semestralRealizada += real; }
-        } else {
+        } else if (type === 'CORRETIVA') {
           // Corretiva: previsto e realizado só são contados se a tarefa foi finalizada (business rule do painel)
           const isFinished = task.taskStatus === 5 || ([1, 2, 3, 4, 6].includes(task.taskStatus) && !!task.signatureName);
           if (isFinished) {
             corretivasPrevista  += 1;
             corretivasRealizada += 1;
+          }
+        } else if (type === 'EPI') {
+          // EPI: contabilizado apenas para o técnico responsável pelo contrato
+          const taskUserId = task.idUserTo || task.userId;
+          if (taskUserId === primaryTechId) {
+            const isFinished = task.taskStatus === 5 || ([1, 2, 3, 4, 6].includes(task.taskStatus) && !!task.signatureName);
+            if (isFinished) epiRealizada += 1;
           }
         }
       });
@@ -241,6 +317,8 @@ class AuvoService {
         semestralRealizada,
         corretivasPrevista,
         corretivasRealizada,
+        epiPrevista,
+        epiRealizada,
         techId:   primaryTechId,
         techName: primaryTechName,
         isAuvo:   true

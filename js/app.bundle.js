@@ -1661,12 +1661,13 @@
         sectorEpi = { ...overrides.epi, isCustom: true };
       } else if (this.sectorEpiMap && this.sectorEpiMap[row.setor]) {
         sectorEpi = { ...this.sectorEpiMap[row.setor], isCustom: true };
-      } else if (row.epiFromSpreadsheet && row.epiPrevista !== null) {
+      } else if ((row.epiFromSpreadsheet || row.isAuvo) && row.epiPrevista != null) {
         sectorEpi = {
           prevista: row.epiPrevista,
           realizada: row.epiRealizada || 0,
           peso: 0.05,
-          isSpreadsheet: true
+          isSpreadsheet: !!row.epiFromSpreadsheet,
+          isAuvo: !!row.isAuvo
         };
       }
 
