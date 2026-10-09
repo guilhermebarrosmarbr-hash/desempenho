@@ -1724,37 +1724,25 @@
       // Auvo-specific row (each represents a technician/sector)
       if (row.isAuvo) {
         return {
-          contractBadge: `TÉCNICO: ${row.techName ? row.techName.toUpperCase() : 'SEM TÉCNICO'}`,
+          contractBadge: `TÉCNICO: ${resolved.technicianName ? resolved.technicianName.toUpperCase() : 'SEM TÉCNICO'}`,
           contractTitle: `Relatório de Produtividade Individual`,
           contractSubtitle: `Período: ${comp} (Sincronizado via Auvo API)`,
-          periodLabel: `PRODUTIVIDADE - ${row.techName ? row.techName.toUpperCase() : 'SEM TÉCNICO'} - ${comp}`,
+          periodLabel: `PRODUTIVIDADE - ${resolved.technicianName ? resolved.technicianName.toUpperCase() : 'SEM TÉCNICO'} - ${comp}`,
           company: 'Integração Auvo Dashboard',
           clientName: 'Atribuição Direta',
           clientFullName: '',
           technicianId: row.techId,
           technician: null,
-          technicianName: row.techName || 'Sem Técnico',
+          technicianName: resolved.technicianName || 'Sem Técnico',
           sectorDisplayName: row.setor,
           sectorCode: row.setor,
-          contractValue: 0,
-          pmocMensal: {
-            prevista: row.mensalPrevista || 0,
-            realizada: row.mensalRealizada || 0,
-            peso: 0.05
-          },
-          pmocSemestral: {
-            prevista: row.semestralPrevista || 0,
-            realizada: row.semestralRealizada || 0,
-            peso: 0.50
-          },
-          corretiva: {
-            prevista: row.corretivasPrevista || 0,
-            realizada: row.corretivasRealizada || 0,
-            peso: 0.40
-          },
-          epi: { prevista: 22, realizada: 22, peso: 0.05, isDefault: true },
-          excedente: { quantidade: 0, tarifa: 10.75, unitario: 3.50 },
-          incentivoVeicular: 0,
+          contractValue: contractValue,
+          pmocMensal: pmocMensal,
+          pmocSemestral: pmocSemestral,
+          corretiva: corretiva,
+          epi: epi,
+          excedente: excedente,
+          incentivoVeicular: incentivoVeicular,
           isAuvo: true
         };
       }
