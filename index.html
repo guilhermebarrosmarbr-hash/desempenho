@@ -86,43 +86,6 @@
             <option value="SAMPLE">STS36693/22 - Consolidado (Print Exemplo)</option>
           </select>
         </div>
-
-        <!-- Box Informativo do Contrato e Técnico Selecionado -->
-        <div class="contract-info-box" id="sidebarContractInfo">
-          <div class="info-row">
-            <span class="info-row-label">Empresa Prestadora:</span>
-            <span class="info-row-value" id="sidebarCompany">Mar Brasil</span>
-          </div>
-          <div class="info-row">
-            <span class="info-row-label">Órgão Contratante:</span>
-            <span class="info-row-value" id="sidebarClient">SEDUC Santos</span>
-          </div>
-          <div class="info-row">
-            <span class="info-row-label">Técnico Responsável:</span>
-            <span class="info-row-value tech-name" id="sidebarTech">GB Climatização</span>
-          </div>
-          <div class="info-row">
-            <span class="info-row-label">Abrangência / Setor:</span>
-            <span class="info-row-value" id="sidebarSector">Setor 01</span>
-          </div>
-        </div>
-
-        <!-- Indicadores Rápidos do Setor Escolhido -->
-        <div class="stats-badge-grid" id="quickStatsGrid">
-
-          <div class="stat-pill">
-            <div class="stat-pill-label">PMOC Mensal</div>
-            <div class="stat-pill-val" id="pillMensal">211 / 402 (52%)</div>
-          </div>
-          <div class="stat-pill">
-            <div class="stat-pill-label">PMOC Semestral</div>
-            <div class="stat-pill-val" id="pillSemestral">0 / 80 (0%)</div>
-          </div>
-          <div class="stat-pill">
-            <div class="stat-pill-label">Corretivas</div>
-            <div class="stat-pill-val" id="pillCorretivas">0 / 0 (100%)</div>
-          </div>
-        </div>
       </section>
 
       <!-- Card 3: Parâmetros Financeiros e Operacionais (100% Editáveis) -->
@@ -146,22 +109,6 @@
             <label class="form-label" for="inputPeriodLabel">Rótulo da Tabela / Período:</label>
             <input type="text" id="inputPeriodLabel" class="form-input" value="VALORES - MAR BRASIL 08/2026" />
           </div>
-        </div>
-
-        <!-- Nível do Técnico & Valor Base (Canto Superior Direito) -->
-        <div class="form-group">
-          <label class="form-label" for="selectTechLevel">Nível do Técnico (Canto Superior Direito):</label>
-          <select id="selectTechLevel" class="form-select">
-            <option value="LVL_1">Nível 01 — R$ 6.000,00 (Setor 01 Santos)</option>
-            <option value="LVL_2">Nível 02 — R$ 5.250,00 (SMSU / Setor 04 Santos)</option>
-            <option value="LVL_3">Nível 03 — R$ 4.250,00 (CRSN / Setores 02, 03, 05, 06 Santos)</option>
-            <option value="CUSTOM">Personalizado / Outro Valor</option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label" for="inputContractValue">Valor do Nível do Técnico (R$):</label>
-          <input type="number" id="inputContractValue" class="form-input" value="4250.00" step="50" />
         </div>
 
         <!-- Sanfona com Todas as Tarefas Operacionais (Editáveis) -->
@@ -238,6 +185,13 @@
 
           </div>
         </details>
+
+        <!-- Botão Atualizar Dashboard -->
+        <div style="margin-top: 12px; display: flex; justify-content: flex-end;">
+          <button type="button" id="btnRefreshDashboard" class="btn btn-primary" style="font-size: 12.5px; padding: 7px 16px; display: flex; align-items: center; gap: 6px;" title="Aplica os valores atuais dos parâmetros ao relatório">
+            🔄 Atualizar Dashboard
+          </button>
+        </div>
       </section>
 
     </aside>
@@ -284,6 +238,28 @@
         
         <!-- Painel 1: Contratos & Setores -->
         <div id="paneContracts" class="tab-pane active">
+
+          <!-- Configuração de Valores por Nível -->
+          <div class="level-config-box" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px;">
+            <div style="font-size: 13px; font-weight: 700; color: #334155; margin-bottom: 10px;">
+              💰 Configuração de Valores por Nível
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 11px;">Nível 01 (R$):</label>
+                <input type="number" id="levelValue_LVL_1" class="form-input level-value-input" value="6000.00" step="50" style="font-size: 12px;" />
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 11px;">Nível 02 (R$):</label>
+                <input type="number" id="levelValue_LVL_2" class="form-input level-value-input" value="5250.00" step="50" style="font-size: 12px;" />
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 11px;">Nível 03 (R$):</label>
+                <input type="number" id="levelValue_LVL_3" class="form-input level-value-input" value="4250.00" step="50" style="font-size: 12px;" />
+              </div>
+            </div>
+          </div>
+
           <div class="list-section-header">
             <div>
               <strong style="font-size: 13.5px; color: var(--text-primary);">Contratos Cadastrados</strong>
@@ -364,9 +340,19 @@
                 <span style="font-size: 11px; color: #64748b;">DDD + Número (12 ou 13 dígitos). O remetente oficial é +55 13 99149-8882.</span>
               </div>
             </div>
-            <div class="form-group">
-              <label class="form-label" for="formTechNotes">Observações / Atribuição:</label>
-              <input type="text" id="formTechNotes" class="form-input" placeholder="ex: Responsável pelo Setor 01" />
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label class="form-label" for="formTechLevel">Nível do Técnico:</label>
+                <select id="formTechLevel" class="form-select">
+                  <option value="LVL_1">Nível 01</option>
+                  <option value="LVL_2">Nível 02</option>
+                  <option value="LVL_3">Nível 03</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="formTechNotes">Observações / Atribuição:</label>
+                <input type="text" id="formTechNotes" class="form-input" placeholder="ex: Responsável pelo Setor 01" />
+              </div>
             </div>
 
             <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px;">

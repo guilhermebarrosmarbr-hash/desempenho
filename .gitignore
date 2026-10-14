@@ -4,6 +4,16 @@ Thumbs.db
 
 # Scripts de ambiente local (não fazem parte do deploy)
 *.bat
+criar_tarefa.ps1
+instalar_inicializacao.ps1
+registrar_run.ps1
+start_proxy_background.js
+get_qr.ps1
+
+# Arquivos temporários e de QR code
+*qr*.png
+*qr*.html
 
 # Logs e Temporários
 *.log
+

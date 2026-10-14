@@ -148,8 +148,8 @@
      ========================================================================== */
   const TECH_LEVELS = {
     LVL_1: { id: 'LVL_1', label: 'Nível 01', value: 6000.0, description: 'STS 36693/22 - Setor 01' },
-    LVL_2: { id: 'LVL_2', label: 'Nível 02', value: 5250.0, description: 'SMSU PSP 6029/25 & STS 36693/22 - Setor 04' },
-    LVL_3: { id: 'LVL_3', label: 'Nível 03', value: 4250.0, description: 'CRSN PSP 6018/25 & STS 36693/22 - Setores 02, 03, 05, 06' }
+    LVL_2: { id: 'LVL_2', label: 'Nível 02', value: 5250.0, description: 'SMSU PSP 6029/25 & STS 36693/22 - Setor 03' },
+    LVL_3: { id: 'LVL_3', label: 'Nível 03', value: 4250.0, description: 'CRSN PSP 6018/25 & STS 36693/22 - Setores 02, 04, 05, 06' }
   };
 
   function resolveTechLevelBySector(setorStr) {
@@ -160,16 +160,16 @@
       return TECH_LEVELS.LVL_1;
     }
 
-    // SMSU ou STS Setor 04 -> Nível 02
-    if (norm.includes('SMSU') || norm.includes('6029') || norm.includes('SETOR 04') || norm.includes('SETOR 4')) {
+    // SMSU ou STS Setor 03 -> Nível 02
+    if (norm.includes('SMSU') || norm.includes('6029') || norm.includes('SETOR 03') || norm.includes('SETOR 3')) {
       return TECH_LEVELS.LVL_2;
     }
 
-    // CRSN ou STS Setores 02, 03, 05, 06 -> Nível 03
+    // CRSN ou STS Setores 02, 04, 05, 06 -> Nível 03
     if (
       norm.includes('CRSN') || norm.includes('6018') ||
       norm.includes('SETOR 02') || norm.includes('SETOR 2') ||
-      norm.includes('SETOR 03') || norm.includes('SETOR 3') ||
+      norm.includes('SETOR 04') || norm.includes('SETOR 4') ||
       norm.includes('SETOR 05') || norm.includes('SETOR 5') ||
       norm.includes('SETOR 06') || norm.includes('SETOR 6')
     ) {
@@ -177,6 +177,19 @@
     }
 
     return TECH_LEVELS.LVL_3;
+  }
+
+  /**
+   * Retorna um objeto { LVL_1, LVL_2, LVL_3 } com os valores monetários configurados.
+   * Usa config.levelValues se disponível, caso contrário usa os defaults do TECH_LEVELS.
+   */
+  function getEffectiveLevelValues(config) {
+    const lv = (config && config.levelValues) || {};
+    return {
+      LVL_1: typeof lv.LVL_1 === 'number' ? lv.LVL_1 : TECH_LEVELS.LVL_1.value,
+      LVL_2: typeof lv.LVL_2 === 'number' ? lv.LVL_2 : TECH_LEVELS.LVL_2.value,
+      LVL_3: typeof lv.LVL_3 === 'number' ? lv.LVL_3 : TECH_LEVELS.LVL_3.value
+    };
   }
 
   /* ==========================================================================
@@ -365,14 +378,14 @@
   const STORAGE_KEY = 'MAR_BRASIL_PMOC_CONFIG_V3';
 
   const INITIAL_TECHNICIANS = [
-    { id: 'tech-gb', name: 'GB Climatização', phone: '', notes: 'Responsável Setor 01 Santos (Nível 01)' },
-    { id: 'tech-ravtech', name: 'RavTech Climatização', phone: '', notes: 'Responsável Setor 02 Santos (Nível 03)' },
-    { id: 'tech-rn', name: 'RN Climatização', phone: '', notes: 'Responsável Setor 03 Santos (Nível 03)' },
-    { id: 'tech-gr', name: 'GR Ar Condicionado', phone: '', notes: 'Responsável Setor 04 Santos (Nível 02)' },
-    { id: 'tech-cj', name: 'CJ Refrigeração', phone: '', notes: 'Responsável Setor 05 Santos (Nível 03)' },
-    { id: 'tech-santoar', name: 'Santo Ar', phone: '', notes: 'Responsável Setor 06 Santos (Nível 03)' },
-    { id: 'tech-jr', name: 'JR Refrigeração', phone: '', notes: 'Responsável Contrato CRSN PSP 6018/25 (Nível 03)' },
-    { id: 'tech-cm2d', name: 'CM2D Refrigeração', phone: '', notes: 'Responsável Contrato SMSU PSP 6029/25 (Nível 02)' }
+    { id: 'tech-gb', name: 'GB Climatização', phone: '', notes: 'Responsável Setor 01 Santos', techLevel: 'LVL_1' },
+    { id: 'tech-ravtech', name: 'RavTech Climatização', phone: '', notes: 'Responsável Setor 02 Santos', techLevel: 'LVL_3' },
+    { id: 'tech-rn', name: 'RN Climatização', phone: '', notes: 'Responsável Setor 03 Santos', techLevel: 'LVL_2' },
+    { id: 'tech-gr', name: 'GR Ar Condicionado', phone: '', notes: 'Responsável Setor 04 Santos', techLevel: 'LVL_3' },
+    { id: 'tech-cj', name: 'CJ Refrigeração', phone: '', notes: 'Responsável Setor 05 Santos', techLevel: 'LVL_3' },
+    { id: 'tech-santoar', name: 'Santo Ar', phone: '', notes: 'Responsável Setor 06 Santos', techLevel: 'LVL_3' },
+    { id: 'tech-jr', name: 'JR Refrigeração', phone: '', notes: 'Responsável Contrato CRSN PSP 6018/25', techLevel: 'LVL_3' },
+    { id: 'tech-cm2d', name: 'CM2D Refrigeração', phone: '', notes: 'Responsável Contrato SMSU PSP 6029/25', techLevel: 'LVL_2' }
   ];
 
   const INITIAL_CONTRACTS = [
@@ -388,8 +401,8 @@
       sectors: [
         { id: 'sec-sts-01', code: 'SETOR 01', fullName: 'STS36693/22 - SETOR 01', technicianId: 'tech-gb', techLevel: 'LVL_1' },
         { id: 'sec-sts-02', code: 'SETOR 02', fullName: 'STS36693/22 - SETOR 02', technicianId: 'tech-ravtech', techLevel: 'LVL_3' },
-        { id: 'sec-sts-03', code: 'SETOR 03', fullName: 'STS36693/22 - SETOR 03', technicianId: 'tech-rn', techLevel: 'LVL_3' },
-        { id: 'sec-sts-04', code: 'SETOR 04', fullName: 'STS36693/22 - SETOR 04', technicianId: 'tech-gr', techLevel: 'LVL_2' },
+        { id: 'sec-sts-03', code: 'SETOR 03', fullName: 'STS36693/22 - SETOR 03', technicianId: 'tech-rn', techLevel: 'LVL_2' },
+        { id: 'sec-sts-04', code: 'SETOR 04', fullName: 'STS36693/22 - SETOR 04', technicianId: 'tech-gr', techLevel: 'LVL_3' },
         { id: 'sec-sts-05', code: 'SETOR 05', fullName: 'STS36693/22 - SETOR 05', technicianId: 'tech-cj', techLevel: 'LVL_3' },
         { id: 'sec-sts-06', code: 'SETOR 06', fullName: 'STS36693/22 - SETOR 06', technicianId: 'tech-santoar', techLevel: 'LVL_3' }
       ]
@@ -437,6 +450,10 @@
           let parsed = JSON.parse(stored);
           if (parsed && Array.isArray(parsed.contracts) && Array.isArray(parsed.technicians)) {
             parsed = sanitizeMojibake(parsed);
+            // Garantir que levelValues existe
+            if (!parsed.levelValues) {
+              parsed.levelValues = { LVL_1: 6000, LVL_2: 5250, LVL_3: 4250 };
+            }
             this.save(parsed);
             return parsed;
           }
@@ -448,7 +465,8 @@
       const initial = {
         company: 'Mar Brasil',
         technicians: JSON.parse(JSON.stringify(INITIAL_TECHNICIANS)),
-        contracts: JSON.parse(JSON.stringify(INITIAL_CONTRACTS))
+        contracts: JSON.parse(JSON.stringify(INITIAL_CONTRACTS)),
+        levelValues: { LVL_1: 6000, LVL_2: 5250, LVL_3: 4250 }
       };
       this.save(initial);
       return initial;
@@ -1000,6 +1018,7 @@
       this.btnDownloadPdf = document.getElementById('btnDownloadPdf');
       this.btnClearData = document.getElementById('btnClearData');
       this.btnSyncAuvo = document.getElementById('btnSyncAuvo');
+      this.btnRefreshDashboard = document.getElementById('btnRefreshDashboard');
 
       // Dropzone & Arquivo
       this.dropzone = document.getElementById('excelDropzone');
@@ -1025,7 +1044,7 @@
       this.inputContractBadge = document.getElementById('inputContractBadge');
       this.inputCompetence = document.getElementById('inputCompetence');
       this.inputPeriodLabel = document.getElementById('inputPeriodLabel');
-      this.selectTechLevel = document.getElementById('selectTechLevel');
+      this.selectTechLevel = null; // removido da seção 3 — gerenciado via modal de gestão
       this.inputContractValue = document.getElementById('inputContractValue');
 
       // Tarefas Operacionais Editáveis
@@ -1089,6 +1108,12 @@
       this.formTechName = document.getElementById('formTechName');
       this.formTechPhone = document.getElementById('formTechPhone');
       this.formTechNotes = document.getElementById('formTechNotes');
+      this.formTechLevel = document.getElementById('formTechLevel');
+
+      // Inputs de configuração de valores por nível
+      this.levelValueLVL1 = document.getElementById('levelValue_LVL_1');
+      this.levelValueLVL2 = document.getElementById('levelValue_LVL_2');
+      this.levelValueLVL3 = document.getElementById('levelValue_LVL_3');
 
       // Elementos WhatsApp - Navbar e Toolbar
       this.btnOpenWhatsAppModal = document.getElementById('btnOpenWhatsAppModal');
@@ -1159,6 +1184,22 @@
       }
       this.btnClearData.addEventListener('click', () => this.clearSpreadsheetData());
       if (this.btnSyncAuvo) this.btnSyncAuvo.addEventListener('click', () => this.syncAuvoData());
+
+      // Botão Atualizar Dashboard: força sincronização dos parâmetros e re-renderiza
+      if (this.btnRefreshDashboard) {
+        this.btnRefreshDashboard.addEventListener('click', () => {
+          this.syncStateFromInputs(true);
+          this.update();
+          // Feedback visual temporário
+          const origText = this.btnRefreshDashboard.innerHTML;
+          this.btnRefreshDashboard.innerHTML = '✅ Atualizado!';
+          this.btnRefreshDashboard.disabled = true;
+          setTimeout(() => {
+            this.btnRefreshDashboard.innerHTML = origText;
+            this.btnRefreshDashboard.disabled = false;
+          }, 1500);
+        });
+      }
       
       this.btnPrint.addEventListener('click', () => window.print());
       this.btnQuickPrint.addEventListener('click', () => window.print());
@@ -1199,20 +1240,8 @@
         });
       }
 
-      // Mudança no Nível do Técnico
-      if (this.selectTechLevel) {
-        this.selectTechLevel.addEventListener('change', () => {
-          const selected = this.selectTechLevel.value;
-          if (selected === 'LVL_1') {
-            this.inputContractValue.value = '6000.00';
-          } else if (selected === 'LVL_2') {
-            this.inputContractValue.value = '5250.00';
-          } else if (selected === 'LVL_3') {
-            this.inputContractValue.value = '4250.00';
-          }
-          this.syncStateFromInputs(false);
-        });
-      }
+      // Nível do técnico é gerenciado via modal de Gestão de Contratos (formTechLevel)
+      // — o select da sidebar (selectTechLevel) foi removido
 
       // Recomputação automática de excedente ao alterar tarefas mensais e semestrais
       const triggerExcedenteUpdate = () => {
@@ -1276,10 +1305,23 @@
       this.btnOpenConfigModal.addEventListener('click', () => {
         this.renderContractsList();
         this.renderTechniciansList();
+        // Carregar valores de nível salvos nos inputs
+        const lv = this.config.levelValues || { LVL_1: 6000, LVL_2: 5250, LVL_3: 4250 };
+        if (this.levelValueLVL1) this.levelValueLVL1.value = lv.LVL_1;
+        if (this.levelValueLVL2) this.levelValueLVL2.value = lv.LVL_2;
+        if (this.levelValueLVL3) this.levelValueLVL3.value = lv.LVL_3;
         this.configModal.classList.add('active');
       });
 
       const closeModal = () => {
+        // Salvar valores de nível configurados
+        if (this.levelValueLVL1 && this.levelValueLVL2 && this.levelValueLVL3) {
+          if (!this.config.levelValues) this.config.levelValues = {};
+          this.config.levelValues.LVL_1 = parseFloat(this.levelValueLVL1.value) || 6000;
+          this.config.levelValues.LVL_2 = parseFloat(this.levelValueLVL2.value) || 5250;
+          this.config.levelValues.LVL_3 = parseFloat(this.levelValueLVL3.value) || 4250;
+          ContractStore.save(this.config);
+        }
         this.configModal.classList.remove('active');
         this.contractFormBox.classList.remove('active');
         this.techFormBox.classList.remove('active');
@@ -1379,6 +1421,7 @@
         this.formTechName.value = '';
         this.formTechPhone.value = '';
         this.formTechNotes.value = '';
+        if (this.formTechLevel) this.formTechLevel.value = 'LVL_3';
         this.techFormBox.classList.add('active');
       });
 
@@ -1391,6 +1434,7 @@
         const name = this.formTechName.value.trim();
         const rawPhone = this.formTechPhone.value.trim();
         const notes = this.formTechNotes.value.trim();
+        const techLevel = this.formTechLevel ? this.formTechLevel.value : 'LVL_3';
 
         if (!name) {
           alert('Por favor, informe o nome do técnico ou empresa parceira.');
@@ -1412,8 +1456,9 @@
           this.config.technicians[existingIdx].name = name;
           this.config.technicians[existingIdx].phone = normalizedPhone;
           this.config.technicians[existingIdx].notes = notes;
+          this.config.technicians[existingIdx].techLevel = techLevel;
         } else {
-          this.config.technicians.push({ id, name, phone: normalizedPhone, notes });
+          this.config.technicians.push({ id, name, phone: normalizedPhone, notes, techLevel });
         }
 
         ContractStore.save(this.config);
@@ -1527,6 +1572,7 @@
           <tr>
             <th>Nome do Técnico / Empresa</th>
             <th>Atribuição / Setores</th>
+            <th>Nível</th>
             <th>Telefone WhatsApp</th>
             <th style="text-align: right;">Ações</th>
           </tr>
@@ -1542,9 +1588,15 @@
           ? `<span style="font-family: monospace; color: #16a34a; font-weight: 600;">📱 ${phoneFormatted}</span>`
           : `<span style="color: #94a3b8; font-style: italic;">Sem WhatsApp</span>`;
 
+        const lvlKey = tech.techLevel || 'LVL_3';
+        const lvlLabels = { LVL_1: 'Nível 01', LVL_2: 'Nível 02', LVL_3: 'Nível 03' };
+        const lvlColors = { LVL_1: '#7c3aed', LVL_2: '#0369a1', LVL_3: '#15803d' };
+        const lvlBadge = `<span style="background: ${lvlColors[lvlKey] || '#64748b'}; color: #fff; font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px;">${lvlLabels[lvlKey] || lvlKey}</span>`;
+
         tr.innerHTML = `
           <td><strong>${tech.name}</strong></td>
           <td style="color: #64748b; font-size: 11.5px;">${tech.notes || '—'}</td>
+          <td>${lvlBadge}</td>
           <td>${phoneBadge}</td>
           <td style="text-align: right;">
             <button type="button" class="btn-icon" data-action="edit-tech" data-id="${tech.id}">✏️</button>
@@ -1557,6 +1609,7 @@
           this.formTechName.value = tech.name;
           this.formTechPhone.value = tech.phone ? formatPhoneDisplay(tech.phone) : '';
           this.formTechNotes.value = tech.notes || '';
+          if (this.formTechLevel) this.formTechLevel.value = tech.techLevel || 'LVL_3';
           this.techFormBox.classList.add('active');
           this.techFormBox.scrollIntoView({ behavior: 'smooth' });
         });
@@ -1719,7 +1772,12 @@
 
       const contractValue = overrides.contractValue !== undefined
         ? overrides.contractValue
-        : (resolved.techLevel ? resolved.techLevel.value : 4250.0);
+        : (() => {
+            if (!resolved.techLevel) return 4250.0;
+            const lvKey = resolved.techLevel.id || 'LVL_3';
+            const effLv = getEffectiveLevelValues(this.config);
+            return effLv[lvKey] !== undefined ? effLv[lvKey] : resolved.techLevel.value;
+          })();
 
       // Auvo-specific row (each represents a technician/sector)
       if (row.isAuvo) {
@@ -1801,7 +1859,8 @@
           this.state.corretiva.prevista       = totals.corretivasPrevista;
           this.state.corretiva.realizada      = totals.corretivasRealizada;
           this.state.technicianName           = `${this.spreadsheetData.rows.length} Setores · Todos os Contratos`;
-          this.state.contractValue            = 6000.0;
+          const effLvConsolidated = getEffectiveLevelValues(this.config);
+          this.state.contractValue            = effLvConsolidated.LVL_1;
           this.state.sectorCode               = 'CONSOLIDADO_GERAL';
           
           this.state.excedente.quantidade = MeasurementCalculator.computeExcedenteQty(totals.mensalRealizada, totals.semestralRealizada);
@@ -1845,7 +1904,8 @@
           this.state.sectorCode = contract.code;
 
           const techLevel = resolveTechLevelBySector(contract.code + ' ' + (contract.clientName || ''));
-          this.state.contractValue = techLevel.value;
+          const effLv = getEffectiveLevelValues(this.config);
+          this.state.contractValue = effLv[techLevel.id] !== undefined ? effLv[techLevel.id] : techLevel.value;
 
           let techName = contract.technicianId 
             ? ContractStore.getTechName(this.config.technicians, contract.technicianId)
@@ -1988,10 +2048,10 @@
       const perfSemestral = stats.semestralPrev > 0 ? Math.round((stats.semestralReal / stats.semestralPrev) * 100) : 0;
       const perfCorretiva = stats.corretivaPrev > 0 ? Math.round((stats.corretivaReal / stats.corretivaPrev) * 100) : 0;
 
-      this.pillEquipamentos.textContent = `${stats.equipamentos} ativos`;
-      this.pillMensal.textContent = `${stats.mensalReal} / ${stats.mensalPrev} (${perfMensal}%)`;
-      this.pillSemestral.textContent = `${stats.semestralReal} / ${stats.semestralPrev} (${perfSemestral}%)`;
-      this.pillCorretivas.textContent = `${stats.corretivaReal} / ${stats.corretivaPrev} (${perfCorretiva}%)`;
+      if (this.pillEquipamentos) this.pillEquipamentos.textContent = `${stats.equipamentos} ativos`;
+      if (this.pillMensal) this.pillMensal.textContent = `${stats.mensalReal} / ${stats.mensalPrev} (${perfMensal}%)`;
+      if (this.pillSemestral) this.pillSemestral.textContent = `${stats.semestralReal} / ${stats.semestralPrev} (${perfSemestral}%)`;
+      if (this.pillCorretivas) this.pillCorretivas.textContent = `${stats.corretivaReal} / ${stats.corretivaPrev} (${perfCorretiva}%)`;
     }
 
     syncInputsFromState() {
@@ -2000,13 +2060,7 @@
       if (this.inputPeriodLabel) this.inputPeriodLabel.value = this.state.periodLabel;
       if (this.inputContractValue) this.inputContractValue.value = Number(this.state.contractValue || 0).toFixed(2);
 
-      if (this.selectTechLevel) {
-        const val = Number(this.state.contractValue);
-        if (Math.abs(val - 6000) < 1) this.selectTechLevel.value = 'LVL_1';
-        else if (Math.abs(val - 5250) < 1) this.selectTechLevel.value = 'LVL_2';
-        else if (Math.abs(val - 4250) < 1) this.selectTechLevel.value = 'LVL_3';
-        else this.selectTechLevel.value = 'CUSTOM';
-      }
+      // selectTechLevel foi removido da sidebar — nível é gerenciado pelo modal de gestão
 
       if (this.inputMensalPrevista) this.inputMensalPrevista.value = this.state.pmocMensal.prevista;
       if (this.inputMensalRealizada) this.inputMensalRealizada.value = this.state.pmocMensal.realizada;
@@ -2051,15 +2105,13 @@
       if (this.inputCompetence) this.competence = this.inputCompetence.value.trim() || '08/2026';
       if (this.inputPeriodLabel) this.state.periodLabel = this.inputPeriodLabel.value || `VALORES - MAR BRASIL ${this.competence}`;
       
-      const parsedVal = parseFloat(this.inputContractValue.value) || 0.0;
+      // contractValue é definido automaticamente via resolveSectorInfo — preserva valor existente
+      const parsedVal = this.inputContractValue
+        ? (parseFloat(this.inputContractValue.value) || 0.0)
+        : this.state.contractValue;
       this.state.contractValue = parsedVal;
 
-      if (this.selectTechLevel) {
-        if (Math.abs(parsedVal - 6000) < 1) this.selectTechLevel.value = 'LVL_1';
-        else if (Math.abs(parsedVal - 5250) < 1) this.selectTechLevel.value = 'LVL_2';
-        else if (Math.abs(parsedVal - 4250) < 1) this.selectTechLevel.value = 'LVL_3';
-        else this.selectTechLevel.value = 'CUSTOM';
-      }
+      // selectTechLevel foi removido da sidebar — nível é gerenciado pelo modal de gestão
 
       if (this.inputMensalPrevista) this.state.pmocMensal.prevista = parseInt(this.inputMensalPrevista.value, 10) || 0;
       if (this.inputMensalRealizada) this.state.pmocMensal.realizada = parseInt(this.inputMensalRealizada.value, 10) || 0;
@@ -2198,7 +2250,27 @@
         
         this.btnSyncAuvo.innerHTML = '✅ Auvo Sincronizado!';
       } catch (err) {
-        alert(err.message);
+        // Mensagem amigável para quando o proxy local não está rodando
+        const isFetchError = err.name === 'TypeError' || err.message === 'Failed to fetch' || err.message.includes('fetch');
+        const isFileProtocol = window.location.protocol === 'file:';
+
+        if (isFetchError && isFileProtocol) {
+          alert(
+            '❌ Não foi possível conectar ao proxy local (porta 9001).\n\n' +
+            'Para usar a sincronização com o Auvo, abra o sistema pelo arquivo:\n\n' +
+            '  📁 abrir_sistema.bat\n\n' +
+            'Esse arquivo inicia o proxy local antes de abrir o sistema.\n\n' +
+            'Se já abriu pelo bat e o erro persiste, verifique se o Node.js está instalado:\n  https://nodejs.org'
+          );
+        } else if (isFetchError) {
+          alert(
+            '❌ Falha de conexão com a API do Auvo.\n\n' +
+            'Verifique se o servidor Auvo está acessível e tente novamente.\n\n' +
+            'Detalhe: ' + err.message
+          );
+        } else {
+          alert('❌ Erro na sincronização:\n\n' + err.message);
+        }
         this.btnSyncAuvo.innerHTML = '❌ Falha na Sincronização';
       }
       
@@ -2207,7 +2279,7 @@
           this.btnSyncAuvo.innerHTML = originalText;
           this.btnSyncAuvo.disabled = false;
         }
-      }, 3000);
+      }, 4000);
     }
 
     /* ==========================================================================
