@@ -2021,9 +2021,9 @@
         const parsed = await ExcelParser.parseWorkbook(buffer);
 
         this.spreadsheetData = parsed;
-        this.fileBadge.style.display = 'inline-block';
-        this.fileInfoNotice.style.display = 'block';
-        this.activeFileName.textContent = `${file.name} (${parsed.rows.length} setores encontrados)`;
+        if (this.fileBadge) this.fileBadge.style.display = 'inline-block';
+        if (this.fileInfoNotice) this.fileInfoNotice.style.display = 'block';
+        if (this.activeFileName) this.activeFileName.textContent = `${file.name} (${parsed.rows.length} setores encontrados)`;
         if (this.btnOpenWhatsAppModal) this.btnOpenWhatsAppModal.disabled = false;
 
         // Detecção de competência pelo nome do arquivo
@@ -2194,10 +2194,10 @@
       this.spreadsheetData = { rows: [], groups: {} };
       this.sectorEpiMap = {};
 
-      this.fileBadge.style.display = 'none';
-      this.fileInfoNotice.style.display = 'none';
-      this.activeFileName.textContent = '';
-      this.fileInput.value = '';
+      if (this.fileBadge) this.fileBadge.style.display = 'none';
+      if (this.fileInfoNotice) this.fileInfoNotice.style.display = 'none';
+      if (this.activeFileName) this.activeFileName.textContent = '';
+      if (this.fileInput) this.fileInput.value = '';
 
       this.state = JSON.parse(JSON.stringify(EMPTY_REPORT_DATA));
       this.state.periodLabel = `VALORES - MAR BRASIL ${this.competence}`;
@@ -2237,9 +2237,9 @@
           groups: {}
         };
         
-        this.fileBadge.style.display = 'inline-block';
-        this.fileInfoNotice.style.display = 'block';
-        this.activeFileName.textContent = `Auvo Dashboard: ${auvoResult.rows.length} Setores`;
+        if (this.fileBadge) this.fileBadge.style.display = 'inline-block';
+        if (this.fileInfoNotice) this.fileInfoNotice.style.display = 'block';
+        if (this.activeFileName) this.activeFileName.textContent = `Auvo Dashboard: ${auvoResult.rows.length} Setores`;
 
         
         this.populateContractSelect();
