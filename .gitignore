@@ -17,3 +17,9 @@ get_qr.ps1
 # Logs e Temporários
 *.log
 
+# Módulo BPO Financeiro PGMEI
+**/node_modules/
+**/dist/
+bpo-financeiro-pgmei/data/screenshots/
+
+
