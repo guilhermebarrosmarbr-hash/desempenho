@@ -1591,14 +1591,14 @@
         const lvlKey = tech.techLevel || 'LVL_3';
         const lvlLabels = { LVL_1: 'Nível 01', LVL_2: 'Nível 02', LVL_3: 'Nível 03' };
         const lvlColors = { LVL_1: '#7c3aed', LVL_2: '#0369a1', LVL_3: '#15803d' };
-        const lvlBadge = `<span style="background: ${lvlColors[lvlKey] || '#64748b'}; color: #fff; font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px;">${lvlLabels[lvlKey] || lvlKey}</span>`;
+        const lvlBadge = `<span style="display: inline-block; white-space: nowrap; background: ${lvlColors[lvlKey] || '#64748b'}; color: #fff; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; line-height: 1.2;">${lvlLabels[lvlKey] || lvlKey}</span>`;
 
         tr.innerHTML = `
           <td><strong>${tech.name}</strong></td>
           <td style="color: #64748b; font-size: 11.5px;">${tech.notes || '—'}</td>
-          <td>${lvlBadge}</td>
-          <td>${phoneBadge}</td>
-          <td style="text-align: right;">
+          <td class="cell-level" style="white-space: nowrap;">${lvlBadge}</td>
+          <td style="white-space: nowrap;">${phoneBadge}</td>
+          <td style="text-align: right; white-space: nowrap;">
             <button type="button" class="btn-icon" data-action="edit-tech" data-id="${tech.id}">✏️</button>
             <button type="button" class="btn-icon danger" data-action="delete-tech" data-id="${tech.id}">🗑️</button>
           </td>

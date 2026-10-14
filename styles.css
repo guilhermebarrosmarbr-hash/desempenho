@@ -895,12 +895,19 @@ details.param-accordion summary {
   font-weight: 700;
   color: var(--text-secondary);
   border-bottom: 1px solid var(--border-light);
+  white-space: nowrap;
 }
 
 .tech-table td {
   padding: 9px 12px;
   border-bottom: 1px solid #f1f5f9;
   color: var(--text-primary);
+  vertical-align: middle;
+}
+
+.tech-table td.cell-level {
+  white-space: nowrap;
+  width: 90px;
 }
 
 .tech-table tr:last-child td {
