@@ -2832,7 +2832,16 @@
           });
 
           if (!res.ok) {
-            throw new Error(`HTTP ${res.status}`);
+            let errDetail = `HTTP ${res.status}`;
+            try {
+              const errJson = await res.json();
+              if (errJson && errJson.details) {
+                errDetail = errJson.details;
+              } else if (errJson && errJson.error) {
+                errDetail = errJson.error;
+              }
+            } catch (_) {}
+            throw new Error(errDetail);
           }
           const data = await res.json();
           messageId = data.messageId || 'sim-id';
