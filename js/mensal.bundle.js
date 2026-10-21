@@ -1,6 +1,6 @@
 /**
- * mensalloader.js - Módulo 03: Desempenho Mensal
- * BPO Financeiro &bull; Mar Brasil
+ * mensal.bundle.js - Módulo 03: Desempenho Mensal
+ * BPO Financeiro • Mar Brasil
  * 
  * Regras puras de cálculo, parser dedicado da planilha vertical (GERAL, FINANCEIRO, TAREFAS DO CICLO),
  * renderização vetorial de alta fidelidade e persistência de parâmetros.
@@ -25,7 +25,6 @@
     percentage(value, decimals = 0) {
       if (value === null || value === undefined || isNaN(value)) return '—';
       const num = Number(value);
-      // Se já vier em formato 0..1 (ex: 0.9375), multiplica por 100
       const pct = num <= 1.0 && num >= 0 ? num * 100 : num;
       return `${pct.toLocaleString('pt-BR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}%`;
     },
@@ -58,12 +57,12 @@
      * Calcula o desempenho operacional de um item
      * @param {number|string|null} planejado
      * @param {number|string|null} executado
-     * @returns {Object} { status, bruto, remuneravel, percentual, faltante, excedente, planejado, executado }
+     * @returns {Object}
      */
     static computeItemPerformance(planejado, executado) {
       if (planejado === '-' || executado === '-' || planejado === null || planejado === undefined || planejado === '') {
         return {
-          status: 'NA', // Não Aplicável
+          status: 'NA',
           bruto: 0,
           remuneravel: 0,
           percentual: null,
@@ -93,7 +92,6 @@
       }
 
       if (planNum <= 0) {
-        // Meta zero: política explícita documentada
         return {
           status: 'ZERO_GOAL',
           bruto: execNum > 0 ? 1.0 : 0.0,
@@ -154,17 +152,12 @@
     /**
      * Calcula o incentivo veicular:
      * Média simples das 4 categorias principais: Mensal, Semestral, Corretiva, EPI.
-     * Enquadramento:
-     * - Math.round(mediaPct) >= 100 -> R$ 1.000,00
-     * - Math.round(mediaPct) >= 90  -> R$ 750,00
-     * - < 90                        -> R$ 0,00
      */
     static computeIncentivoVeicular(perfMensal, perfSemestral, perfCorretiva, perfEpi, baseValue = 1000.0) {
-      // Coleta apenas itens elegíveis com valor numérico
       const items = [perfMensal, perfSemestral, perfCorretiva, perfEpi].map(p => Number(p) || 0);
-      const mediaBruta = items.reduce((acc, v) => acc + v, 0) / items.length; // Ex: 0.984375
-      const mediaPct = mediaBruta * 100; // 98.4375
-      const roundedPct = Math.round(mediaPct); // 98
+      const mediaBruta = items.reduce((acc, v) => acc + v, 0) / items.length;
+      const mediaPct = mediaBruta * 100;
+      const roundedPct = Math.round(mediaPct);
 
       let reconhecido = 0.0;
       if (roundedPct >= 100) {
@@ -189,7 +182,7 @@
      * @param {Object} params
      */
     static calculate(params) {
-      const valorBase = Number(params.valorBase !== undefined ? params.valorBase : 6000.0);
+      const valorBase = Number(params.valorBase !== undefined ? params.valorBase : 0.0);
 
       const operacional = {
         mensal: this.computeItemPerformance(params.mensal?.planejado, params.mensal?.executado),
@@ -201,7 +194,6 @@
         auditorias: this.computeItemPerformance(params.auditorias?.planejado, params.auditorias?.executado)
       };
 
-      // Pesos financeiros (editáveis ou padrões)
       const pesos = {
         mensal: Number(params.pesos?.mensal !== undefined ? params.pesos.mensal : 0.05),
         semestral: Number(params.pesos?.semestral !== undefined ? params.pesos.semestral : 0.50),
@@ -209,7 +201,6 @@
         epi: Number(params.pesos?.epi !== undefined ? params.pesos.epi : 0.05)
       };
 
-      // Parcelas remuneradas
       const parcelaBaseMensal = valorBase * pesos.mensal;
       const parcelaRecMensal = parcelaBaseMensal * operacional.mensal.remuneravel;
 
@@ -222,17 +213,14 @@
       const parcelaBaseEpi = valorBase * pesos.epi;
       const parcelaRecEpi = parcelaBaseEpi * operacional.epi.remuneravel;
 
-      // Excedente
       const excedenteInfo = this.computeExcedente(
         operacional.mensal.executado,
         operacional.semestral.executado,
         params.excedenteConfig || {}
       );
 
-      // Subtotal = soma das 4 parcelas reconhecidas + excedente financeiro
       const subtotal = parcelaRecMensal + parcelaRecSemestral + parcelaRecCorretiva + parcelaRecEpi + excedenteInfo.valorTotal;
 
-      // Incentivo Veicular
       const incentivoInfo = this.computeIncentivoVeicular(
         operacional.mensal.remuneravel,
         operacional.semestral.remuneravel,
@@ -241,7 +229,6 @@
         params.incentivoBaseValue !== undefined ? params.incentivoBaseValue : 1000.0
       );
 
-      // Total Geral
       const totalGeral = subtotal + incentivoInfo.reconhecido;
 
       return {
@@ -268,16 +255,11 @@
   // 3. PARSER MENSAL DE PLANILHA (GERAL + FINANCEIRO + TAREFAS)
   // -------------------------------------------------------------
   class MensalExcelParser {
-    /**
-     * Processa o workbook do Excel e extrai todos os dados mensais
-     * @param {Object} workbook - Objeto retornado por XLSX.read
-     */
     static parseWorkbook(workbook) {
       if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
         throw new Error('Arquivo de planilha vazio ou inválido.');
       }
 
-      // 1. Identificar abas normalizadas
       let sheetGeralName = null;
       let sheetFinName = null;
       let sheetTarefasName = null;
@@ -294,20 +276,15 @@
       }
 
       if (!sheetGeralName) {
-        // Fallback: tenta a primeira aba se tiver estrutura similar
         sheetGeralName = workbook.SheetNames[0];
       }
 
       const wsGeral = workbook.Sheets[sheetGeralName];
       const geralRows = XLSX.utils.sheet_to_json(wsGeral, { header: 1, defval: '' });
 
-      // Extrai cabeçalhos e metadados de GERAL
       const metadata = this.extractMetadata(geralRows, wsGeral);
-
-      // Extrai quantitativos da GERAL por rótulos (com fallback por coordenadas C11..C20)
       const quantitativos = this.extractQuantitativos(geralRows, wsGeral);
 
-      // Extrai parâmetros sugeridos da FINANCEIRO (se existir)
       let financeiroSugestoes = null;
       let divergencias = [];
 
@@ -315,7 +292,6 @@
         const wsFin = workbook.Sheets[sheetFinName];
         financeiroSugestoes = this.extractFinanceiroParams(wsFin);
 
-        // Verifica divergência de competência entre GERAL e FINANCEIRO
         if (financeiroSugestoes.competenciaLabel && metadata.competencia) {
           const normFin = Formatter.normalizeStr(financeiroSugestoes.competenciaLabel);
           const normGeral = Formatter.normalizeStr(metadata.competencia);
@@ -327,7 +303,6 @@
           }
         }
 
-        // Verifica divergência nas Corretivas (FINANCEIRO 100% vs GERAL 15/16 = 93.75%)
         if (quantitativos.corretiva && quantitativos.corretiva.planejado === 16 && quantitativos.corretiva.executado === 15) {
           divergencias.push({
             tipo: 'CORRETIVA_CACHE',
@@ -336,7 +311,6 @@
         }
       }
 
-      // Extrai Tarefas e links de OS da aba TAREFAS DO CICLO (se existir)
       let tarefasInfo = {
         totalRegistros: 0,
         distinctTasksCount: 0,
@@ -372,9 +346,6 @@
       };
     }
 
-    /**
-     * Extrai metadados do cabeçalho da GERAL
-     */
     static extractMetadata(rows, ws) {
       let contrato = 'STS36693/22';
       let setor = 'Setor 01';
@@ -383,7 +354,6 @@
       let oficiais = [];
       let fullTitle = '';
 
-      // Tenta localizar nas primeiras 10 linhas
       for (let r = 0; r < Math.min(rows.length, 12); r++) {
         const row = rows[r];
         if (!row || row.length === 0) continue;
@@ -392,7 +362,6 @@
           const val = String(row[c] || '').trim();
           if (!val) continue;
 
-          // Rótulo principal do cabeçalho (ex: Row 2)
           if (val.includes('SEDUC') || val.includes('STS') || val.includes('CICLO')) {
             fullTitle = val;
             if (val.includes('STS36693/22')) contrato = 'STS36693/22';
@@ -400,7 +369,6 @@
             if (val.toUpperCase().includes('AGOSTO')) competencia = '08/2026';
           }
 
-          // Prestador responsável
           const norm = Formatter.normalizeStr(val);
           if (norm.includes('PRESTADOR') && rows[r + 1]) {
             const nextVal = String(rows[r + 1][c] || '').trim();
@@ -409,7 +377,6 @@
             }
           }
 
-          // Oficiais
           if (norm === 'OFICIAL' || norm.startsWith('OFICIAL')) {
             for (let offRow = r + 1; offRow < Math.min(rows.length, r + 5); offRow++) {
               const offVal = String(rows[offRow][c] || '').trim();
@@ -433,9 +400,6 @@
       };
     }
 
-    /**
-     * Extrai quantitativos da GERAL buscando rótulos ou coordenadas C11..C20
-     */
     static extractQuantitativos(rows, ws) {
       const q = {
         equipamentosAtivos: { planejado: 482, executado: null, cell: 'C11' },
@@ -448,7 +412,6 @@
         auditorias: { planejado: 2, executado: 2, observacao: '', cell: 'C20:D20' }
       };
 
-      // Tenta varrer as linhas e identificar rótulos nas colunas A ou B
       rows.forEach((row, rIdx) => {
         if (!row || row.length === 0) return;
         const col0 = Formatter.normalizeStr(row[0] || '');
@@ -457,7 +420,6 @@
 
         const valCol1 = row[1];
         const valCol2 = row[2];
-        const valCol3 = row[3];
         const valCol4 = row[4];
 
         if (label.includes('EQUIPAMENTOS ATIVOS')) {
@@ -495,8 +457,6 @@
         }
       });
 
-      // Validação por coordenadas caso as células exatas C11..C20 existam no ws
-      // (na planilha real C11 é ativos, C12:D12 é preventiva mensal...)
       if (ws['C11'] && ws['C11'].v !== undefined) {
         q.equipamentosAtivos.planejado = Number(ws['C11'].v) || q.equipamentosAtivos.planejado;
       }
@@ -529,9 +489,6 @@
       return q;
     }
 
-    /**
-     * Extrai parâmetros financeiros iniciais da aba FINANCEIRO
-     */
     static extractFinanceiroParams(ws) {
       const getVal = (addr) => (ws[addr] ? ws[addr].v : null);
 
@@ -553,9 +510,6 @@
       };
     }
 
-    /**
-     * Extrai tarefas da aba TAREFAS DO CICLO sem reduzir quantitativos
-     */
     static extractTarefas(ws) {
       const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
       const taskIndex = new Map();
@@ -576,7 +530,6 @@
 
         const firstCol = Formatter.normalizeStr(row[0] || '');
 
-        // Detecta cabeçalhos de seções no meio da planilha
         if (firstCol.includes('EPIS') || firstCol === 'EPI') {
           currentSection = 'EPI';
           continue;
@@ -588,14 +541,11 @@
           continue;
         }
 
-        // Pula linhas de cabeçalho descritivo
         if (firstCol.includes('CLIENTE') || firstCol.includes('LOCALIDADE') || firstCol.includes('CONTROLE DE TAREFAS')) {
           continue;
         }
 
         if (currentSection === 'ORDENS_SERVICO') {
-          // Formato colunas padrão:
-          // 0: Local/Cliente, 1: Tag/Identificador, 2: Setor, 3: Código Tarefa, 4: Tipo Tarefa, 5: Responsável, 6: Equip Ativos, 7: Data, 8: Link OS
           const taskId = row[3] ? String(row[3]).trim() : null;
           const rawType = Formatter.normalizeStr(row[4] || '');
           const link = row[8] ? String(row[8]).trim() : '';
@@ -619,7 +569,6 @@
           }
           taskIndex.get(taskId).equipamentosCount++;
         } else if (currentSection === 'EPI') {
-          // Colunas EPI: 0: Local, 1: Código Tarefa, 2: Finalizada, 3: Data, 4: Hora, 5: OS Digital
           const taskId = row[1] ? String(row[1]).trim() : null;
           const link = row[5] ? String(row[5]).trim() : '';
           if (taskId && taskId !== 'Código da tarefa') {
@@ -655,7 +604,6 @@
         }
       }
 
-      // Distribui tarefas agrupadas por tipo mantendo contagem exata de equipamentos
       let mensalCount = 0;
       let semestralCount = 0;
       let corretivaCount = 0;
@@ -752,6 +700,7 @@
       const q = model.quantitativos;
       const op = calc.operacional;
       const fin = calc.financeiro;
+      const isBlank = model.isBlank;
 
       // Badges superiores
       const prestadorBadgeHtml = meta.prestador ? `
@@ -770,6 +719,17 @@
         </span>
       ` : '';
 
+      // Banner informativo de sistema zerado
+      const emptyStateNotice = isBlank ? `
+        <div style="background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 10px; padding: 18px 20px; margin-bottom: 20px; text-align: center; color: #475569;">
+          <div style="font-size: 26px; margin-bottom: 6px;">📂</div>
+          <strong style="font-size: 14px; color: #0f172a; display: block; margin-bottom: 4px;">Sistema Zerado — Pronto para Importação</strong>
+          <span style="font-size: 12.5px; line-height: 1.5; display: block; max-width: 600px; margin: 0 auto;">
+            Arraste uma planilha de medição mensal (.xlsx) no painel lateral esquerdo para preencher automaticamente os dados operacionais, financeiros e links de OS. Ou clique em <strong>🔄 Carregar Amostra</strong> para demonstração.
+          </span>
+        </div>
+      ` : '';
+
       // Alertas de divergência (se houver)
       const diverHtml = (model.divergencias && model.divergencias.length > 0) ? `
         <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; font-size: 11.5px; color: #92400e;">
@@ -780,33 +740,29 @@
         </div>
       ` : '';
 
-      // Tabela de itens complementares (Ferramentas, Auditorias, PMOC)
+      // Tabela de itens complementares
       const compRows = [
         {
           item: 'Levantamento de PMOC',
           plan: q.pmocLevantamento?.planejado || '—',
           exec: q.pmocLevantamento?.executado || '—',
-          status: 'Não aplicável (—)',
-          obs: 'Não aplicável neste ciclo'
+          obs: isBlank ? 'Aguardando planilha...' : 'Não aplicável neste ciclo'
         },
         {
           item: 'Inventário de Ferramentas e Equipamentos',
-          plan: q.ferramentas?.planejado || 1,
-          exec: q.ferramentas?.executado || 1,
-          status: '100% Concluído',
-          obs: '1 inventário realizado pela equipe'
+          plan: isBlank ? 0 : (q.ferramentas?.planejado || 1),
+          exec: isBlank ? 0 : (q.ferramentas?.executado || 1),
+          obs: isBlank ? 'Aguardando planilha...' : `${q.ferramentas?.executado || 1} inventário realizado pela equipe`
         },
         {
           item: 'Auditorias de Qualidade e Conformidade',
-          plan: q.auditorias?.planejado || 2,
-          exec: q.auditorias?.executado || 2,
-          status: '100% Concluído',
-          obs: '2 auditorias de campo realizadas'
+          plan: isBlank ? 0 : (q.auditorias?.planejado || 2),
+          exec: isBlank ? 0 : (q.auditorias?.executado || 2),
+          obs: isBlank ? 'Aguardando planilha...' : `${q.auditorias?.executado || 2} auditorias de campo realizadas`
         }
       ];
 
-      // Formatação dos percentuais e frações exatas
-      const corrPctExact = op.corretiva.percentual !== null ? (op.corretiva.percentual % 1 === 0 ? `${op.corretiva.percentual}%` : `${op.corretiva.percentual.toFixed(2).replace('.', ',')}%`) : '—';
+      const corrPctExact = op.corretiva.percentual !== null ? (op.corretiva.percentual % 1 === 0 ? `${op.corretiva.percentual}%` : `${op.corretiva.percentual.toFixed(2).replace('.', ',')}%`) : '0%';
       const corrObs = q.corretiva?.observacao ? ` (${q.corretiva.observacao})` : '';
 
       container.innerHTML = `
@@ -815,15 +771,15 @@
           <header class="report-header">
             <div class="header-left">
               <div class="badges-row" style="flex-wrap: wrap; gap: 8px;">
-                <span class="contract-badge">${Formatter.escapeHtml(meta.contrato || 'STS36693/22')} &bull; ${Formatter.escapeHtml(meta.setor || 'SETOR 01')}</span>
-                <span class="contract-badge" style="background: #ecfdf5; border-color: #a7f3d0; color: #065f46;">CICLO ${Formatter.escapeHtml(meta.competencia || '08/2026')}</span>
+                <span class="contract-badge">${Formatter.escapeHtml(meta.contrato || 'STS36693/22')} &bull; ${Formatter.escapeHtml(meta.setor || 'SETOR')}</span>
+                <span class="contract-badge" style="background: #ecfdf5; border-color: #a7f3d0; color: #065f46;">CICLO ${Formatter.escapeHtml(meta.competencia || '—')}</span>
                 ${prestadorBadgeHtml}
                 ${oficiaisBadgeHtml}
               </div>
               
-              <h1 class="report-title">Desempenho Mensal &bull; Relatório de Medição</h1>
+              <h1 class="report-title">${meta.contrato ? `Desempenho Mensal &bull; Relatório de Medição` : `Desempenho Mensal — Sistema Zerado`}</h1>
               <p class="report-subtitle">
-                Avaliação objetiva de manutenção preventiva e corretiva mensal do contrato SEDUC Santos executada por ${Formatter.escapeHtml(meta.prestador || 'GB Climatização')}, com apuração de produtividade e conversão direta em valores reconhecidos.
+                ${isBlank ? `Aguardando alimentação de planilha para gerar a apuração e medição de desempenho.` : `Avaliação objetiva de manutenção preventiva e corretiva mensal do contrato SEDUC Santos executada por ${Formatter.escapeHtml(meta.prestador || 'GB Climatização')}, com apuração de produtividade e conversão direta em valores reconhecidos.`}
               </p>
             </div>
             <div class="header-right">
@@ -831,6 +787,7 @@
             </div>
           </header>
 
+          ${emptyStateNotice}
           ${diverHtml}
 
           <!-- Grid de 4 Indicadores Circulares Principais -->
@@ -838,23 +795,23 @@
             ${this.renderDonut(
               Math.round(op.mensal.bruto * 100),
               'Preventiva Mensal',
-              `${op.mensal.executado} de ${op.mensal.planejado} equipamentos atendidos`
+              isBlank ? '0 de 0 serviços executados' : `${op.mensal.executado} de ${op.mensal.planejado} equipamentos atendidos`
             )}
             ${this.renderDonut(
               Math.round(op.semestral.bruto * 100),
               'Preventiva Semestral',
-              `${op.semestral.executado} de ${op.semestral.planejado} equipamentos atendidos`
+              isBlank ? '0 de 0 serviços executados' : `${op.semestral.executado} de ${op.semestral.planejado} equipamentos atendidos`
             )}
             ${this.renderDonut(
               Math.round(op.corretiva.bruto * 100),
               'Manutenção Corretiva',
-              `${op.corretiva.executado} de ${op.corretiva.planejado} ordens${corrObs}`,
-              corrPctExact
+              isBlank ? '0 de 0 serviços executados' : `${op.corretiva.executado} de ${op.corretiva.planejado} ordens${corrObs}`,
+              isBlank ? null : corrPctExact
             )}
             ${this.renderDonut(
               Math.round(op.epi.bruto * 100),
               'EPIs e Segurança',
-              `${op.epi.executado} de ${op.epi.planejado} registros de conformidade`
+              isBlank ? '0 de 0 itens entregues' : `${op.epi.executado} de ${op.epi.planejado} registros de conformidade`
             )}
           </section>
 
@@ -863,7 +820,7 @@
           <!-- Tabela Financeira Oficial -->
           <section class="financial-section">
             <div class="financial-header">
-              <span class="financial-label">VALORES CONTRATUAIS — ${Formatter.escapeHtml(meta.prestador || 'GB CLIMATIZAÇÃO')} (${Formatter.escapeHtml(meta.competencia || '08/2026')})</span>
+              <span class="financial-label">VALORES CONTRATUAIS — ${Formatter.escapeHtml(meta.prestador || 'SISTEMA ZERADO')} (${Formatter.escapeHtml(meta.competencia || '—')})</span>
               <span class="financial-total-base" title="Valor-base mensal do perfil">${Formatter.currency(calc.valorBase, true)}</span>
             </div>
 
@@ -896,7 +853,7 @@
 
                 <tr class="table-row">
                   <td class="col-item font-bold">CORRETIVA <small style="font-weight: normal; color: #64748b;">${corrObs}</small></td>
-                  <td class="col-perf font-mono">${corrPctExact}</td>
+                  <td class="col-perf font-mono">${isBlank ? '0%' : corrPctExact}</td>
                   <td class="col-peso font-mono">${Formatter.percentage(calc.pesos.corretiva)}</td>
                   <td class="col-base font-mono">${Formatter.currency(fin.parcelas.corretiva.base)}</td>
                   <td class="col-rec font-mono font-bold">${Formatter.currency(fin.parcelas.corretiva.reconhecido)}</td>
@@ -932,13 +889,13 @@
                   <td class="col-item">
                     INCENTIVO VEICULAR
                     <span style="font-size: 11px; color: #64748b; display: block;">
-                      Média: ${fin.incentivo.mediaPct.toFixed(4).replace('.', ',')}% (arredondada: ${fin.incentivo.roundedPct}%) &bull; Faixas: &ge;100%: R$ 1.000 | 90-99%: R$ 750 | &lt;90%: R$ 0
+                      Média: ${fin.incentivo.mediaPct.toFixed(2).replace('.', ',')}% (arredondada: ${fin.incentivo.roundedPct}%) &bull; Faixas: &ge;100%: R$ 1.000 | 90-99%: R$ 750 | &lt;90%: R$ 0
                     </span>
                   </td>
                   <td class="col-perf font-mono">${fin.incentivo.roundedPct}%</td>
                   <td class="col-peso font-mono">—</td>
                   <td class="col-base font-mono">${Formatter.currency(fin.incentivo.baseValue)}</td>
-                  <td class="col-rec font-mono font-bold" style="color: #15803d;">${Formatter.currency(fin.incentivo.reconhecido)}</td>
+                  <td class="col-rec font-mono font-bold" style="color: ${fin.incentivo.reconhecido > 0 ? '#15803d' : '#64748b'};">${Formatter.currency(fin.incentivo.reconhecido)}</td>
                 </tr>
 
                 <tr class="table-row row-total" style="background: #0f172a; color: #ffffff;">
@@ -949,7 +906,7 @@
             </table>
           </section>
 
-          <!-- Seção Complementar (Tarefas Operacionais Adicionais e Auditoria) -->
+          <!-- Seção Complementar -->
           <section style="margin-top: 20px; padding: 14px 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
             <div style="font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
               <span>📋 Atividades Complementares de Suporte e Qualidade</span>
@@ -988,9 +945,6 @@
       `;
     }
 
-    /**
-     * Renderiza o quadro de evidências e links de OS digitais
-     */
     static renderEvidenciasSection(tarefasInfo) {
       if (!tarefasInfo || !tarefasInfo.tarefasResumo || tarefasInfo.tarefasResumo.length === 0) {
         return '';
@@ -1014,7 +968,7 @@
 
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; font-size: 11.5px;">
             <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px;">
-              <strong style="color: #0369a1; display: block; margin-bottom: 6px;">📅 Preventiva Mensal (${mensalList.length} OSs &bull; 415 equipamentos):</strong>
+              <strong style="color: #0369a1; display: block; margin-bottom: 6px;">📅 Preventiva Mensal (${mensalList.length} OSs &bull; ${tarefasInfo.evidenciasPorTipo.MENSAL.reduce((a,b)=>a+(b.equipamentosCount||0),0)} equipamentos):</strong>
               <div style="max-height: 120px; overflow-y: auto; padding-right: 4px;">
                 ${mensalList.map(t => `
                   <div style="margin-bottom: 4px; display: flex; justify-content: space-between;">
@@ -1026,7 +980,7 @@
             </div>
 
             <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px;">
-              <strong style="color: #b45309; display: block; margin-bottom: 6px;">📆 Preventiva Semestral (${semestralList.length} OSs &bull; 80 equipamentos):</strong>
+              <strong style="color: #b45309; display: block; margin-bottom: 6px;">📆 Preventiva Semestral (${semestralList.length} OSs &bull; ${tarefasInfo.evidenciasPorTipo.SEMESTRAL.reduce((a,b)=>a+(b.equipamentosCount||0),0)} equipamentos):</strong>
               <div style="max-height: 120px; overflow-y: auto; padding-right: 4px;">
                 ${semestralList.map(t => `
                   <div style="margin-bottom: 4px; display: flex; justify-content: space-between;">
@@ -1038,7 +992,7 @@
             </div>
 
             <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px;">
-              <strong style="color: #b91c1c; display: block; margin-bottom: 6px;">🔧 Corretivas (${corretivaList.length} OSs &bull; 15 atendidas):</strong>
+              <strong style="color: #b91c1c; display: block; margin-bottom: 6px;">🔧 Corretivas (${corretivaList.length} OSs):</strong>
               <div style="max-height: 120px; overflow-y: auto; padding-right: 4px;">
                 ${corretivaList.map(t => `
                   <div style="margin-bottom: 4px; display: flex; justify-content: space-between;">
@@ -1057,39 +1011,44 @@
   // -------------------------------------------------------------
   // 5. CONTROLADOR DA APLICAÇÃO (UI CONTROLLER)
   // -------------------------------------------------------------
+  const EMPTY_MENSAL_MODEL = {
+    isBlank: true,
+    metadata: {
+      contrato: '',
+      setor: '',
+      competencia: '',
+      prestador: '',
+      oficiais: []
+    },
+    quantitativos: {
+      equipamentosAtivos: { planejado: 0, executado: null },
+      preventivaMensal: { planejado: 0, executado: 0 },
+      preventivaSemestral: { planejado: 0, executado: 0 },
+      pmocLevantamento: { planejado: '-', executado: '-' },
+      corretiva: { planejado: 0, executado: 0, observacao: '' },
+      epi: { planejado: 0, executado: 0 },
+      ferramentas: { planejado: 0, executado: 0 },
+      auditorias: { planejado: 0, executado: 0 }
+    },
+    calcParams: {
+      valorBase: 0.0,
+      pesos: { mensal: 0.05, semestral: 0.50, corretiva: 0.40, epi: 0.05 },
+      excedenteConfig: { limite: 500, tarifa: 10.75, unitario: 3.50 },
+      incentivoBaseValue: 1000.0
+    },
+    divergencias: [],
+    tarefasInfo: null,
+    calcResult: null
+  };
+
   class MensalApp {
     constructor() {
-      this.model = {
-        metadata: {
-          contrato: 'STS36693/22',
-          setor: 'Setor 01',
-          competencia: '08/2026',
-          prestador: 'GB CLIMATIZAÇÃO (GABRIEL)',
-          oficiais: ['Flávio Pereira', 'Jonathan Silva']
-        },
-        quantitativos: {
-          equipamentosAtivos: { planejado: 482, executado: null },
-          preventivaMensal: { planejado: 415, executado: 415 },
-          preventivaSemestral: { planejado: 80, executado: 80 },
-          pmocLevantamento: { planejado: '-', executado: '-' },
-          corretiva: { planejado: 16, executado: 15, observacao: 'Aguardando peça' },
-          epi: { planejado: 21, executado: 21 },
-          ferramentas: { planejado: 1, executado: 1 },
-          auditorias: { planejado: 2, executado: 2 }
-        },
-        calcParams: {
-          valorBase: 6000.0,
-          pesos: { mensal: 0.05, semestral: 0.50, corretiva: 0.40, epi: 0.05 },
-          excedenteConfig: { limite: 500, tarifa: 10.75, unitario: 3.50 },
-          incentivoBaseValue: 1000.0
-        },
-        divergencias: [],
-        tarefasInfo: null,
-        calcResult: null
-      };
+      // Inicia zerado, exatamente como no Módulo 01
+      this.model = JSON.parse(JSON.stringify(EMPTY_MENSAL_MODEL));
 
       this.initDomReferences();
       this.bindEvents();
+      this.populateFormInputs();
       this.recalculate();
     }
 
@@ -1138,6 +1097,7 @@
         inputIncentivoBase: document.getElementById('inputIncentivoBase'),
 
         // Botões
+        btnClearData: document.getElementById('btnClearData'),
         btnRefreshDashboard: document.getElementById('btnRefreshDashboard'),
         btnResetSample: document.getElementById('btnResetSample'),
         btnPrint: document.getElementById('btnPrint'),
@@ -1177,15 +1137,25 @@
         });
       }
 
-      // 2. Atualização dos campos ao digitar ou clicar no botão
+      // 2. Botão Limpar Dados
+      if (this.dom.btnClearData) {
+        this.dom.btnClearData.addEventListener('click', () => this.clearData());
+      }
+
+      // 3. Atualização dos campos ao digitar ou clicar no botão
       if (this.dom.btnRefreshDashboard) {
         this.dom.btnRefreshDashboard.addEventListener('click', () => {
           this.readFormInputs();
+          this.model.isBlank = false;
           this.recalculate();
+          
+          const orig = this.dom.btnRefreshDashboard.innerHTML;
+          this.dom.btnRefreshDashboard.innerHTML = '✅ Atualizado!';
+          setTimeout(() => { this.dom.btnRefreshDashboard.innerHTML = orig; }, 1200);
         });
       }
 
-      // Auto recalcular com debounce nos inputs
+      // Auto recalcular com inputs
       const formInputs = document.querySelectorAll('.controls-sidebar input, .controls-sidebar select');
       formInputs.forEach(inp => {
         inp.addEventListener('input', () => {
@@ -1194,19 +1164,38 @@
         });
       });
 
-      // 3. Botão Resetar / Amostra
+      // 4. Botão Amostra
       if (this.dom.btnResetSample) {
         this.dom.btnResetSample.addEventListener('click', () => this.loadSampleData());
       }
 
-      // 4. Impressão / PDF
+      // 5. Impressão / PDF
       const printHandler = () => window.print();
       if (this.dom.btnPrint) this.dom.btnPrint.addEventListener('click', printHandler);
       if (this.dom.btnQuickPrint) this.dom.btnQuickPrint.addEventListener('click', printHandler);
     }
 
+    clearData() {
+      this.model = JSON.parse(JSON.stringify(EMPTY_MENSAL_MODEL));
+
+      if (this.dom.fileBadge) this.dom.fileBadge.style.display = 'none';
+      if (this.dom.fileInfoNotice) this.dom.fileInfoNotice.style.display = 'none';
+      if (this.dom.activeFileName) this.dom.activeFileName.textContent = '';
+      if (this.dom.excelFileInput) this.dom.excelFileInput.value = '';
+
+      this.populateFormInputs();
+      this.recalculate();
+
+      if (this.dom.btnClearData) {
+        const origText = this.dom.btnClearData.innerHTML;
+        this.dom.btnClearData.innerHTML = '🗑️ Dados Zerados!';
+        setTimeout(() => {
+          if (this.dom.btnClearData) this.dom.btnClearData.innerHTML = origText;
+        }, 1200);
+      }
+    }
+
     readFormInputs() {
-      // Metadata
       if (this.dom.inputContrato) this.model.metadata.contrato = this.dom.inputContrato.value.trim();
       if (this.dom.inputSetor) this.model.metadata.setor = this.dom.inputSetor.value.trim();
       if (this.dom.inputCompetencia) this.model.metadata.competencia = this.dom.inputCompetencia.value.trim();
@@ -1215,12 +1204,10 @@
         this.model.metadata.oficiais = this.dom.inputOficiais.value.split(',').map(s => s.trim()).filter(Boolean);
       }
 
-      // Financeiro global
       if (this.dom.inputValorBase) {
         this.model.calcParams.valorBase = Number(this.dom.inputValorBase.value) || 0;
       }
 
-      // Quantitativos
       if (this.dom.inputMensalPrev) this.model.quantitativos.preventivaMensal.planejado = Number(this.dom.inputMensalPrev.value) || 0;
       if (this.dom.inputMensalExec) this.model.quantitativos.preventivaMensal.executado = Number(this.dom.inputMensalExec.value) || 0;
       if (this.dom.inputMensalPeso) this.model.calcParams.pesos.mensal = (Number(this.dom.inputMensalPeso.value) || 0) / 100;
@@ -1238,12 +1225,10 @@
       if (this.dom.inputEpiExec) this.model.quantitativos.epi.executado = Number(this.dom.inputEpiExec.value) || 0;
       if (this.dom.inputEpiPeso) this.model.calcParams.pesos.epi = (Number(this.dom.inputEpiPeso.value) || 0) / 100;
 
-      // Excedente
       if (this.dom.inputExcedenteLimite) this.model.calcParams.excedenteConfig.limite = Number(this.dom.inputExcedenteLimite.value) || 500;
       if (this.dom.inputExcedenteTarifa) this.model.calcParams.excedenteConfig.tarifa = Number(this.dom.inputExcedenteTarifa.value) || 10.75;
       if (this.dom.inputExcedenteUnit) this.model.calcParams.excedenteConfig.unitario = Number(this.dom.inputExcedenteUnit.value) || 3.50;
 
-      // Incentivo
       if (this.dom.inputIncentivoBase) this.model.calcParams.incentivoBaseValue = Number(this.dom.inputIncentivoBase.value) || 1000.0;
     }
 
@@ -1251,30 +1236,31 @@
       const meta = this.model.metadata;
       const q = this.model.quantitativos;
       const params = this.model.calcParams;
+      const isBlank = this.model.isBlank;
 
       if (this.dom.inputContrato) this.dom.inputContrato.value = meta.contrato || '';
       if (this.dom.inputSetor) this.dom.inputSetor.value = meta.setor || '';
       if (this.dom.inputCompetencia) this.dom.inputCompetencia.value = meta.competencia || '';
       if (this.dom.inputPrestador) this.dom.inputPrestador.value = meta.prestador || '';
-      if (this.dom.inputOficiais) this.dom.inputOficiais.value = meta.oficiais ? meta.oficiais.join(', ') : '';
+      if (this.dom.inputOficiais) this.dom.inputOficiais.value = meta.oficiais && meta.oficiais.length > 0 ? meta.oficiais.join(', ') : '';
 
-      if (this.dom.inputValorBase) this.dom.inputValorBase.value = params.valorBase;
+      if (this.dom.inputValorBase) this.dom.inputValorBase.value = isBlank ? 0 : params.valorBase;
 
-      if (this.dom.inputMensalPrev) this.dom.inputMensalPrev.value = q.preventivaMensal.planejado;
-      if (this.dom.inputMensalExec) this.dom.inputMensalExec.value = q.preventivaMensal.executado;
+      if (this.dom.inputMensalPrev) this.dom.inputMensalPrev.value = isBlank ? 0 : q.preventivaMensal.planejado;
+      if (this.dom.inputMensalExec) this.dom.inputMensalExec.value = isBlank ? 0 : q.preventivaMensal.executado;
       if (this.dom.inputMensalPeso) this.dom.inputMensalPeso.value = Math.round(params.pesos.mensal * 100);
 
-      if (this.dom.inputSemestralPrev) this.dom.inputSemestralPrev.value = q.preventivaSemestral.planejado;
-      if (this.dom.inputSemestralExec) this.dom.inputSemestralExec.value = q.preventivaSemestral.executado;
+      if (this.dom.inputSemestralPrev) this.dom.inputSemestralPrev.value = isBlank ? 0 : q.preventivaSemestral.planejado;
+      if (this.dom.inputSemestralExec) this.dom.inputSemestralExec.value = isBlank ? 0 : q.preventivaSemestral.executado;
       if (this.dom.inputSemestralPeso) this.dom.inputSemestralPeso.value = Math.round(params.pesos.semestral * 100);
 
-      if (this.dom.inputCorretivaPrev) this.dom.inputCorretivaPrev.value = q.corretiva.planejado;
-      if (this.dom.inputCorretivaExec) this.dom.inputCorretivaExec.value = q.corretiva.executado;
+      if (this.dom.inputCorretivaPrev) this.dom.inputCorretivaPrev.value = isBlank ? 0 : q.corretiva.planejado;
+      if (this.dom.inputCorretivaExec) this.dom.inputCorretivaExec.value = isBlank ? 0 : q.corretiva.executado;
       if (this.dom.inputCorretivaPeso) this.dom.inputCorretivaPeso.value = Math.round(params.pesos.corretiva * 100);
       if (this.dom.inputCorretivaObs) this.dom.inputCorretivaObs.value = q.corretiva.observacao || '';
 
-      if (this.dom.inputEpiPrev) this.dom.inputEpiPrev.value = q.epi.planejado;
-      if (this.dom.inputEpiExec) this.dom.inputEpiExec.value = q.epi.executado;
+      if (this.dom.inputEpiPrev) this.dom.inputEpiPrev.value = isBlank ? 0 : q.epi.planejado;
+      if (this.dom.inputEpiExec) this.dom.inputEpiExec.value = isBlank ? 0 : q.epi.executado;
       if (this.dom.inputEpiPeso) this.dom.inputEpiPeso.value = Math.round(params.pesos.epi * 100);
 
       if (this.dom.inputExcedenteLimite) this.dom.inputExcedenteLimite.value = params.excedenteConfig.limite;
@@ -1295,7 +1281,7 @@
 
           const parsed = MensalExcelParser.parseWorkbook(workbook);
 
-          // Atualiza o modelo
+          this.model.isBlank = false;
           this.model.metadata = parsed.metadata;
           this.model.quantitativos = parsed.quantitativos;
           this.model.divergencias = parsed.divergencias;
@@ -1311,7 +1297,6 @@
             }
           }
 
-          // Feedback visual
           if (this.dom.fileBadge) this.dom.fileBadge.style.display = 'inline';
           if (this.dom.fileInfoNotice && this.dom.activeFileName) {
             this.dom.fileInfoNotice.style.display = 'block';
@@ -1329,6 +1314,7 @@
     }
 
     loadSampleData() {
+      this.model.isBlank = false;
       this.model.metadata = {
         contrato: 'STS36693/22',
         setor: 'Setor 01',

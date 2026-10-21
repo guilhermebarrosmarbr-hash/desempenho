@@ -35,7 +35,10 @@
       <a href="http://localhost:3000" target="_blank" class="btn btn-outline" style="text-decoration: none;" title="Abrir Módulo 02: Consulta DAS MEI (PGMEI)">
         🔍 Consulta MEI (PGMEI)
       </a>
-      <button type="button" class="btn btn-outline" id="btnResetSample" title="Restaura os dados padrão de referência (GB Climatização - Ciclo 08/2026)">
+      <button type="button" class="btn btn-danger" id="btnClearData" title="Limpa a planilha carregada e retorna o sistema ao estado zerado inicial">
+        🗑️ Limpar Dados
+      </button>
+      <button type="button" class="btn btn-outline" id="btnResetSample" title="Carrega dados de demonstração (GB Climatização - Ciclo 08/2026)">
         🔄 Carregar Amostra
       </button>
       <button type="button" class="btn btn-primary" id="btnPrint" title="Abre o assistente de impressão ou salva em PDF formato A4">
@@ -69,7 +72,7 @@
         </div>
 
         <div style="margin-top: 10px; padding: 8px 10px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; font-size: 11px; color: #166534;">
-          💡 <strong>Leitura Inteligente:</strong> Reconhece automaticamente as abas <code>GERAL</code> (quantitativos verticais), <code>FINANCEIRO</code> (parâmetros de base) e <code>TAREFAS DO CICLO</code> (links de OS).
+          💡 <strong>Leitura Inteligente:</strong> O sistema inicia zerado e é preenchido automaticamente ao importar a planilha (com as abas <code>GERAL</code>, <code>FINANCEIRO</code> e <code>TAREFAS DO CICLO</code>).
         </div>
       </section>
 
@@ -82,28 +85,28 @@
         <div class="form-grid-2">
           <div class="form-group">
             <label class="form-label" for="inputContrato">Contrato:</label>
-            <input type="text" id="inputContrato" class="form-input" value="STS36693/22" />
+            <input type="text" id="inputContrato" class="form-input" placeholder="Aguardando importação..." />
           </div>
           <div class="form-group">
             <label class="form-label" for="inputSetor">Setor:</label>
-            <input type="text" id="inputSetor" class="form-input" value="Setor 01" />
+            <input type="text" id="inputSetor" class="form-input" placeholder="Setor..." />
           </div>
         </div>
 
         <div class="form-grid-2">
           <div class="form-group">
             <label class="form-label" for="inputCompetencia">Competência:</label>
-            <input type="text" id="inputCompetencia" class="form-input" value="08/2026" />
+            <input type="text" id="inputCompetencia" class="form-input" placeholder="MM/AAAA" />
           </div>
           <div class="form-group">
             <label class="form-label" for="inputPrestador">Prestador Parceiro:</label>
-            <input type="text" id="inputPrestador" class="form-input" value="GB CLIMATIZAÇÃO (GABRIEL)" />
+            <input type="text" id="inputPrestador" class="form-input" placeholder="Nome do Prestador" />
           </div>
         </div>
 
         <div class="form-group">
           <label class="form-label" for="inputOficiais">Oficiais / Técnicos de Campo:</label>
-          <input type="text" id="inputOficiais" class="form-input" value="Flávio Pereira, Jonathan Silva" placeholder="Separados por vírgula" />
+          <input type="text" id="inputOficiais" class="form-input" placeholder="Aguardando importação da planilha..." />
         </div>
       </section>
 
@@ -116,7 +119,7 @@
         <!-- Valor-Base Mensal -->
         <div class="form-group">
           <label class="form-label" for="inputValorBase">Valor-Base Contratual Mensal (R$):</label>
-          <input type="number" id="inputValorBase" class="form-input" value="6000.00" step="50" style="font-weight: 700; font-size: 14px; color: #1e3a8a;" />
+          <input type="number" id="inputValorBase" class="form-input" value="0" step="50" style="font-weight: 700; font-size: 14px; color: #1e3a8a;" />
         </div>
 
         <!-- Sanfona com Itens Remunerados -->
@@ -128,8 +131,8 @@
             <div class="form-group">
               <label class="form-label">Preventiva Mensal (Prev., Exec., Peso %):</label>
               <div class="form-grid-3">
-                <input type="number" id="inputMensalPrev" class="form-input" placeholder="Prevista" value="415" title="Planejado Mensal" />
-                <input type="number" id="inputMensalExec" class="form-input" placeholder="Executada" value="415" title="Executado Mensal" />
+                <input type="number" id="inputMensalPrev" class="form-input" placeholder="Prevista" value="0" title="Planejado Mensal" />
+                <input type="number" id="inputMensalExec" class="form-input" placeholder="Executada" value="0" title="Executado Mensal" />
                 <input type="number" id="inputMensalPeso" class="form-input" placeholder="Peso %" value="5" title="Peso % (Padrão 5%)" />
               </div>
             </div>
@@ -138,8 +141,8 @@
             <div class="form-group">
               <label class="form-label">Preventiva Semestral (Prev., Exec., Peso %):</label>
               <div class="form-grid-3">
-                <input type="number" id="inputSemestralPrev" class="form-input" placeholder="Prevista" value="80" title="Planejado Semestral" />
-                <input type="number" id="inputSemestralExec" class="form-input" placeholder="Executada" value="80" title="Executado Semestral" />
+                <input type="number" id="inputSemestralPrev" class="form-input" placeholder="Prevista" value="0" title="Planejado Semestral" />
+                <input type="number" id="inputSemestralExec" class="form-input" placeholder="Executada" value="0" title="Executado Semestral" />
                 <input type="number" id="inputSemestralPeso" class="form-input" placeholder="Peso %" value="50" title="Peso % (Padrão 50%)" />
               </div>
             </div>
@@ -148,19 +151,19 @@
             <div class="form-group">
               <label class="form-label">Corretivas (Prev., Exec., Peso %):</label>
               <div class="form-grid-3">
-                <input type="number" id="inputCorretivaPrev" class="form-input" placeholder="Prevista" value="16" title="Corretivas Previstas" />
-                <input type="number" id="inputCorretivaExec" class="form-input" placeholder="Executada" value="15" title="Corretivas Executadas" />
+                <input type="number" id="inputCorretivaPrev" class="form-input" placeholder="Prevista" value="0" title="Corretivas Previstas" />
+                <input type="number" id="inputCorretivaExec" class="form-input" placeholder="Executada" value="0" title="Corretivas Executadas" />
                 <input type="number" id="inputCorretivaPeso" class="form-input" placeholder="Peso %" value="40" title="Peso % (Padrão 40%)" />
               </div>
-              <input type="text" id="inputCorretivaObs" class="form-input" value="Aguardando peça" placeholder="Observação (ex: Aguardando peça)" style="margin-top: 6px; font-size: 11.5px;" />
+              <input type="text" id="inputCorretivaObs" class="form-input" value="" placeholder="Observação (ex: Aguardando peça)" style="margin-top: 6px; font-size: 11.5px;" />
             </div>
 
             <!-- EPI -->
             <div class="form-group">
               <label class="form-label">EPIs &amp; Segurança (Prev., Exec., Peso %):</label>
               <div class="form-grid-3">
-                <input type="number" id="inputEpiPrev" class="form-input" placeholder="Previstos" value="21" title="EPIs Previstos" />
-                <input type="number" id="inputEpiExec" class="form-input" placeholder="Entregues" value="21" title="EPIs Entregues" />
+                <input type="number" id="inputEpiPrev" class="form-input" placeholder="Previstos" value="0" title="EPIs Previstos" />
+                <input type="number" id="inputEpiExec" class="form-input" placeholder="Entregues" value="0" title="EPIs Entregues" />
                 <input type="number" id="inputEpiPeso" class="form-input" placeholder="Peso %" value="5" title="Peso % (Padrão 5%)" />
               </div>
             </div>
