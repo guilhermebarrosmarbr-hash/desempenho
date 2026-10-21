@@ -1,608 +1,362 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Medição de Desempenho - GWSB | Sistema Gerador de Relatório PDF</title>
-  <link rel="stylesheet" href="styles.css">
-  <!-- Bibliotecas Locais para Funcionamento 100% Offline -->
-  <script src="xlsx.full.min.js"></script>
-  <script src="html2pdf.bundle.min.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BPO Financeiro &bull; Hub Central de Módulos</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: #111827;
+      --card-border: #1f2937;
+      --card-hover: #1e293b;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --primary: #3b82f6;
+      --primary-glow: rgba(59, 130, 246, 0.25);
+      --emerald: #10b981;
+      --emerald-glow: rgba(16, 185, 129, 0.2);
+      --amber: #f59e0b;
+      --purple: #a855f7;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    /* Background glow effect */
+    .bg-glow {
+      position: absolute;
+      top: -120px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 700px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, rgba(15, 23, 42, 0) 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Header */
+    header {
+      position: relative;
+      z-index: 1;
+      padding: 36px 24px 20px;
+      text-align: center;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .badge-hub {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: rgba(59, 130, 246, 0.12);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      color: #60a5fa;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    h1.main-title {
+      font-size: 38px;
+      font-weight: 800;
+      letter-spacing: -1px;
+      line-height: 1.2;
+      margin-bottom: 12px;
+      background: linear-gradient(135deg, #ffffff 40%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    p.subtitle {
+      color: var(--text-muted);
+      font-size: 16px;
+      max-width: 620px;
+      margin: 0 auto;
+      line-height: 1.6;
+    }
+
+    /* Main Container */
+    main {
+      position: relative;
+      z-index: 1;
+      flex: 1;
+      max-width: 1100px;
+      width: 100%;
+      margin: 32px auto;
+      padding: 0 24px;
+    }
+
+    .modules-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 24px;
+    }
+
+    /* Module Card */
+    .module-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: all 0.25s ease;
+      position: relative;
+      overflow: hidden;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .module-card:hover {
+      transform: translateY(-4px);
+      border-color: #3b82f6;
+      box-shadow: 0 12px 30px -10px var(--primary-glow);
+      background: var(--card-hover);
+    }
+
+    .module-card.inactive {
+      opacity: 0.65;
+      cursor: not-allowed;
+    }
+
+    .module-card.inactive:hover {
+      transform: none;
+      border-color: var(--card-border);
+      box-shadow: none;
+      background: var(--card-bg);
+    }
+
+    .card-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    .icon-box {
+      width: 52px;
+      height: 52px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+    }
+
+    .icon-blue {
+      background: rgba(59, 130, 246, 0.15);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      color: #60a5fa;
+    }
+
+    .icon-emerald {
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #34d399;
+    }
+
+    .icon-amber {
+      background: rgba(245, 158, 11, 0.15);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      color: #fbbf24;
+    }
+
+    .status-tag {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 999px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .tag-active {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .tag-local {
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+
+    .tag-soon {
+      background: rgba(148, 163, 184, 0.12);
+      color: #94a3b8;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+    }
+
+    .module-num {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-muted);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .module-title {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      color: #ffffff;
+    }
+
+    .module-desc {
+      color: var(--text-muted);
+      font-size: 13.5px;
+      line-height: 1.5;
+      margin-bottom: 24px;
+    }
+
+    .card-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 16px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .features-count {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .btn-card {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #60a5fa;
+      transition: gap 0.2s;
+    }
+
+    .module-card:hover .btn-card {
+      gap: 10px;
+      color: #93c5fd;
+    }
+
+    /* Footer */
+    footer {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+      padding: 28px;
+      font-size: 12.5px;
+      color: #475569;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+    }
+  </style>
 </head>
 <body>
 
-  <!-- Barra Superior -->
-  <nav class="app-navbar">
-    <div class="brand-title-wrap">
-      <svg class="brand-icon-mini" viewBox="0 0 100 100" fill="none">
-        <polygon points="50,12 85,32 50,52 15,32" fill="#f59e0b" />
-        <polygon points="15,32 50,52 50,90 15,70" fill="#ea580c" />
-        <polygon points="50,52 85,32 85,70 50,90" fill="#c2410c" />
-      </svg>
-      <div>
-        <h1 class="app-title">BPO Financeiro &bull; Desempenho Semanal</h1>
-        <p class="app-subtitle">Módulo 01 &bull; Medição e PMOC (Santos SEDUC, CRSN e SMSU)</p>
-      </div>
+  <div class="bg-glow"></div>
+
+  <!-- Header Principal -->
+  <header>
+    <div class="badge-hub">
+      <span style="font-size: 14px;">⚡</span> Sistema BPO Financeiro
     </div>
+    <h1 class="main-title">Hub de Gestão &amp; Automação</h1>
+    <p class="subtitle">
+      Plataforma modular e integrada para controle de medição operacional, apuração de tributos de terceiros e inteligência financeira.
+    </p>
+  </header>
 
+  <!-- Grade de Módulos Escalável -->
+  <main>
+    <div class="modules-grid">
 
-    <div class="nav-actions">
-      <a href="http://localhost:3000" target="_blank" class="btn btn-outline" style="text-decoration: none;" title="Abrir Módulo 02: Consulta DAS MEI (PGMEI)">
-        🔍 Consulta MEI (PGMEI)
+      <!-- MÓDULO 01: Desempenho Semanal (Medição e PMOC) -->
+      <a href="medicao.html" class="module-card">
+        <div>
+          <div class="card-top">
+            <div class="icon-box icon-blue">📊</div>
+            <span class="status-tag tag-active">● Online (Vercel)</span>
+          </div>
+          <div class="module-num">Módulo 01</div>
+          <h2 class="module-title">Desempenho Semanal</h2>
+          <p class="module-desc">
+            Medição de produtividade de técnicos e contratos PMOC (Santos SEDUC, CRSN e SMSU). Emissão vetorial de relatórios em PDF A4 e envio automático via WhatsApp.
+          </p>
+        </div>
+        <div class="card-footer">
+          <span class="features-count">PMOC &bull; WhatsApp &bull; PDF</span>
+          <span class="btn-card">Acessar Módulo &rarr;</span>
+        </div>
       </a>
-      <button type="button" class="btn btn-outline" id="btnOpenConfigModal" title="Gerenciar contratos, setores e técnicos cadastrados">
-        ⚙️ Gestão de Contrato
-      </button>
-      <button type="button" class="btn btn-danger" id="btnClearData" title="Limpa a planilha carregada e retorna ao estado inicial">
-        🗑️ Limpar Dados
-      </button>
-      <button type="button" class="btn btn-primary" id="btnPrint" title="Abre a impressão em modo A4 com fidelidade vetorial máxima">
-        🖨️ Imprimir / Salvar PDF
-      </button>
-      <button type="button" class="btn btn-whatsapp" id="btnOpenWhatsAppModal" title="Enviar relatórios de produtividade por WhatsApp">
-        📲 Enviar por WhatsApp
-      </button>
+
+      <!-- MÓDULO 02: Consulta DAS MEI (PGMEI em Lote) -->
+      <a href="http://localhost:3000" target="_blank" class="module-card">
+        <div>
+          <div class="card-top">
+            <div class="icon-box icon-emerald">🔍</div>
+            <span class="status-tag tag-local">● Automação Local</span>
+          </div>
+          <div class="module-num">Módulo 02</div>
+          <h2 class="module-title">Consulta DAS MEI</h2>
+          <p class="module-desc">
+            Consulta automática da situação fiscal e competências no portal oficial PGMEI da Receita Federal. Captura de prints inteiros, identificação de débitos e download em lote em ZIP.
+          </p>
+        </div>
+        <div class="card-footer">
+          <span class="features-count">Playwright &bull; ZIP &bull; Cadastro MEI</span>
+          <span class="btn-card">Abrir Módulo &rarr;</span>
+        </div>
+      </a>
+
+      <!-- MÓDULO 03: Conciliação & Fechamento Financeiro (Em Breve) -->
+      <div class="module-card inactive">
+        <div>
+          <div class="card-top">
+            <div class="icon-box icon-amber">📑</div>
+            <span class="status-tag tag-soon">Em Breve</span>
+          </div>
+          <div class="module-num">Módulo 03</div>
+          <h2 class="module-title">Conciliação Financeira</h2>
+          <p class="module-desc">
+            Fechamento de faturamento, conciliação de notas fiscais e relatórios gerenciais para auditoria financeira dos contratos.
+          </p>
+        </div>
+        <div class="card-footer">
+          <span class="features-count">Auditoria &bull; DRE &bull; Faturamento</span>
+          <span style="font-size: 12px; color: #64748b;">Módulo Planejado</span>
+        </div>
+      </div>
+
     </div>
-  </nav>
-
-  <!-- Container Principal -->
-  <main class="app-container">
-
-    <!-- Painel Lateral Esquerdo: Alimentação e Ajustes -->
-    <aside class="controls-sidebar">
-      
-      <!-- Card 1: Importação de Planilha -->
-      <section class="card">
-        <h2 class="card-title">
-          <span>📂 1. Alimentar Planilha</span>
-          <span id="fileBadge" style="font-size: 11px; font-weight: normal; color: #16a34a; display: none;">✓ Carregada</span>
-        </h2>
-        
-        <div class="dropzone" id="excelDropzone">
-          <div class="dropzone-icon">📊</div>
-          <div class="dropzone-text">Arraste a planilha de medição aqui</div>
-          <div class="dropzone-hint">ou clique para selecionar (.xlsx, .xls, .csv)</div>
-          <input type="file" id="excelFileInput" class="file-input-hidden" accept=".xlsx, .xls, .csv" />
-        </div>
-
-        <div id="fileInfoNotice" style="margin-top: 10px; font-size: 11.5px; color: #475569; display: none;">
-          Arquivo ativo: <strong id="activeFileName"></strong>
-        </div>
-
-        <div style="text-align: center; margin: 15px 0;">
-          <strong style="color: #64748b; font-size: 12px; display: block; margin-bottom: 8px;">OU</strong>
-          <button type="button" class="btn btn-secondary" id="btnSyncAuvo" style="width: 100%; display: flex; justify-content: center; align-items: center; gap: 8px; font-weight: bold; color: #fff; background-color: #0f172a;">
-            ☁️ Sincronizar com Auvo (API)
-          </button>
-        </div>
-      </section>
-
-      <!-- Card 2: Seleção de Contrato / Setor -->
-      <section class="card">
-        <h2 class="card-title">
-          <span>🏢 2. Seleção de Contrato / Setor</span>
-        </h2>
-        
-        <div class="form-group">
-          <label class="form-label" for="contractSectorSelect">Contrato ou Setor a Gerar Relatório:</label>
-          <select id="contractSectorSelect" class="form-select">
-            <option value="SAMPLE">STS36693/22 - Consolidado (Print Exemplo)</option>
-          </select>
-        </div>
-      </section>
-
-      <!-- Card 3: Parâmetros Financeiros e Operacionais (100% Editáveis) -->
-      <section class="card">
-        <h2 class="card-title">
-          <span>⚙️ 3. Parâmetros e Indicadores</span>
-        </h2>
-
-        <!-- Identificação do Documento -->
-        <div class="form-group">
-          <label class="form-label" for="inputContractBadge">Badge do Contrato (topo esquerdo):</label>
-          <input type="text" id="inputContractBadge" class="form-input" value="CONTRATO STS36693/22" />
-        </div>
-
-        <div class="form-grid-2">
-          <div class="form-group">
-            <label class="form-label" for="inputCompetence">Competência (MM/AAAA):</label>
-            <input type="text" id="inputCompetence" class="form-input" value="08/2026" placeholder="08/2026" />
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="inputPeriodLabel">Rótulo da Tabela / Período:</label>
-            <input type="text" id="inputPeriodLabel" class="form-input" value="VALORES - MAR BRASIL 08/2026" />
-          </div>
-        </div>
-
-        <!-- Sanfona com Todas as Tarefas Operacionais (Editáveis) -->
-        <details class="param-accordion" open>
-          <summary>Detalhamento de Tarefas &amp; Pesos (100% Editável)</summary>
-          <div class="accordion-body">
-
-            <!-- PMOC Mensal (Prevista, Realizada, Peso %) -->
-            <div class="form-group">
-              <label class="form-label">PMOC Mensal (Prevista, Realizada, Peso %):</label>
-              <div class="form-grid-3">
-                <input type="number" id="inputMensalPrevista" class="form-input" placeholder="Prevista" value="402" title="PMOC Mensal Prevista" />
-                <input type="number" id="inputMensalRealizada" class="form-input" placeholder="Realizada" value="211" title="PMOC Mensal Realizada" />
-                <input type="number" id="inputMensalPeso" class="form-input" placeholder="Peso %" value="5" title="Peso % (Padrão 5%)" />
-              </div>
-            </div>
-
-            <!-- PMOC Semestral (Prevista, Realizada, Peso %) -->
-            <div class="form-group">
-              <label class="form-label">PMOC Semestral (Prevista, Realizada, Peso %):</label>
-              <div class="form-grid-3">
-                <input type="number" id="inputSemestralPrevista" class="form-input" placeholder="Prevista" value="80" title="PMOC Semestral Prevista" />
-                <input type="number" id="inputSemestralRealizada" class="form-input" placeholder="Realizada" value="0" title="PMOC Semestral Realizada" />
-                <input type="number" id="inputSemestralPeso" class="form-input" placeholder="Peso %" value="50" title="Peso % (Padrão 50%)" />
-              </div>
-            </div>
-
-            <!-- Corretivas (Prevista, Realizada, Peso %) -->
-            <div class="form-group">
-              <label class="form-label">Corretivas (Prevista, Realizada, Peso %):</label>
-              <div class="form-grid-3">
-                <input type="number" id="inputCorretivaPrevista" class="form-input" placeholder="Prevista" value="0" title="Corretivas Previstas" />
-                <input type="number" id="inputCorretivaRealizada" class="form-input" placeholder="Realizada" value="0" title="Corretivas Realizadas" />
-                <input type="number" id="inputCorretivaPeso" class="form-input" placeholder="Peso %" value="40" title="Peso % (Padrão 40%)" />
-              </div>
-            </div>
-            
-            <!-- EPI: preenchimento sempre manual (não consta na planilha, padrão 5%) -->
-            <div class="form-group">
-              <label class="form-label">
-                EPI — Preenchimento Manual
-                <span id="epiSectorBadge" style="font-weight:400; color:#64748b;"> (padrão)</span>
-              </label>
-              <div class="form-grid-3">
-                <input type="number" id="inputEpiPrevista" class="form-input" placeholder="Previstos" value="22" title="Itens de EPI Previstos" />
-                <input type="number" id="inputEpiRealizada" class="form-input" placeholder="Entregues" value="9" title="Itens de EPI Entregues" />
-                <input type="number" id="inputEpiPeso" class="form-input" placeholder="Peso %" value="5" title="Peso % Contratual do EPI (Padrão 5%)" />
-              </div>
-            </div>
-
-            <!-- Excedente (Regra: soma mensal + semestral > 500) -->
-            <div class="form-group">
-              <label class="form-label">
-                Excedente (Qtd &gt; 500 prev., Tarifa R$, Unitário R$):
-              </label>
-              <div class="form-grid-3">
-                <input type="number" id="inputExcedenteQtd" class="form-input" placeholder="Qtd" value="0" title="Qtd Excedente (Mensal + Semestral > 500)" />
-                <input type="number" id="inputExcedenteTarifa" class="form-input" placeholder="Tarifa R$" value="10.75" step="0.05" />
-                <input type="number" id="inputExcedenteUnit" class="form-input" placeholder="Unit R$" value="3.50" step="0.05" />
-              </div>
-            </div>
-
-            <!-- Incentivo Veicular (Regra: 100% = R$1.000 | 90-99% = R$750 | <90% = R$0) -->
-            <div class="form-group">
-              <label class="form-label">
-                Incentivo Veicular (% Média, Base R$, Reconhecido R$):
-              </label>
-              <div class="form-grid-3">
-                <input type="number" id="inputIncentivoMeta" class="form-input" placeholder="% Média" value="59" title="Média de Produtividade dos Itens" />
-                <input type="number" id="inputIncentivoBase" class="form-input" placeholder="Base R$" value="1000.00" />
-                <input type="number" id="inputIncentivoRec" class="form-input" placeholder="Reconhecido R$" value="0.00" title="100% -> R$1.000 | 90-99% -> R$750 | <90% -> R$0" />
-              </div>
-            </div>
-
-          </div>
-        </details>
-
-        <!-- Botão Atualizar Dashboard -->
-        <div style="margin-top: 12px; display: flex; justify-content: flex-end;">
-          <button type="button" id="btnRefreshDashboard" class="btn btn-primary" style="font-size: 12.5px; padding: 7px 16px; display: flex; align-items: center; gap: 6px;" title="Aplica os valores atuais dos parâmetros ao relatório">
-            🔄 Atualizar Dashboard
-          </button>
-        </div>
-      </section>
-
-    </aside>
-
-    <!-- Área Direita: Visualização do Relatório Oficial (A4 Preview) -->
-    <section class="preview-viewport">
-      <div class="preview-toolbar">
-        <span class="preview-info">📄 Pré-visualização do Relatório Oficial (Formato A4)</span>
-        <div style="display: flex; gap: 8px; align-items: center;">
-          <button type="button" class="btn btn-sm btn-whatsapp" id="btnSendCurrentSector" style="display: none; font-size: 12px; padding: 6px 12px;" title="Enviar este setor selecionado por WhatsApp">
-            📲 Enviar este setor
-          </button>
-          <button type="button" class="btn btn-primary" id="btnQuickPrint" style="font-size: 12px; padding: 6px 12px;">
-            🖨️ Imprimir Página
-          </button>
-        </div>
-      </div>
-
-      <!-- Container do Relatório Gerado -->
-      <div id="reportContainer">
-        <!-- Renderizado dinamicamente via ReportRenderer.js -->
-      </div>
-    </section>
-
   </main>
 
-  <!-- Modal de Gerenciamento de Contratos & Técnicos -->
-  <div id="configModal" class="modal-backdrop">
-    <div class="modal-container">
-      <div class="modal-header">
-        <h3 class="modal-title">
-          <span>⚙️ Gestão de Contratos, Setores e Técnicos</span>
-          <span style="font-size: 11px; font-weight: normal; color: var(--text-muted);">(Mar Brasil)</span>
-        </h3>
-        <button type="button" class="modal-close-btn" id="btnCloseConfigModal" title="Fechar">&times;</button>
-      </div>
+  <footer>
+    Mar Brasil &bull; BPO Financeiro &bull; Todos os direitos reservados.
+  </footer>
 
-      <div class="modal-tabs">
-        <button type="button" class="modal-tab-btn active" id="tabBtnContracts" data-target="paneContracts">📋 Contratos &amp; Setores</button>
-        <button type="button" class="modal-tab-btn" id="tabBtnTechs" data-target="paneTechs">👷 Técnicos &amp; Parceiros</button>
-      </div>
-
-      <div class="modal-body">
-        
-        <!-- Painel 1: Contratos & Setores -->
-        <div id="paneContracts" class="tab-pane active">
-
-          <!-- Configuração de Valores por Nível -->
-          <div class="level-config-box" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px;">
-            <div style="font-size: 13px; font-weight: 700; color: #334155; margin-bottom: 10px;">
-              💰 Configuração de Valores por Nível
-            </div>
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
-              <div class="form-group" style="margin-bottom: 0;">
-                <label class="form-label" style="font-size: 11px;">Nível 01 (R$):</label>
-                <input type="number" id="levelValue_LVL_1" class="form-input level-value-input" value="6000.00" step="50" style="font-size: 12px;" />
-              </div>
-              <div class="form-group" style="margin-bottom: 0;">
-                <label class="form-label" style="font-size: 11px;">Nível 02 (R$):</label>
-                <input type="number" id="levelValue_LVL_2" class="form-input level-value-input" value="5250.00" step="50" style="font-size: 12px;" />
-              </div>
-              <div class="form-group" style="margin-bottom: 0;">
-                <label class="form-label" style="font-size: 11px;">Nível 03 (R$):</label>
-                <input type="number" id="levelValue_LVL_3" class="form-input level-value-input" value="4250.00" step="50" style="font-size: 12px;" />
-              </div>
-            </div>
-          </div>
-
-          <div class="list-section-header">
-            <div>
-              <strong style="font-size: 13.5px; color: var(--text-primary);">Contratos Cadastrados</strong>
-              <div class="section-subtitle">Gerencie os contratos da Mar Brasil e a distribuição dos seus setores</div>
-            </div>
-            <button type="button" class="btn btn-primary" id="btnShowAddContract" style="font-size: 12px; padding: 6px 12px;">
-              + Novo Contrato
-            </button>
-          </div>
-
-          <!-- Formulário de Adicionar / Editar Contrato -->
-          <div id="contractFormBox" class="modal-form-box">
-            <h4 class="modal-form-title" id="contractFormTitle">Cadastrar Novo Contrato</h4>
-            <input type="hidden" id="formContractId" />
-            <div class="form-grid-2">
-              <div class="form-group">
-                <label class="form-label" for="formContractCode">Código do Contrato:</label>
-                <input type="text" id="formContractCode" class="form-input" placeholder="ex: STS 36693/22" />
-              </div>
-              <div class="form-group">
-                <label class="form-label" for="formClientName">Nome Curto do Órgão / Cliente:</label>
-                <input type="text" id="formClientName" class="form-input" placeholder="ex: SEDUC Santos" />
-              </div>
-            </div>
-            <div class="form-grid-2">
-              <div class="form-group">
-                <label class="form-label" for="formClientFullName">Nome Completo do Órgão:</label>
-                <input type="text" id="formClientFullName" class="form-input" placeholder="ex: Secretaria de Educação de Santos" />
-              </div>
-              <div class="form-group">
-                <label class="form-label" for="formContractValue">Valor Base Contratual (R$):</label>
-                <input type="number" id="formContractValue" class="form-input" placeholder="6000.00" step="100" />
-              </div>
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="formContractDesc">Descrição da Avaliação:</label>
-              <input type="text" id="formContractDesc" class="form-input" placeholder="Avaliação objetiva da execução contratual..." />
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="formContractTech">Técnico Padrão (caso não tenha subsetores):</label>
-              <select id="formContractTech" class="form-select"></select>
-            </div>
-            
-            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px;">
-              <button type="button" class="btn btn-secondary" id="btnCancelContractForm">Cancelar</button>
-              <button type="button" class="btn btn-primary" id="btnSaveContractForm">Salvar Contrato</button>
-            </div>
-          </div>
-
-          <!-- Lista de Contratos -->
-          <div id="contractsListContainer" style="margin-top: 14px;"></div>
-        </div>
-
-        <!-- Painel 2: Técnicos & Parceiros -->
-        <div id="paneTechs" class="tab-pane">
-          <div class="list-section-header">
-            <div>
-              <strong style="font-size: 13.5px; color: var(--text-primary);">Técnicos &amp; Empresas Parceiras</strong>
-              <div class="section-subtitle">Profissionais e prestadores responsáveis pela execução do PMOC</div>
-            </div>
-            <button type="button" class="btn btn-primary" id="btnShowAddTech" style="font-size: 12px; padding: 6px 12px;">
-              + Novo Técnico
-            </button>
-          </div>
-
-          <!-- Formulário de Adicionar / Editar Técnico -->
-          <div id="techFormBox" class="modal-form-box">
-            <h4 class="modal-form-title" id="techFormTitle">Cadastrar Novo Técnico</h4>
-            <input type="hidden" id="formTechId" />
-            <div class="form-grid-2">
-              <div class="form-group">
-                <label class="form-label" for="formTechName">Nome da Empresa / Técnico:</label>
-                <input type="text" id="formTechName" class="form-input" placeholder="ex: GB Climatização" />
-              </div>
-              <div class="form-group">
-                <label class="form-label" for="formTechPhone">Contato / Telefone (WhatsApp):</label>
-                <input type="text" id="formTechPhone" class="form-input" placeholder="(13) 99149-8882 ou 13991498882" />
-                <span style="font-size: 11px; color: #64748b;">DDD + Número (12 ou 13 dígitos). O remetente oficial é +55 13 99149-8882.</span>
-              </div>
-            </div>
-            <div class="form-grid-2">
-              <div class="form-group">
-                <label class="form-label" for="formTechLevel">Nível do Técnico:</label>
-                <select id="formTechLevel" class="form-select">
-                  <option value="LVL_1">Nível 01</option>
-                  <option value="LVL_2">Nível 02</option>
-                  <option value="LVL_3">Nível 03</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label class="form-label" for="formTechNotes">Observações / Atribuição:</label>
-                <input type="text" id="formTechNotes" class="form-input" placeholder="ex: Responsável pelo Setor 01" />
-              </div>
-            </div>
-
-            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px;">
-              <button type="button" class="btn btn-secondary" id="btnCancelTechForm">Cancelar</button>
-              <button type="button" class="btn btn-primary" id="btnSaveTechForm">Salvar Técnico</button>
-            </div>
-          </div>
-
-          <!-- Tabela de Técnicos -->
-          <div id="techniciansListContainer" style="margin-top: 14px;"></div>
-        </div>
-
-      </div>
-
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" id="btnResetConfig" title="Restaura os 3 contratos oficiais e os 8 técnicos padrão da Mar Brasil">
-          🔄 Restaurar Padrões Mar Brasil
-        </button>
-        <button type="button" class="btn btn-primary" id="btnCloseConfigModalBottom">
-          Fechar
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal 2: Envio de Relatórios por WhatsApp (Evolution API) -->
-  <div id="whatsAppModal" class="modal-backdrop">
-    <div class="modal-container modal-xl">
-      <div class="modal-header">
-        <div style="display: flex; align-items: center; gap: 10px;">
-          <h3 class="modal-title" style="margin: 0;">
-            <span>📲 Enviar Relatórios por WhatsApp</span>
-          </h3>
-          <span class="badge" id="waCompetenceBadge" style="background: #e0f2fe; color: #0369a1; font-weight: 700; padding: 3px 8px; border-radius: 4px; font-size: 11.5px;">Competência: --</span>
-        </div>
-        <div style="display: flex; gap: 8px; align-items: center;">
-          <button type="button" class="btn btn-outline btn-sm" id="btnOpenWhatsAppConfig" title="Configurar conexão do Worker e Evolution API" style="font-size: 12px; padding: 4px 10px;">
-            ⚙️ Configurações
-          </button>
-          <button type="button" class="modal-close-btn" id="btnCloseWhatsAppModal" title="Fechar">&times;</button>
-        </div>
-      </div>
-
-      <!-- Banner de Modo Teste -->
-      <div class="wa-test-banner">
-        <div class="wa-test-header">
-          <label class="wa-checkbox-label">
-            <input type="checkbox" id="chkTestMode" />
-            <strong style="color: #92400e;">🧪 Ativar Modo de Teste</strong>
-          </label>
-          <span style="font-size: 12px; color: #78350f;">
-            Proteção para validação: nenhum técnico real receberá mensagens enquanto o modo teste estiver ligado.
-          </span>
-        </div>
-        <div id="testModeInputs" class="wa-test-inputs" style="display: none;">
-          <label style="font-size: 12px; font-weight: 600; color: #92400e;" for="inputTestPhone">
-            Telefone Destinatário de Teste:
-          </label>
-          <input type="text" id="inputTestPhone" class="form-input" placeholder="ex: 13999998888 ou (13) 99999-8888" style="max-width: 280px; font-size: 13px;" />
-          <span style="font-size: 11.5px; color: #b45309;">
-            Todas as mensagens selecionadas irão <strong>exclusivamente para este número</strong> com a tag <code>[TESTE]</code> na legenda.
-          </span>
-        </div>
-      </div>
-
-      <div class="modal-body" style="padding: 16px 20px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
-          <div style="font-size: 13px; color: #475569;">
-            Selecione os setores que deseja enviar. Cada técnico receberá seu próprio relatório PDF oficial.
-          </div>
-          <div style="display: flex; gap: 8px;">
-            <button type="button" class="btn btn-outline btn-sm" id="btnSelectAllValid" style="font-size: 11.5px; padding: 4px 8px;">
-              ✓ Selecionar Válidos
-            </button>
-            <button type="button" class="btn btn-outline btn-sm" id="btnDeselectAll" style="font-size: 11.5px; padding: 4px 8px;">
-              ✗ Desmarcar Todos
-            </button>
-          </div>
-        </div>
-
-        <!-- Tabela de Conferência de Setores -->
-        <div class="wa-table-wrapper">
-          <table class="wa-table">
-            <thead>
-              <tr>
-                <th style="width: 36px; text-align: center;"><input type="checkbox" id="chkSelectAllHeader" title="Marcar/Desmarcar todos" /></th>
-                <th>Setor</th>
-                <th>Técnico Responsável</th>
-                <th>Telefone WhatsApp</th>
-                <th title="Produtividade calculada: Mensal / Semestral / Corretiva">Produtividade</th>
-                <th title="EPI deste setor (previstos / entregues)">EPI (Prev./Entreg.)</th>
-                <th>Histórico / Status</th>
-                <th style="text-align: right; min-width: 140px;">Ações</th>
-              </tr>
-            </thead>
-            <tbody id="waTableBody">
-              <!-- Preenchido dinamicamente via JS -->
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Barra de Progresso do Envio em Lote -->
-        <div id="waProgressContainer" class="wa-progress-box" style="display: none;">
-          <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; margin-bottom: 6px;">
-            <span id="waProgressLabel">Enviando relatórios...</span>
-            <span id="waProgressPercent">0%</span>
-          </div>
-          <div class="wa-progress-track">
-            <div id="waProgressBar" class="wa-progress-bar" style="width: 0%;"></div>
-          </div>
-          <div style="font-size: 11px; color: #64748b; margin-top: 4px;">
-            ⏱️ Intervalo aleatório de segurança de 4 a 10 segundos entre cada mensagem (anti-bloqueio WhatsApp).
-          </div>
-        </div>
-
-        <!-- Log Box de Mensagens de Envio -->
-        <div id="waLogBox" class="wa-log-box" style="display: none;"></div>
-      </div>
-
-      <div class="modal-footer" style="justify-content: space-between;">
-        <div style="display: flex; gap: 8px; align-items: center;">
-          <button type="button" class="btn btn-warning btn-sm" id="btnRetryFailed" style="display: none;">
-            🔄 Reenviar Falhas (<span id="retryFailedCount">0</span>)
-          </button>
-          <span id="waSelectedCountText" style="font-size: 12.5px; color: #475569; font-weight: 600;">
-            0 setores selecionados
-          </span>
-        </div>
-        <div style="display: flex; gap: 10px;">
-          <button type="button" class="btn btn-secondary" id="btnCloseWhatsAppModalBottom">
-            Fechar
-          </button>
-          <button type="button" class="btn btn-whatsapp" id="btnStartBatchSend" disabled>
-            📲 Enviar Selecionados (0)
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal 3: Confirmação Prévia de Envio (Trava de Segurança Financeira) -->
-  <div id="whatsAppConfirmModal" class="modal-backdrop">
-    <div class="modal-container modal-md">
-      <div class="modal-header" style="background-color: #fef2f2; border-bottom: 1px solid #fee2e2;">
-        <h3 class="modal-title" style="color: #991b1b;">
-          <span>⚠️ Confirmação de Envio — Mar Brasil</span>
-        </h3>
-        <button type="button" class="modal-close-btn" id="btnCloseWhatsAppConfirm">&times;</button>
-      </div>
-      <div class="modal-body" style="padding: 18px 20px;">
-        <div class="alert-box-warning" style="margin-bottom: 14px;">
-          <div style="font-weight: 700; color: #991b1b; margin-bottom: 4px;">Atenção: Conferência de Destinatários</div>
-          <div style="font-size: 12px; color: #7f1d1d; line-height: 1.45;">
-            Os relatórios em PDF contêm <strong>valores financeiros e produtividade contratual</strong>. Verifique abaixo se cada setor está vinculado ao técnico e telefone corretos.
-          </div>
-        </div>
-
-        <div id="waConfirmTestAlert" style="display: none; background: #fef3c7; border: 1px solid #fde68a; border-radius: 6px; padding: 10px; margin-bottom: 12px; font-size: 12px; color: #92400e;">
-          <strong>🧪 MODO TESTE ATIVO:</strong> Todos os relatórios desta lista serão enviados exclusivamente para <strong id="waConfirmTestTarget">--</strong> com a tag [TESTE].
-        </div>
-
-        <div style="font-size: 12.5px; font-weight: 700; color: #1e293b; margin-bottom: 8px;">
-          Setores a Enviar (<span id="waConfirmItemCount">0</span>):
-        </div>
-
-        <div id="waConfirmList" class="wa-confirm-list-box">
-          <!-- Lista dos setores confirmados -->
-        </div>
-
-        <div style="margin-top: 12px; font-size: 11.5px; color: #64748b; line-height: 1.4;">
-          Remetente oficial: <strong>+55 13 99149-8882</strong> (Instância Evolution API)<br>
-          Tempo estimado total: <strong id="waEstimatedTime">--</strong>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" id="btnCancelWhatsAppConfirm">
-          Cancelar
-        </button>
-        <button type="button" class="btn btn-whatsapp" id="btnExecuteWhatsAppSend">
-          Confirmar e Iniciar Envio
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal 4: Configurações do Worker & Evolution API -->
-  <div id="whatsAppConfigModal" class="modal-backdrop">
-    <div class="modal-container modal-md">
-      <div class="modal-header">
-        <h3 class="modal-title">
-          <span>⚙️ Configuração do Envio por WhatsApp</span>
-        </h3>
-        <button type="button" class="modal-close-btn" id="btnCloseWhatsAppConfig">&times;</button>
-      </div>
-      <div class="modal-body" style="padding: 18px 20px;">
-        <div style="font-size: 12.5px; color: #475569; margin-bottom: 16px; line-height: 1.45;">
-          Como este site é estático e público no GitHub Pages, as credenciais da Evolution API ficam guardadas com segurança no seu <strong>Cloudflare Worker</strong>.
-        </div>
-
-        <div class="form-group">
-          <label class="form-label" for="inputWorkerUrl">URL do Cloudflare Worker:</label>
-          <input type="url" id="inputWorkerUrl" class="form-input" placeholder="https://pmoc-whatsapp-proxy.guilherme-barrosmarbr.workers.dev" />
-          <span style="font-size: 11px; color: #64748b;">Endereço público do worker publicado no Cloudflare.</span>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label" for="inputWorkerToken">Token de Acesso (Bearer Token):</label>
-          <input type="password" id="inputWorkerToken" class="form-input" placeholder="marbrasilpmoc2025" />
-          <span style="font-size: 11px; color: #64748b;">Salvo exclusivamente no seu navegador (localStorage). Nunca no código-fonte.</span>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">Remetente Oficial (Evolution API):</label>
-          <input type="text" class="form-input" value="+55 13 99149-8882 (Instância Conectada)" disabled style="background-color: #f8fafc; color: #64748b;" />
-        </div>
-
-        <div class="form-group">
-          <label class="form-label" for="inputCaptionTemplate">Modelo da Mensagem (Legenda do PDF):</label>
-          <textarea id="inputCaptionTemplate" class="form-input" rows="3" style="resize: vertical; font-size: 12.5px; font-family: inherit;"></textarea>
-          <span style="font-size: 11px; color: #64748b;">Tags disponíveis: <code>{tecnico}</code>, <code>{competencia}</code>, <code>{setor}</code></span>
-        </div>
-
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-light); gap: 10px; flex-wrap: wrap;">
-          <div style="display: flex; gap: 8px;">
-            <button type="button" class="btn btn-outline btn-sm" id="btnTestWorkerConnection">
-              ⚡ Testar Conexão com Worker
-            </button>
-            <button type="button" class="btn btn-outline btn-sm" id="btnRestoreDefaultWaConfig" title="Preencher com os dados do Worker oficial da Mar Brasil">
-              🔄 Restaurar URL Padrão
-            </button>
-          </div>
-          <span id="workerStatusBadge" style="font-size: 12px; font-weight: 600;"></span>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" id="btnCancelWhatsAppConfig">
-          Cancelar
-        </button>
-        <button type="button" class="btn btn-primary" id="btnSaveWhatsAppConfig">
-          Salvar Configurações
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Script Principal Universal (Compatível com file:// direto e HTTP) -->
-  <script src="js/auvo.js"></script>
-  <script src="js/app.bundle.js"></script>
 </body>
 </html>
