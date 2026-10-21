@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Desempenho Mensal - BPO Financeiro &bull; Medição e Relatório A4</title>
+  <link rel="stylesheet" href="styles.css" />
+  <!-- Bibliotecas Locais para Funcionamento 100% Offline -->
+  <script src="xlsx.full.min.js"></script>
+  <script src="html2pdf.bundle.min.js"></script>
+</head>
+<body>
+
+  <!-- Barra Superior de Navegação -->
+  <nav class="app-navbar">
+    <div class="brand-title-wrap">
+      <svg class="brand-icon-mini" viewBox="0 0 100 100" fill="none">
+        <polygon points="50,12 85,32 50,52 15,32" fill="#3b82f6" />
+        <polygon points="15,32 50,52 50,90 15,70" fill="#2563eb" />
+        <polygon points="50,52 85,32 85,70 50,90" fill="#1d4ed8" />
+      </svg>
+      <div>
+        <h1 class="app-title">BPO Financeiro &bull; Desempenho Mensal</h1>
+        <p class="app-subtitle">Módulo 03 &bull; Apuração Mensal por Prestador e Fechamento Financeiro</p>
+      </div>
+    </div>
+
+    <div class="nav-actions">
+      <a href="index.html" class="btn btn-secondary" style="text-decoration: none;" title="Voltar ao Hub de Módulos">
+        ⬅️ Módulos
+      </a>
+      <a href="medicao.html" class="btn btn-outline" style="text-decoration: none;" title="Ir para Módulo 01: Desempenho Semanal">
+        📊 Módulo 01 (Semanal)
+      </a>
+      <a href="http://localhost:3000" target="_blank" class="btn btn-outline" style="text-decoration: none;" title="Abrir Módulo 02: Consulta DAS MEI (PGMEI)">
+        🔍 Consulta MEI (PGMEI)
+      </a>
+      <button type="button" class="btn btn-outline" id="btnResetSample" title="Restaura os dados padrão de referência (GB Climatização - Ciclo 08/2026)">
+        🔄 Carregar Amostra
+      </button>
+      <button type="button" class="btn btn-primary" id="btnPrint" title="Abre o assistente de impressão ou salva em PDF formato A4">
+        🖨️ Imprimir / Salvar PDF
+      </button>
+    </div>
+  </nav>
+
+  <!-- Container Principal -->
+  <main class="app-container">
+
+    <!-- Painel Lateral Esquerdo: Alimentação da Planilha e Parâmetros -->
+    <aside class="controls-sidebar">
+
+      <!-- Card 1: Importação da Planilha Mensal (Abas GERAL + FINANCEIRO + TAREFAS) -->
+      <section class="card">
+        <h2 class="card-title">
+          <span>📂 1. Alimentar Planilha Mensal</span>
+          <span id="fileBadge" style="font-size: 11px; font-weight: normal; color: #16a34a; display: none;">✓ Carregada</span>
+        </h2>
+
+        <div class="dropzone" id="excelDropzone">
+          <div class="dropzone-icon">📑</div>
+          <div class="dropzone-text">Arraste a planilha de ciclo aqui</div>
+          <div class="dropzone-hint">ou clique para selecionar (.xlsx, .xls)</div>
+          <input type="file" id="excelFileInput" class="file-input-hidden" accept=".xlsx, .xls" />
+        </div>
+
+        <div id="fileInfoNotice" style="margin-top: 10px; font-size: 11.5px; color: #475569; display: none;">
+          Arquivo ativo: <strong id="activeFileName"></strong>
+        </div>
+
+        <div style="margin-top: 10px; padding: 8px 10px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; font-size: 11px; color: #166534;">
+          💡 <strong>Leitura Inteligente:</strong> Reconhece automaticamente as abas <code>GERAL</code> (quantitativos verticais), <code>FINANCEIRO</code> (parâmetros de base) e <code>TAREFAS DO CICLO</code> (links de OS).
+        </div>
+      </section>
+
+      <!-- Card 2: Identificação do Prestador e Ciclo -->
+      <section class="card">
+        <h2 class="card-title">
+          <span>🏢 2. Identificação do Ciclo</span>
+        </h2>
+
+        <div class="form-grid-2">
+          <div class="form-group">
+            <label class="form-label" for="inputContrato">Contrato:</label>
+            <input type="text" id="inputContrato" class="form-input" value="STS36693/22" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="inputSetor">Setor:</label>
+            <input type="text" id="inputSetor" class="form-input" value="Setor 01" />
+          </div>
+        </div>
+
+        <div class="form-grid-2">
+          <div class="form-group">
+            <label class="form-label" for="inputCompetencia">Competência:</label>
+            <input type="text" id="inputCompetencia" class="form-input" value="08/2026" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="inputPrestador">Prestador Parceiro:</label>
+            <input type="text" id="inputPrestador" class="form-input" value="GB CLIMATIZAÇÃO (GABRIEL)" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="inputOficiais">Oficiais / Técnicos de Campo:</label>
+          <input type="text" id="inputOficiais" class="form-input" value="Flávio Pereira, Jonathan Silva" placeholder="Separados por vírgula" />
+        </div>
+      </section>
+
+      <!-- Card 3: Parâmetros Financeiros e Operacionais (100% Editáveis) -->
+      <section class="card">
+        <h2 class="card-title">
+          <span>⚙️ 3. Parâmetros &amp; Produtividade</span>
+        </h2>
+
+        <!-- Valor-Base Mensal -->
+        <div class="form-group">
+          <label class="form-label" for="inputValorBase">Valor-Base Contratual Mensal (R$):</label>
+          <input type="number" id="inputValorBase" class="form-input" value="6000.00" step="50" style="font-weight: 700; font-size: 14px; color: #1e3a8a;" />
+        </div>
+
+        <!-- Sanfona com Itens Remunerados -->
+        <details class="param-accordion" open>
+          <summary>Itens Remunerados &amp; Pesos (Editável)</summary>
+          <div class="accordion-body">
+
+            <!-- Preventiva Mensal -->
+            <div class="form-group">
+              <label class="form-label">Preventiva Mensal (Prev., Exec., Peso %):</label>
+              <div class="form-grid-3">
+                <input type="number" id="inputMensalPrev" class="form-input" placeholder="Prevista" value="415" title="Planejado Mensal" />
+                <input type="number" id="inputMensalExec" class="form-input" placeholder="Executada" value="415" title="Executado Mensal" />
+                <input type="number" id="inputMensalPeso" class="form-input" placeholder="Peso %" value="5" title="Peso % (Padrão 5%)" />
+              </div>
+            </div>
+
+            <!-- Preventiva Semestral -->
+            <div class="form-group">
+              <label class="form-label">Preventiva Semestral (Prev., Exec., Peso %):</label>
+              <div class="form-grid-3">
+                <input type="number" id="inputSemestralPrev" class="form-input" placeholder="Prevista" value="80" title="Planejado Semestral" />
+                <input type="number" id="inputSemestralExec" class="form-input" placeholder="Executada" value="80" title="Executado Semestral" />
+                <input type="number" id="inputSemestralPeso" class="form-input" placeholder="Peso %" value="50" title="Peso % (Padrão 50%)" />
+              </div>
+            </div>
+
+            <!-- Corretiva -->
+            <div class="form-group">
+              <label class="form-label">Corretivas (Prev., Exec., Peso %):</label>
+              <div class="form-grid-3">
+                <input type="number" id="inputCorretivaPrev" class="form-input" placeholder="Prevista" value="16" title="Corretivas Previstas" />
+                <input type="number" id="inputCorretivaExec" class="form-input" placeholder="Executada" value="15" title="Corretivas Executadas" />
+                <input type="number" id="inputCorretivaPeso" class="form-input" placeholder="Peso %" value="40" title="Peso % (Padrão 40%)" />
+              </div>
+              <input type="text" id="inputCorretivaObs" class="form-input" value="Aguardando peça" placeholder="Observação (ex: Aguardando peça)" style="margin-top: 6px; font-size: 11.5px;" />
+            </div>
+
+            <!-- EPI -->
+            <div class="form-group">
+              <label class="form-label">EPIs &amp; Segurança (Prev., Exec., Peso %):</label>
+              <div class="form-grid-3">
+                <input type="number" id="inputEpiPrev" class="form-input" placeholder="Previstos" value="21" title="EPIs Previstos" />
+                <input type="number" id="inputEpiExec" class="form-input" placeholder="Entregues" value="21" title="EPIs Entregues" />
+                <input type="number" id="inputEpiPeso" class="form-input" placeholder="Peso %" value="5" title="Peso % (Padrão 5%)" />
+              </div>
+            </div>
+
+          </div>
+        </details>
+
+        <!-- Sanfona com Excedente e Incentivo -->
+        <details class="param-accordion" open style="margin-top: 10px;">
+          <summary>Excedente Mensal &amp; Incentivo Veicular</summary>
+          <div class="accordion-body">
+
+            <!-- Excedente Mensal: Quantidade * (Tarifa + Unitário) -->
+            <div class="form-group">
+              <label class="form-label">
+                Excedente (Limite, Tarifa R$, Unitário R$):
+              </label>
+              <div class="form-grid-3">
+                <input type="number" id="inputExcedenteLimite" class="form-input" placeholder="Limite" value="500" title="Limite Base Mensal (500 eqp)" />
+                <input type="number" id="inputExcedenteTarifa" class="form-input" placeholder="Tarifa R$" value="10.75" step="0.05" title="Tarifa Contratual" />
+                <input type="number" id="inputExcedenteUnit" class="form-input" placeholder="Unit R$" value="3.50" step="0.05" title="Valor Unitário Excedente" />
+              </div>
+              <span style="font-size: 11px; color: #64748b; display: block; margin-top: 4px;">
+                Fórmula Mensal: <code>qtd &times; (tarifa + unitário)</code> = R$ 14,25 por equipamento acima de 500.
+              </span>
+            </div>
+
+            <!-- Incentivo Veicular -->
+            <div class="form-group">
+              <label class="form-label">
+                Incentivo Veicular (Valor Base R$):
+              </label>
+              <input type="number" id="inputIncentivoBase" class="form-input" value="1000.00" step="50" />
+              <span style="font-size: 11px; color: #64748b; display: block; margin-top: 4px;">
+                Média das 4 categorias &ge; 100%: R$ 1.000 | 90-99%: R$ 750 | &lt; 90%: R$ 0,00.
+              </span>
+            </div>
+
+          </div>
+        </details>
+
+        <div style="margin-top: 14px; display: flex; justify-content: flex-end;">
+          <button type="button" id="btnRefreshDashboard" class="btn btn-primary" style="font-size: 12.5px; padding: 7px 16px; display: flex; align-items: center; gap: 6px;" title="Recalcula e atualiza o relatório">
+            🔄 Atualizar Relatório
+          </button>
+        </div>
+      </section>
+
+    </aside>
+
+    <!-- Área Direita: Visualização do Relatório Oficial (Formato A4) -->
+    <section class="preview-viewport">
+      <div class="preview-toolbar">
+        <span class="preview-info">📄 Pré-visualização do Relatório Oficial Mensal (Formato A4)</span>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button type="button" class="btn btn-primary" id="btnQuickPrint" style="font-size: 12px; padding: 6px 12px;">
+            🖨️ Imprimir Página
+          </button>
+        </div>
+      </div>
+
+      <!-- Container do Relatório Gerado Dinamicamente -->
+      <div id="reportContainer">
+        <!-- Renderizado dinamicamente via MensalReportRenderer -->
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Script com o motor do Módulo 03 -->
+  <script src="js/mensal.bundle.js"></script>
+</body>
+</html>
