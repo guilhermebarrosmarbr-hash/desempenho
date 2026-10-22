@@ -58,6 +58,35 @@
         document.getElementById('btnNovoContratoLocacao').addEventListener('click', abrirModalContrato);
         document.getElementById('btnProcessarDistribuicao').addEventListener('click', processarRateio);
 
+        // Delegate: quitar repasse
+        listaDistribuicoesBody.addEventListener('click', (e) => {
+            const btn = e.target.closest('.btn-quitar-repasse');
+            if (btn) window.quitarDistribuicao(btn.dataset.id);
+        });
+
+        // Delegate: editar / excluir imóvel
+        listaImoveisBody.addEventListener('click', (e) => {
+            const btnEditar = e.target.closest('.btn-editar-imovel');
+            if (btnEditar) { window.editarImovel(btnEditar.dataset.id); return; }
+            const btnExcluir = e.target.closest('.btn-excluir-imovel');
+            if (btnExcluir) window.deletarImovel(btnExcluir.dataset.id);
+        });
+
+        // Botão Participantes / Sócios — orienta o usuário sobre o cadastro
+        document.getElementById('btnParticipantesSocios').addEventListener('click', () => {
+            alert(
+                'Para configurar as participações socie tárias de cada imóvel:\n\n' +
+                '1. Acesse o Supabase Studio > tabela "property_participants"\n' +
+                '2. Insira as linhas com:\n' +
+                '   - property_id: UUID do imóvel\n' +
+                '   - person_id: UUID do sócio (tabela "people")\n' +
+                '   - participation_pct: percentual (ex: 50.00 para 50%)\n' +
+                '   - admin_pct: taxa adm (0 se não houver)\n' +
+                '   - valid_from: data de início (YYYY-MM-DD)\n\n' +
+                'O Processador de Rateio usa essas definições automa ticamente.'
+            );
+        });
+
         document.getElementById('formImovel').addEventListener('submit', salvarImovel);
         document.getElementById('formContratoLocacao').addEventListener('submit', salvarContratoLocacao);
     });
@@ -182,7 +211,7 @@
                     <td>${statusBadge}</td>
                     <td>
                         ${d.status !== 'paid' ? `
-                            <button class="btn btn-secondary btn-sm" onclick="window.quitarDistribuicao('${window.BpoUtils.escapeHtml(d.id)}')">
+                            <button class="btn btn-secondary btn-sm btn-quitar-repasse" data-id="${window.BpoUtils.escapeHtml(d.id)}">
                                 Quitar Repasse
                             </button>
                         ` : '<span style="color: var(--text-muted); font-size: 0.8rem;">Concluído</span>'}
@@ -217,10 +246,10 @@
                     <td>${diaVenc}</td>
                     <td><span class="badge badge-success">Ativo</span></td>
                     <td style="display: flex; gap: 6px;">
-                        <button class="btn btn-secondary btn-sm" onclick="window.editarImovel('${window.BpoUtils.escapeHtml(i.id)}')">
+                        <button class="btn btn-secondary btn-sm btn-editar-imovel" data-id="${window.BpoUtils.escapeHtml(i.id)}">
                             ✏️ Editar
                         </button>
-                        <button class="btn btn-danger btn-sm" onclick="window.deletarImovel('${window.BpoUtils.escapeHtml(i.id)}')">
+                        <button class="btn btn-danger btn-sm btn-excluir-imovel" data-id="${window.BpoUtils.escapeHtml(i.id)}">
                             🗑️ Excluir
                         </button>
                     </td>
