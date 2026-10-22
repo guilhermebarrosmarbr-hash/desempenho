@@ -206,10 +206,19 @@
       return Math.min(1.0, Math.max(0.0, real / prev));
     }
 
-    // TODO: [DECISÃO 5.5] O cálculo de excedente considera o limiar fixo de 500 (mensal + semestral realizada > 500) ou deve ser parametrizado por contrato/setor?
+    /**
+     * Calcula a quantidade de equipamentos em excedente por técnico.
+     *
+     * REGRA DE NEGÓCIO (Decisão 5.5 — definitiva):
+     * O contrato de cada técnico prestador (independente do nível LVL_1/2/3)
+     * prevê responsabilidade máxima de 500 equipamentos.
+     * Soma de (PMOC Mensal realizada + PMOC Semestral realizada) > 500
+     * gera excedente faturável pelo unitário configurado (padrão R$ 3,50/unid.).
+     */
     static computeExcedenteQty(mensalRealizada, semestralRealizada) {
+      const LIMITE_EQUIPAMENTOS_PRESTADOR = 500;
       const soma = (Number(mensalRealizada) || 0) + (Number(semestralRealizada) || 0);
-      return soma > 500 ? (soma - 500) : 0;
+      return soma > LIMITE_EQUIPAMENTOS_PRESTADOR ? (soma - LIMITE_EQUIPAMENTOS_PRESTADOR) : 0;
     }
 
     static computeIncentivo(perfMensal, perfSemestral, perfCorretiva, perfEPI, baseValue = 1000.0) {
@@ -1800,11 +1809,22 @@
         ? overrides.incentivoVeicular
         : MeasurementCalculator.computeIncentivo(perfM, perfS, perfC, perfE, 1000.0);
 
-      // TODO: [DECISÃO 5.3] Quando um contrato possui valor explícito cadastrado, ele deve sobrescrever o valor do nível (LVL_1/LVL_2/LVL_3) ou a precedência do nível é mandatória?
+      /**
+       * REGRA DE NEGÓCIO (Decisão 5.3 — definitiva):
+       * O valor base (contractValue) de cada técnico prestador é determinado
+       * exclusivamente pelo seu NÍVEL contratual:
+       *   - Nível 01 (LVL_1): R$ 6.000,00
+       *   - Nível 02 (LVL_2): R$ 5.250,00
+       *   - Nível 03 (LVL_3): R$ 4.250,00
+       * O sistema de pesos (PMOC Mensal 5%, Semestral 50%, Corretiva 40%, EPI 5%)
+       * incide sobre esse valor de nível para calcular o valor reconhecido por tarefa.
+       * Um override manual (campo Valor Base na UI) é permitido apenas para ajuste
+       * pontual — não redefine a regra de nível subjacente.
+       */
       const contractValue = overrides.contractValue !== undefined
         ? overrides.contractValue
         : (() => {
-            if (!resolved.techLevel) return 4250.0;
+            if (!resolved.techLevel) return TECH_LEVELS.LVL_3.value; // fallback: menor nível
             const lvKey = resolved.techLevel.id || 'LVL_3';
             const effLv = getEffectiveLevelValues(this.config);
             return effLv[lvKey] !== undefined ? effLv[lvKey] : resolved.techLevel.value;
