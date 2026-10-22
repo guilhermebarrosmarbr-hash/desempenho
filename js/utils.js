@@ -20,9 +20,20 @@
             .replace(/'/g, '&#039;');
     }
 
+    /**
+     * Retorna a competência atual formatada como MM/YYYY (ex: 10/2026).
+     */
+    function getCurrentCompetence() {
+        const d = new Date();
+        const mes = String(d.getMonth() + 1).padStart(2, '0');
+        const ano = d.getFullYear();
+        return `${mes}/${ano}`;
+    }
+
     global.escapeHtml = escapeHtml;
+    global.getCurrentCompetence = getCurrentCompetence;
 
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { escapeHtml };
+        module.exports = { escapeHtml, getCurrentCompetence };
     }
 })(typeof window !== 'undefined' ? window : globalThis);

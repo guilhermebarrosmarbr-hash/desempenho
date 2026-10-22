@@ -26,17 +26,28 @@ class AuvoClient {
     const url = `${this.baseUrl}${path}`;
     let attempt = 0;
     while (attempt < retries) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
         const res = await fetch(url, { signal: controller.signal });
-        clearTimeout(timeoutId);
-        if (!res.ok) throw new Error(`Auvo API Error: HTTP ${res.status}`);
+        if (!res.ok) {
+          // Erros 4xx são definitivos do cliente e não devem ser retentados
+          if (res.status >= 400 && res.status < 500) {
+            throw new Error(`Auvo API Error: HTTP ${res.status}`);
+          }
+          throw new Error(`Auvo API Error: HTTP ${res.status}`);
+        }
         return await res.json();
       } catch (err) {
         attempt++;
+        // Se foi erro 4xx, propaga imediatamente sem retry
+        if (err.message && err.message.match(/HTTP 4\d\d/)) {
+          throw err;
+        }
         if (attempt >= retries) throw err;
         await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+      } finally {
+        clearTimeout(timeoutId);
       }
     }
   }
@@ -88,12 +99,24 @@ class AuvoService {
   }
 
   /**
-   * Conta equipamentos agendados em uma tarefa (previsto).
-   * Usa equipmentsId (lista de IDs de equipamentos da visita).
+   * Verifica se uma tarefa está finalizada segundo as regras do painel Auvo
    */
-  _countPrevisto(task) {
-    const ids = this._parseJsonArray(task.equipmentsId);
-    return ids.length;
+  isTarefaFinalizada(task) {
+    if (!task) return false;
+    return task.taskStatus === 5 || ([1, 2, 3, 4, 6].includes(task.taskStatus) && !!task.signatureName);
+  }
+
+  /**
+   * Classifica a tarefa em MENSAL, SEMESTRAL, CORRETIVA ou EPI
+   */
+  classificarTarefa(task, categories) {
+    if (!task) return null;
+    const orient = (task.orientation || '').toLowerCase();
+    if (categories.MENSAL.includes(task.taskType) || orient.includes('preventiva mensal') || orient === 'mensal') return 'MENSAL';
+    if (categories.SEMESTRAL.includes(task.taskType) || orient.includes('preventiva semestral') || orient === 'semestral') return 'SEMESTRAL';
+    if (categories.CORRETIVA.includes(task.taskType) || orient.includes('corretiva')) return 'CORRETIVA';
+    if (categories.EPI.includes(task.taskType) || orient.includes('epi') || orient.includes('revisão de epi')) return 'EPI';
+    return null;
   }
 
   /**
@@ -101,20 +124,19 @@ class AuvoService {
    * Usa questionnaires com questionnaireEquipamentId != 0, mas APENAS se a tarefa estiver finalizada.
    */
   _countRealizado(task) {
-    const isFinished = task.taskStatus === 5 || ([1, 2, 3, 4, 6].includes(task.taskStatus) && !!task.signatureName);
-    if (!isFinished) return 0;
-
+    if (!this.isTarefaFinalizada(task)) return 0;
     const qs = this._parseJsonArray(task.questionnaires);
     return qs.filter(q => q.questionnaireEquipamentId && q.questionnaireEquipamentId !== 0).length;
   }
 
   /**
    * Retorna lista de datas (YYYY-MM-DD) dos feriados nacionais do Brasil.
+   * Inclui 20/11 (Dia Nacional de Zumbi e da Consciência Negra - Lei Federal 14.759/2023).
    */
   _getBrazilianHolidays(year) {
     const holidays = [
-      year+'-01-01', year+'-04-21', year+'-05-01', year+'-09-07',
-      year+'-10-12', year+'-11-02', year+'-11-15', year+'-12-25'
+      year + '-01-01', year + '-04-21', year + '-05-01', year + '-09-07',
+      year + '-10-12', year + '-11-02', year + '-11-15', year + '-11-20', year + '-12-25'
     ];
     let a = year % 19; let b = Math.floor(year / 100); let c = year % 100;
     let d = Math.floor(b / 4); let e = b % 4; let f = Math.floor((b + 8) / 25);
@@ -176,9 +198,6 @@ class AuvoService {
       EPI:       [95888]
     };
 
-    const startDateTime = new Date(startDateStr + 'T00:00:00Z').getTime();
-    const endDateTime   = new Date(endDateStr   + 'T23:59:59Z').getTime();
-
     let totalEquipamentosAtivos = 0;
     const rows = [];
 
@@ -198,14 +217,17 @@ class AuvoService {
       
       if (data.collaborators && data.collaborators.length > 0) {
         const companyWords = ['CLIMATIZA', 'REFRIGERA', 'AR CONDICIONADO', 'CM2D', 'SANTO AR'];
-        const companyCollab = data.collaborators.find(c => companyWords.some(w => c.userName.toUpperCase().includes(w)));
+        const companyCollab = data.collaborators.find(c => {
+          const uName = (c && c.userName) ? String(c.userName).toUpperCase() : '';
+          return companyWords.some(w => uName.includes(w));
+        });
         
         if (companyCollab) {
           primaryTechId = companyCollab.userId;
-          primaryTechName = companyCollab.userName;
+          primaryTechName = companyCollab.userName || 'Sem Técnico';
         } else {
           primaryTechId = data.collaborators[0].userId;
-          primaryTechName = data.collaborators[0].userName;
+          primaryTechName = data.collaborators[0].userName || 'Sem Técnico';
         }
       }
 
@@ -232,69 +254,23 @@ class AuvoService {
       let semestralRealizada = 0;
       let corretivasPrevista = 0, corretivasRealizada = 0;
 
-      // Processa tarefas de cada escola
-      (data.schools || []).forEach(school => {
-        (school.tasks || []).forEach(task => {
-          if (!task.taskID || seenTaskIds.has(task.taskID)) return;
-          seenTaskIds.add(task.taskID);
-
-          // Classificação
-          const orient = (task.orientation || '').toLowerCase();
-          let type = null;
-          if (CATEGORIES.MENSAL.includes(task.taskType)    || orient.includes('preventiva mensal')    || orient === 'mensal')    type = 'MENSAL';
-          else if (CATEGORIES.SEMESTRAL.includes(task.taskType) || orient.includes('preventiva semestral') || orient === 'semestral') type = 'SEMESTRAL';
-          else if (CATEGORIES.CORRETIVA.includes(task.taskType) || orient.includes('corretiva'))                                     type = 'CORRETIVA';
-          else if (CATEGORIES.EPI.includes(task.taskType)       || orient.includes('epi') || orient.includes('revisão de epi'))      type = 'EPI';
-          if (!type) return;
-
-          if (type === 'MENSAL' || type === 'SEMESTRAL') {
-            // Realizado = equipamentos com questionário preenchido
-            const real = this._countRealizado(task);
-
-            if (type === 'MENSAL') {
-              mensalRealizada   += real;
-            } else {
-              semestralRealizada += real;
-            }
-          } else if (type === 'CORRETIVA') {
-            // Corretiva: previsto e realizado só são contados se a tarefa foi finalizada (business rule do painel)
-            const isFinished = task.taskStatus === 5 || ([1, 2, 3, 4, 6].includes(task.taskStatus) && !!task.signatureName);
-            if (isFinished) {
-              corretivasPrevista  += 1;
-              corretivasRealizada += 1;
-            }
-          } else if (type === 'EPI') {
-            // EPI: contabilizado apenas para o técnico responsável pelo contrato
-            const taskUserId = task.idUserTo || task.userId;
-            if (taskUserId === primaryTechId) {
-              const isFinished = task.taskStatus === 5 || ([1, 2, 3, 4, 6].includes(task.taskStatus) && !!task.signatureName);
-              if (isFinished) epiRealizada += 1;
-            }
-          }
-        });
-      });
-
-      // Também processa tasks root (nível do contrato) para não perder nada
-      (data.tasks || []).forEach(task => {
-        if (!task.taskID || seenTaskIds.has(task.taskID)) return;
+      const processTask = (task) => {
+        if (!task || !task.taskID || seenTaskIds.has(task.taskID)) return;
         seenTaskIds.add(task.taskID);
 
-        const orient = (task.orientation || '').toLowerCase();
-        let type = null;
-        if (CATEGORIES.MENSAL.includes(task.taskType)    || orient.includes('preventiva mensal')    || orient === 'mensal')    type = 'MENSAL';
-        else if (CATEGORIES.SEMESTRAL.includes(task.taskType) || orient.includes('preventiva semestral') || orient === 'semestral') type = 'SEMESTRAL';
-        else if (CATEGORIES.CORRETIVA.includes(task.taskType) || orient.includes('corretiva'))                                     type = 'CORRETIVA';
-        else if (CATEGORIES.EPI.includes(task.taskType)       || orient.includes('epi') || orient.includes('revisão de epi'))      type = 'EPI';
+        const type = this.classificarTarefa(task, CATEGORIES);
         if (!type) return;
 
         if (type === 'MENSAL' || type === 'SEMESTRAL') {
           const real = this._countRealizado(task);
-          if (type === 'MENSAL') { mensalRealizada += real; }
-          else                   { semestralRealizada += real; }
+          if (type === 'MENSAL') {
+            mensalRealizada += real;
+          } else {
+            semestralRealizada += real;
+          }
         } else if (type === 'CORRETIVA') {
           // Corretiva: previsto e realizado só são contados se a tarefa foi finalizada (business rule do painel)
-          const isFinished = task.taskStatus === 5 || ([1, 2, 3, 4, 6].includes(task.taskStatus) && !!task.signatureName);
-          if (isFinished) {
+          if (this.isTarefaFinalizada(task)) {
             corretivasPrevista  += 1;
             corretivasRealizada += 1;
           }
@@ -302,11 +278,18 @@ class AuvoService {
           // EPI: contabilizado apenas para o técnico responsável pelo contrato
           const taskUserId = task.idUserTo || task.userId;
           if (taskUserId === primaryTechId) {
-            const isFinished = task.taskStatus === 5 || ([1, 2, 3, 4, 6].includes(task.taskStatus) && !!task.signatureName);
-            if (isFinished) epiRealizada += 1;
+            if (this.isTarefaFinalizada(task)) epiRealizada += 1;
           }
         }
+      };
+
+      // Processa tarefas de cada escola
+      (data.schools || []).forEach(school => {
+        (school.tasks || []).forEach(task => processTask(task));
       });
+
+      // Também processa tasks root (nível do contrato) para não perder nada
+      (data.tasks || []).forEach(task => processTask(task));
 
       rows.push({
         setor:               contractName,

@@ -1,42 +1,57 @@
-# Sistema de Medição de Desempenho — Mar Brasil
+# Sistema de Medição de Desempenho e BPO Financeiro — Mar Brasil & Ybox
 
-Sistema web para geração de relatórios PDF de medição e PMOC dos contratos ativos da Mar Brasil.
+Sistema integrado para gestão operacional e financeira do PMOC (Plano de Manutenção, Operação e Controle), relatórios de medição, apuração de tributos, comissões, intermediações, locações e consultas ao PGMEI.
 
-## Contratos Ativos
+---
 
-| Contrato | Órgão | Técnico / Distribuição |
-|---|---|---|
-| STS 36693/22 | SEDUC Santos | 6 Setores (GB, RavTech, RN, GR, CJ, Santo Ar) |
-| CRSN PSP 6018/25 | Coord. Regional de Saúde Norte SP | JR Refrigeração |
-| SMSU PSP 6029/25 | Secretaria Municipal de Segurança Urbana SP | CM2D Refrigeração |
+## 🏛️ Módulos do Sistema
 
-## Como Usar
+### 1. Operacional & Relatórios PMOC
+- **Módulo 01 (`medicao.html`):** Medição Semanal PMOC com gráficos de desempenho, tabela financeira analítica, importação de planilhas e exportação PDF A4.
+- **Módulo 02 (`bpo-financeiro-pgmei`):** Robô de consulta e processamento em lote de DASN-SIMEI via Playwright e fila FIFO.
+- **Módulo 03 (`medicao_mensal.html`):** Apuração de Desempenho Mensal com reconciliação vertical de tarefas (preventivas, corretivas, EPIs e ferramentas).
 
-1. Acesse o sistema via GitHub Pages ou abra o `index.html` localmente
-2. Importe a planilha `.xlsx` ou `.csv` com os dados de medição
-3. Selecione o contrato ou setor no painel lateral
-4. Ajuste os parâmetros financeiros conforme necessário
-5. Clique em **Imprimir / Salvar PDF** para gerar o relatório
+### 2. BPO Financeiro
+- **Módulo 04 (`financeiro/faturamento.html`):** Registro de contratos e lançamentos de faturamento com liquidação atômica de parcelas, recibos e alocações.
+- **Módulo 05 (`financeiro/impostos.html`):** Memória de cálculo de tributos para Simples Nacional (Anexos I, III, IV, V com Fator R) e Lucro Presumido (Base 32% e ISS municipal).
+- **Módulo 06 (`financeiro/comissoes.html`):** Apuração de comissões por regras contratuais com teto fixo/percentual e chave determinística de idempotência.
+- **Módulo 07 (`financeiro/intermediacao.html`):** Gestão de acordos societários e repasses entre empresas (Mar Brasil / Ybox) com gatilhos por faturamento ou recebimento.
+- **Módulo 08 (`financeiro/locacoes.html`):** Controle de patrimônio imobiliário e rateio proporcional com inquilinos e sócios participantes.
+- **Configurações (`financeiro/config.html`):** Parametrização e validação de credenciais do Supabase.
 
-## Estrutura de Arquivos
+---
 
+## 🚀 Como Executar
+
+### Interface Web (Frontend)
+Abra os arquivos HTML diretamente no navegador ou utilize um servidor estático local (como Live Server ou Vercel):
+```bash
+# Abrir tela inicial integrada
+open index.html
 ```
-index.html            — Página principal
-styles.css            — Design system e estilos
-js/app.bundle.js      — Toda a lógica da aplicação (bundle único)
-xlsx.full.min.js      — Biblioteca de leitura de planilhas
-html2pdf.bundle.min.js — Biblioteca de exportação PDF
-planilha_medicao_pmoc_exemplo.csv — Modelo de planilha
+
+### Serviço BPO Financeiro PGMEI (Node/TypeScript)
+```bash
+cd bpo-financeiro-pgmei
+npm install
+npm run build
+npm start
 ```
 
-## Funcionalidades
+### Worker Cloudflare (Proxy WhatsApp / Evolution API)
+```bash
+cd worker
+npx wrangler dev
+```
 
-- ✅ Importação de planilha (`.xlsx`, `.xls`, `.csv`) via drag & drop
-- ✅ Gráficos donut com percentuais de desempenho (PMOC Mensal, Semestral, Corretiva, EPI)
-- ✅ Tabela financeira com cálculo automático de valores reconhecidos
-- ✅ Gestão escalável de contratos, setores e técnicos (persistida no localStorage)
-- ✅ Exportação em PDF de alta qualidade (formato A4)
-- ✅ Envio em Lote via WhatsApp (Integração com Evolution API via Cloudflare Worker)
-- ✅ Funciona 100% offline (bibliotecas embutidas)
+---
 
-Consulte o guia `docs/EVOLUTION_SETUP.md` para configurar a integração do WhatsApp usando o Cloudflare Worker.
+## 🔐 Variáveis de Ambiente & Banco de Dados
+
+1. **Supabase:** Execute o script consolidado `supabase/unified_schema_setup.sql` no Editor SQL do seu painel Supabase.
+2. **Ambiente Local PGMEI:** Crie o arquivo `bpo-financeiro-pgmei/.env` baseado em `bpo-financeiro-pgmei/.env.example`.
+3. **Worker Cloudflare:** Configure as variáveis no painel da Cloudflare ou `wrangler secret`:
+   - `FRONTEND_ACCESS_TOKEN`: Token de autenticação Bearer para o frontend.
+   - `EVOLUTION_API_URL`: URL base da Evolution API.
+   - `EVOLUTION_API_KEY`: Chave de API da instância Evolution.
+   - `EVOLUTION_INSTANCE_NAME`: Nome da instância WhatsApp configurada.

@@ -69,8 +69,19 @@ export default {
         return new Response(JSON.stringify({ error: 'Missing or invalid Authorization header' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
-      const clientToken = authHeader.split(' ')[1];
-      if (clientToken !== env.FRONTEND_ACCESS_TOKEN) {
+      const clientToken = authHeader.split(' ')[1] || '';
+      const expectedToken = env.FRONTEND_ACCESS_TOKEN || '';
+
+      const encoder = new TextEncoder();
+      const a = encoder.encode(clientToken);
+      const b = encoder.encode(expectedToken);
+
+      let isMatch = false;
+      if (a.byteLength === b.byteLength && a.byteLength > 0) {
+        isMatch = crypto.subtle.timingSafeEqual(a, b);
+      }
+
+      if (!isMatch) {
         return new Response(JSON.stringify({ error: 'Unauthorized: Invalid Token' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
