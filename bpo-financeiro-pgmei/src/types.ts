@@ -13,7 +13,6 @@ export type StatusConsulta =
 export type StatusLote =
   | 'CRIADO'
   | 'EM_ANDAMENTO'
-  | 'PAUSADO_AGUARDANDO_HUMANO'
   | 'CONCLUIDO'
   | 'CANCELADO';
 

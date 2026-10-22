@@ -112,13 +112,15 @@ app.get('/api/lotes/:id', (req, res) => {
 
 // 4. Cancelar lote
 app.post('/api/lotes/:id/cancelar', (req, res) => {
-  queue.cancelarLote(req.params.id);
+  const ok = queue.cancelarLote(req.params.id);
+  if (!ok) return res.status(404).json({ erro: 'Lote não encontrado.' });
   res.json({ mensagem: 'Solicitação de cancelamento enviada.' });
 });
 
 // 5. Notificar resolução de intervenção humana (CAPTCHA resolvido pelo operador)
 app.post('/api/consultas/:id/liberar-humano', (req, res) => {
-  queue.resolverIntervencaoHumana(req.params.id);
+  const ok = queue.resolverIntervencaoHumana(req.params.id);
+  if (!ok) return res.status(404).json({ erro: 'Consulta não encontrada ou não aguarda intervenção humana.' });
   res.json({ mensagem: 'Intervenção humana confirmada. Retomando consulta...' });
 });
 

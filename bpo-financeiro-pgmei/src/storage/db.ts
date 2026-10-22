@@ -8,7 +8,7 @@ const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || '';
 async function syncToSupabase(table: string, payload: any) {
   try {
     if (!SUPABASE_URL || !SUPABASE_KEY) return;
-    await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
       method: 'POST',
       headers: {
         'apikey': SUPABASE_KEY,
@@ -18,8 +18,31 @@ async function syncToSupabase(table: string, payload: any) {
       },
       body: JSON.stringify(payload)
     });
-  } catch (err) {
-    // Falha silenciosa para não quebrar operação offline/local
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error(`[DB-Sync] Erro ao sincronizar com Supabase (${table}): HTTP ${response.status} - ${errText}`);
+    }
+  } catch (err: any) {
+    console.error(`[DB-Sync] Falha na requisição para o Supabase (${table}):`, err.message);
+  }
+}
+
+async function deleteFromSupabase(table: string, id: string) {
+  try {
+    if (!SUPABASE_URL || !SUPABASE_KEY) return;
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`
+      }
+    });
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error(`[DB-Sync] Erro ao deletar no Supabase (${table}): HTTP ${response.status} - ${errText}`);
+    }
+  } catch (err: any) {
+    console.error(`[DB-Sync] Falha ao deletar no Supabase (${table}):`, err.message);
   }
 }
 
@@ -97,17 +120,6 @@ export class DatabaseStore {
       const tempFile = `${this.prestadoresFile}.tmp`;
       fs.writeFileSync(tempFile, JSON.stringify(data, null, 2), 'utf8');
       fs.renameSync(tempFile, this.prestadoresFile);
-
-      // Sincroniza cada prestador com a nuvem Supabase
-      data.forEach(p => {
-        syncToSupabase('mei_providers', {
-          id: p.id,
-          razao_social: p.razaoSocial,
-          cnpj: p.cnpj,
-          ativo: true,
-          updated_at: new Date().toISOString()
-        });
-      });
     } catch (err) {
       console.error('[DB] Erro ao salvar prestadores:', err);
     }
@@ -129,6 +141,13 @@ export class DatabaseStore {
     if (existente) {
       existente.razaoSocial = razaoSocial.trim();
       this.savePrestadores();
+      syncToSupabase('mei_providers', {
+        id: existente.id,
+        razao_social: existente.razaoSocial,
+        cnpj: existente.cnpj,
+        ativo: true,
+        updated_at: new Date().toISOString()
+      });
       return existente;
     }
 
@@ -140,6 +159,13 @@ export class DatabaseStore {
     };
     this.prestadores.set(novo.id, novo);
     this.savePrestadores();
+    syncToSupabase('mei_providers', {
+      id: novo.id,
+      razao_social: novo.razaoSocial,
+      cnpj: novo.cnpj,
+      ativo: true,
+      updated_at: new Date().toISOString()
+    });
     return novo;
   }
 
@@ -147,6 +173,7 @@ export class DatabaseStore {
     const deleted = this.prestadores.delete(id);
     if (deleted) {
       this.savePrestadores();
+      deleteFromSupabase('mei_providers', id);
     }
     return deleted;
   }
@@ -196,12 +223,6 @@ export class DatabaseStore {
     // Recalcula totais
     lote.concluidas = lote.consultas.filter(c => c.status === 'CONCLUIDO').length;
     lote.falhas = lote.consultas.filter(c => c.status === 'FALHOU').length;
-
-    // Se todas concluídas/falhadas/canceladas, encerra lote
-    const pendentes = lote.consultas.filter(c => c.status === 'NA_FILA' || c.status === 'EM_PROCESSAMENTO' || c.status === 'AGUARDANDO_VERIFICACAO_HUMANA').length;
-    if (pendentes === 0 && lote.status === 'EM_ANDAMENTO') {
-      lote.status = 'CONCLUIDO';
-    }
 
     this.save();
   }
