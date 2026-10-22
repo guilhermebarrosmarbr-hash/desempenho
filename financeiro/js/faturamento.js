@@ -80,6 +80,17 @@
                 alert('Selecione ou cadastre uma empresa primeiro.');
                 return;
             }
+            // Popula dropdown de contratos
+            const selContrato = document.getElementById('docContrato');
+            selContrato.innerHTML = '<option value="">— Sem vínculo de contrato —</option>';
+            contratos.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = `${c.code} — ${c.name}`;
+                selContrato.appendChild(opt);
+            });
+            document.getElementById('formNovoDocumento').reset();
+            selContrato.value = '';
             abrirModal(modalDocumento);
         });
 
@@ -248,6 +259,8 @@
         listaDocumentosBody.innerHTML = documentos.map(doc => {
             const statusBadge = getStatusBadge(doc.status);
             const podeReceber = doc.status !== 'paid' && doc.status !== 'cancelled';
+            const contrato = contratos.find(c => c.id === doc.contract_id);
+            const contratoLabel = contrato ? `${contrato.code} — ${contrato.name}` : '<span style="color:var(--text-muted);font-size:0.8rem;">Sem contrato</span>';
 
             return `
                 <tr>
@@ -255,7 +268,7 @@
                         ${doc.document_number}
                         <span style="font-size: 0.75rem; color: var(--text-muted); display: block;">${doc.document_type.toUpperCase()}</span>
                     </td>
-                    <td>Cliente Padrão / PMOC</td>
+                    <td>${contratoLabel}</td>
                     <td>${formatarData(doc.issue_date)}</td>
                     <td>${formatarData(doc.due_date)}</td>
                     <td>${window.BpoMoney.formatBRL(doc.gross_amount)}</td>
@@ -412,6 +425,7 @@
         const retCents = window.BpoMoney.toCents(document.getElementById('docRetencoes').value);
         const liqCents = brutoCents - retCents;
         const descricao = document.getElementById('docDescricao').value.trim();
+        const contratoId = document.getElementById('docContrato').value || null;
 
         const payload = {
             company_id: empresaAtiva.id,
@@ -424,7 +438,8 @@
             retentions: window.BpoMoney.toDecimalString(retCents),
             net_amount: window.BpoMoney.toDecimalString(liqCents),
             description: descricao,
-            status: 'emitted'
+            status: 'emitted',
+            contract_id: contratoId
         };
 
         try {

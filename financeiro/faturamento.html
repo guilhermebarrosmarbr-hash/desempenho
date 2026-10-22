@@ -65,9 +65,8 @@
         <!-- Seção de Ações Rápidas -->
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
             <div style="display: flex; gap: 12px;">
-                <button class="btn btn-primary" id="btnNovoDocumento">+ Emitir / Registrar Documento</button>
+                <button class="btn btn-primary" id="btnNovoDocumento">+ Criar Lançamento</button>
                 <button class="btn btn-secondary" id="btnNovoContrato">+ Novo Contrato</button>
-                <button class="btn btn-secondary" id="btnNovoCliente">+ Cadastrar Cliente</button>
             </div>
             <div>
                 <a href="config.html" class="btn btn-secondary btn-sm">⚙ Conexão Supabase</a>
@@ -190,13 +189,20 @@
         </div>
     </div>
 
-    <!-- MODAL: Novo Documento de Faturamento -->
+    <!-- MODAL: Criar Lançamento de Faturamento -->
     <div class="modal-overlay" id="modalDocumento">
         <div class="modal-card" style="max-width: 680px;">
-            <h2 class="card-title" style="margin-bottom: 8px;">Registrar Documento de Faturamento</h2>
-            <p class="card-subtitle" style="margin-bottom: 20px;">Lançamento de NFS-e, fatura de medição ou recibo emitido.</p>
+            <h2 class="card-title" style="margin-bottom: 8px;">Criar Lançamento</h2>
+            <p class="card-subtitle" style="margin-bottom: 20px;">Registre um lançamento de NFS-e, fatura de medição ou recibo vinculado a um contrato.</p>
             
             <form id="formNovoDocumento">
+                <div style="margin-bottom: 16px;">
+                    <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Contrato Vinculado</label>
+                    <select id="docContrato" class="select-control" style="width: 100%;">
+                        <option value="">— Sem vínculo de contrato —</option>
+                    </select>
+                </div>
+
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
                     <div>
                         <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Tipo de Documento</label>
@@ -246,7 +252,7 @@
 
                 <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
                     <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">Gravar Documento</button>
+                    <button type="submit" class="btn btn-primary">Gravar Lançamento</button>
                 </div>
             </form>
         </div>
