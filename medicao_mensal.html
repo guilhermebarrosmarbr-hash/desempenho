@@ -246,18 +246,28 @@
         return;
       }
       try {
-        const hoje = new Date();
-        const ano = hoje.getFullYear();
-        const mes = String(hoje.getMonth() + 1).padStart(2, '0');
-        const competencia = `${ano}-${mes}`;
+        const app = window.mensalApp;
+        const model = app && app.model ? app.model : {};
+        const meta = model.metadata || {};
+        const res = model.calcResult || {};
+        
+        const competencia = meta.competencia || (() => {
+          const hoje = new Date();
+          return `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
+        })();
         
         const payload = {
           competence_month: competencia,
-          prestador_nome: 'Prestador PMOC Mensal',
-          categoria: 'CONSOLIDADO',
+          prestador_nome: meta.prestador || 'GB CLIMATIZAÇÃO',
+          categoria: meta.setor || 'CONSOLIDADO',
+          taxa_conclusao: res.geral ? parseFloat((res.geral.taxaConclusao * 100).toFixed(2)) : null,
+          valor_excedente: res.excedente?.valorReconhecido || 0.0,
+          incentivo_veicular: res.incentivo?.reconhecido || 0.0,
+          total_apurado: res.totalApurado || 0.0,
           report_data: {
             timestamp: new Date().toISOString(),
-            origem: 'medicao_mensal'
+            origem: 'medicao_mensal',
+            model: model
           }
         };
 

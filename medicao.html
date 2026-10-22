@@ -608,6 +608,7 @@
   </div>
 
   <!-- Script Principal Universal (Compatível com file:// direto e HTTP) -->
+  <script src="js/utils.js"></script>
   <script src="financeiro/js/supabase.js"></script>
   <script src="js/auvo.js"></script>
   <script src="js/app.bundle.js"></script>
@@ -618,14 +619,26 @@
         return;
       }
       try {
-        const periodo = document.getElementById('reportPeriodTitle')?.innerText || 'Medição Semanal PMOC';
+        const app = window.appInstance;
+        const state = app && app.state ? app.state : {};
+        const periodo = state.periodLabel || document.getElementById('reportPeriodTitle')?.innerText || 'Medição Semanal PMOC';
+        
+        const totalPrev = (state.pmocMensal?.prevista || 0) + (state.pmocSemestral?.prevista || 0) + (state.corretiva?.prevista || 0);
+        const totalReal = (state.pmocMensal?.realizada || 0) + (state.pmocSemestral?.realizada || 0) + (state.corretiva?.realizada || 0);
+        const totalPend = totalPrev > totalReal ? totalPrev - totalReal : 0;
+
         const payload = {
           period_label: periodo,
+          total_tasks: totalPrev,
+          total_completed: totalReal,
+          total_pending: totalPend,
           report_data: {
             timestamp: new Date().toISOString(),
-            origem: 'medicao_semanal_pmoc'
+            origem: 'medicao_semanal_pmoc',
+            state: state
           }
         };
+
         await window.BpoSupabase.request('weekly_performance_reports', {
           method: 'POST',
           body: JSON.stringify(payload)

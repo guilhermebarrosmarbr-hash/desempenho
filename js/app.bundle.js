@@ -206,6 +206,7 @@
       return Math.min(1.0, Math.max(0.0, real / prev));
     }
 
+    // TODO: [DECISÃO 5.5] O cálculo de excedente considera o limiar fixo de 500 (mensal + semestral realizada > 500) ou deve ser parametrizado por contrato/setor?
     static computeExcedenteQty(mensalRealizada, semestralRealizada) {
       const soma = (Number(mensalRealizada) || 0) + (Number(semestralRealizada) || 0);
       return soma > 500 ? (soma - 500) : 0;
@@ -248,10 +249,10 @@
       const perfCorretiva = this.computePerformance(corretiva.prevista, corretiva.realizada);
       const perfEPI = this.computePerformance(epi.prevista, epi.realizada);
 
-      const baseMensal = contractValue * (Number(pmocMensal.peso) || 0.05);
-      const baseSemestral = contractValue * (Number(pmocSemestral.peso) || 0.50);
-      const baseCorretiva = contractValue * (Number(corretiva.peso) || 0.40);
-      const baseEPI = contractValue * (Number(epi.peso) || 0.05);
+      const baseMensal = contractValue * (pmocMensal.peso !== undefined && !isNaN(pmocMensal.peso) ? Number(pmocMensal.peso) : 0.05);
+      const baseSemestral = contractValue * (pmocSemestral.peso !== undefined && !isNaN(pmocSemestral.peso) ? Number(pmocSemestral.peso) : 0.50);
+      const baseCorretiva = contractValue * (corretiva.peso !== undefined && !isNaN(corretiva.peso) ? Number(corretiva.peso) : 0.40);
+      const baseEPI = contractValue * (epi.peso !== undefined && !isNaN(epi.peso) ? Number(epi.peso) : 0.05);
 
       const recMensal = baseMensal * perfMensal;
       const recSemestral = baseSemestral * perfSemestral;
@@ -484,7 +485,8 @@
       const initial = {
         company: 'Mar Brasil',
         technicians: JSON.parse(JSON.stringify(INITIAL_TECHNICIANS)),
-        contracts: JSON.parse(JSON.stringify(INITIAL_CONTRACTS))
+        contracts: JSON.parse(JSON.stringify(INITIAL_CONTRACTS)),
+        levelValues: { LVL_1: 6000, LVL_2: 5250, LVL_3: 4250 }
       };
       this.save(initial);
       return initial;
@@ -669,10 +671,26 @@
     static parseNumber(val) {
       if (val === null || val === undefined || val === '') return 0;
       if (typeof val === 'number') return isNaN(val) ? 0 : val;
-      const cleaned = String(val)
-        .replace(/[R$\s%]/g, '')
-        .replace(/\./g, '')
-        .replace(',', '.');
+      const str = String(val).replace(/[R$\s%]/g, '').trim();
+      let cleaned = str;
+      if (str.includes(',') && str.includes('.')) {
+        // Ex: 1.250,50 -> remove . e troca , por .
+        cleaned = str.replace(/\./g, '').replace(',', '.');
+      } else if (str.includes(',')) {
+        cleaned = str.replace(',', '.');
+      } else if (str.includes('.')) {
+        // Se houver mais de um ponto (ex: 1.250.000) é milhar
+        const parts = str.split('.');
+        if (parts.length > 2) {
+          cleaned = str.replace(/\./g, '');
+        } else if (parts[1].length === 3) {
+          // Ex: "1.250" com 3 dígitos após ponto é tipicamente milhar no Brasil
+          cleaned = str.replace(/\./g, '');
+        } else {
+          // Ex: "1.5" ou "10.75" mantém como decimal
+          cleaned = str;
+        }
+      }
       const num = parseFloat(cleaned);
       return isNaN(num) ? 0 : num;
     }
@@ -1615,6 +1633,18 @@
         });
 
         tr.querySelector('[data-action="delete-tech"]').addEventListener('click', () => {
+          const associatedContracts = (this.config.contracts || []).filter(c => {
+            if (c.technicianId === tech.id) return true;
+            if (c.sectors && c.sectors.some(s => s.technicianId === tech.id)) return true;
+            return false;
+          });
+
+          if (associatedContracts.length > 0) {
+            const names = associatedContracts.map(c => c.code || c.clientName).join(', ');
+            alert(`Não é possível excluir o técnico ${tech.name} pois ele está vinculado ao(s) contrato(s): ${names}. Reatribua antes de excluir.`);
+            return;
+          }
+
           if (confirm(`Excluir o técnico ${tech.name}?`)) {
             this.config.technicians = this.config.technicians.filter(t => t.id !== tech.id);
             ContractStore.save(this.config);
@@ -1770,6 +1800,7 @@
         ? overrides.incentivoVeicular
         : MeasurementCalculator.computeIncentivo(perfM, perfS, perfC, perfE, 1000.0);
 
+      // TODO: [DECISÃO 5.3] Quando um contrato possui valor explícito cadastrado, ele deve sobrescrever o valor do nível (LVL_1/LVL_2/LVL_3) ou a precedência do nível é mandatória?
       const contractValue = overrides.contractValue !== undefined
         ? overrides.contractValue
         : (() => {
@@ -1819,6 +1850,7 @@
         technicianName: resolved.technicianName,
         sectorDisplayName: resolved.sectorDisplayName,
         sectorCode: row.setor,
+        equipamentosAtivos: row.equipamentosAtivos,
         contractValue,
         pmocMensal,
         pmocSemestral,
@@ -1897,6 +1929,7 @@
         const contractId = val.replace('CONTRACT_', '');
         const contract = this.config.contracts.find(c => c.id === contractId);
         if (contract) {
+          this.state = JSON.parse(JSON.stringify(DEFAULT_REPORT_DATA));
           this.state.contractBadge = `CONTRATO ${contract.code}`;
           this.state.contractTitle = `Medição de Desempenho - ${contract.company || 'Mar Brasil'}`;
           this.state.contractSubtitle = contract.description;
@@ -1931,8 +1964,13 @@
               acc.semestralRealizada  += row.semestralRealizada;
               acc.corretivasPrevista  += row.corretivasPrevista;
               acc.corretivasRealizada += row.corretivasRealizada;
+              if (row.epiPrevista != null) {
+                acc.epiPrevista += row.epiPrevista;
+                acc.epiRealizada += (row.epiRealizada || 0);
+                acc.hasEpi = true;
+              }
               return acc;
-            }, { equipamentosAtivos:0, mensalPrevista:0, mensalRealizada:0, semestralPrevista:0, semestralRealizada:0, corretivasPrevista:0, corretivasRealizada:0 });
+            }, { equipamentosAtivos:0, mensalPrevista:0, mensalRealizada:0, semestralPrevista:0, semestralRealizada:0, corretivasPrevista:0, corretivasRealizada:0, epiPrevista:0, epiRealizada:0, hasEpi:false });
 
             this.state.pmocMensal.prevista      = totals.mensalPrevista;
             this.state.pmocMensal.realizada     = totals.mensalRealizada;
@@ -1940,6 +1978,11 @@
             this.state.pmocSemestral.realizada  = totals.semestralRealizada;
             this.state.corretiva.prevista       = totals.corretivasPrevista;
             this.state.corretiva.realizada      = totals.corretivasRealizada;
+
+            if (totals.hasEpi) {
+              this.state.epi.prevista = totals.epiPrevista;
+              this.state.epi.realizada = totals.epiRealizada;
+            }
 
             this.state.excedente.quantidade = MeasurementCalculator.computeExcedenteQty(totals.mensalRealizada, totals.semestralRealizada);
 
@@ -2064,19 +2107,31 @@
 
       if (this.inputMensalPrevista) this.inputMensalPrevista.value = this.state.pmocMensal.prevista;
       if (this.inputMensalRealizada) this.inputMensalRealizada.value = this.state.pmocMensal.realizada;
-      if (this.inputMensalPeso) this.inputMensalPeso.value = Math.round((this.state.pmocMensal.peso || 0.05) * 100);
+      if (this.inputMensalPeso) {
+        const w = this.state.pmocMensal.peso;
+        this.inputMensalPeso.value = Math.round((w !== undefined && !isNaN(w) ? w : 0.05) * 100);
+      }
 
       if (this.inputSemestralPrevista) this.inputSemestralPrevista.value = this.state.pmocSemestral.prevista;
       if (this.inputSemestralRealizada) this.inputSemestralRealizada.value = this.state.pmocSemestral.realizada;
-      if (this.inputSemestralPeso) this.inputSemestralPeso.value = Math.round((this.state.pmocSemestral.peso || 0.50) * 100);
+      if (this.inputSemestralPeso) {
+        const w = this.state.pmocSemestral.peso;
+        this.inputSemestralPeso.value = Math.round((w !== undefined && !isNaN(w) ? w : 0.50) * 100);
+      }
 
       if (this.inputCorretivaPrevista) this.inputCorretivaPrevista.value = this.state.corretiva.prevista;
       if (this.inputCorretivaRealizada) this.inputCorretivaRealizada.value = this.state.corretiva.realizada;
-      if (this.inputCorretivaPeso) this.inputCorretivaPeso.value = Math.round((this.state.corretiva.peso || 0.40) * 100);
+      if (this.inputCorretivaPeso) {
+        const w = this.state.corretiva.peso;
+        this.inputCorretivaPeso.value = Math.round((w !== undefined && !isNaN(w) ? w : 0.40) * 100);
+      }
 
       if (this.inputEpiPrevista) this.inputEpiPrevista.value = this.state.epi.prevista;
       if (this.inputEpiRealizada) this.inputEpiRealizada.value = this.state.epi.realizada;
-      if (this.inputEpiPeso) this.inputEpiPeso.value = Math.round((this.state.epi.peso || 0.05) * 100);
+      if (this.inputEpiPeso) {
+        const w = this.state.epi.peso;
+        this.inputEpiPeso.value = Math.round((w !== undefined && !isNaN(w) ? w : 0.05) * 100);
+      }
 
       if (this.epiSectorBadge) {
         if (this.state.epi && this.state.epi.isCustom) {
@@ -2115,19 +2170,31 @@
 
       if (this.inputMensalPrevista) this.state.pmocMensal.prevista = parseInt(this.inputMensalPrevista.value, 10) || 0;
       if (this.inputMensalRealizada) this.state.pmocMensal.realizada = parseInt(this.inputMensalRealizada.value, 10) || 0;
-      if (this.inputMensalPeso) this.state.pmocMensal.peso = (parseFloat(this.inputMensalPeso.value) || 5) / 100;
+      if (this.inputMensalPeso) {
+        const val = parseFloat(this.inputMensalPeso.value);
+        this.state.pmocMensal.peso = (!isNaN(val) ? val : 5) / 100;
+      }
 
       if (this.inputSemestralPrevista) this.state.pmocSemestral.prevista = parseInt(this.inputSemestralPrevista.value, 10) || 0;
       if (this.inputSemestralRealizada) this.state.pmocSemestral.realizada = parseInt(this.inputSemestralRealizada.value, 10) || 0;
-      if (this.inputSemestralPeso) this.state.pmocSemestral.peso = (parseFloat(this.inputSemestralPeso.value) || 50) / 100;
+      if (this.inputSemestralPeso) {
+        const val = parseFloat(this.inputSemestralPeso.value);
+        this.state.pmocSemestral.peso = (!isNaN(val) ? val : 50) / 100;
+      }
 
       if (this.inputCorretivaPrevista) this.state.corretiva.prevista = parseInt(this.inputCorretivaPrevista.value, 10) || 0;
       if (this.inputCorretivaRealizada) this.state.corretiva.realizada = parseInt(this.inputCorretivaRealizada.value, 10) || 0;
-      if (this.inputCorretivaPeso) this.state.corretiva.peso = (parseFloat(this.inputCorretivaPeso.value) || 40) / 100;
+      if (this.inputCorretivaPeso) {
+        const val = parseFloat(this.inputCorretivaPeso.value);
+        this.state.corretiva.peso = (!isNaN(val) ? val : 40) / 100;
+      }
 
       if (this.inputEpiPrevista) this.state.epi.prevista = parseInt(this.inputEpiPrevista.value, 10) || 0;
       if (this.inputEpiRealizada) this.state.epi.realizada = parseInt(this.inputEpiRealizada.value, 10) || 0;
-      if (this.inputEpiPeso) this.state.epi.peso = (parseFloat(this.inputEpiPeso.value) || 5) / 100;
+      if (this.inputEpiPeso) {
+        const val = parseFloat(this.inputEpiPeso.value);
+        this.state.epi.peso = (!isNaN(val) ? val : 5) / 100;
+      }
 
       if (this.inputExcedenteQtd) this.state.excedente.quantidade = parseInt(this.inputExcedenteQtd.value, 10) || 0;
       if (this.inputExcedenteTarifa) this.state.excedente.tarifa = parseFloat(this.inputExcedenteTarifa.value) || 10.75;
@@ -2149,8 +2216,22 @@
         if (this.inputIncentivoRec) this.state.incentivoVeicular.reconhecido = parseFloat(this.inputIncentivoRec.value) || 0;
       }
 
+      let equipCount = this.state.equipamentosAtivos;
+      if (equipCount === undefined || equipCount === null) {
+        if (this.contractSectorSelect) {
+          const val = this.contractSectorSelect.value;
+          if (val.startsWith('ROW_') && this.spreadsheetData?.rows) {
+            const idx = parseInt(val.replace('ROW_', ''), 10);
+            equipCount = this.spreadsheetData.rows[idx]?.equipamentosAtivos;
+          }
+        }
+      }
+      if (equipCount === undefined || equipCount === null) {
+        equipCount = this.state.pmocMensal.prevista;
+      }
+
       this.updateQuickStats({
-        equipamentos: this.state.pmocMensal.prevista,
+        equipamentos: equipCount,
         mensalPrev: this.state.pmocMensal.prevista,
         mensalReal: this.state.pmocMensal.realizada,
         semestralPrev: this.state.pmocSemestral.prevista,
@@ -2331,6 +2412,7 @@
 
     initWhatsAppEvents() {
       const closeModals = () => {
+        if (this.isWaBatchSending) return;
         if (this.whatsAppModal) this.whatsAppModal.classList.remove('active');
         if (this.whatsAppConfirmModal) this.whatsAppConfirmModal.classList.remove('active');
         if (this.whatsAppConfigModal) this.whatsAppConfigModal.classList.remove('active');
@@ -2346,6 +2428,7 @@
       [this.whatsAppModal, this.whatsAppConfirmModal, this.whatsAppConfigModal].forEach(m => {
         if (m) {
           m.addEventListener('click', (e) => {
+            if (this.isWaBatchSending) return;
             if (e.target === m) m.classList.remove('active');
           });
         }
@@ -2466,10 +2549,13 @@
               headers: { 'Authorization': `Bearer ${token}` }
             });
             if (res.ok) {
-              const data = await res.json();
-              if (this.workerStatusBadge) {
-                this.workerStatusBadge.textContent = '✅ Conectado à Evolution API';
+              const data = await res.json().catch(() => ({}));
+              if (data && (data.status === 'ok' || data.status === 'open' || data.status === 'CONNECTING' || data.status === 'CONNECTED')) {
+                this.workerStatusBadge.textContent = '✅ Conectado ao Worker / API';
                 this.workerStatusBadge.style.color = '#16a34a';
+              } else {
+                this.workerStatusBadge.textContent = `⚠️ Worker OK (Status: ${data.status || 'indisponível'})`;
+                this.workerStatusBadge.style.color = '#ca8a04';
               }
             } else {
               if (this.workerStatusBadge) {
@@ -2720,6 +2806,7 @@
         this.waLogBox.style.display = 'block';
         this.waLogBox.innerHTML = '';
       }
+      this.isWaBatchSending = true;
       if (this.waProgressContainer) this.waProgressContainer.style.display = 'block';
       if (this.btnStartBatchSend) {
         this.btnStartBatchSend.disabled = true;
@@ -2731,33 +2818,36 @@
       const isTestMode = this.chkTestMode ? this.chkTestMode.checked : false;
       this.logWaEvent(`🚀 INICIANDO LOTE: ${this.waQueue.length} relatórios (Modo Teste: ${isTestMode ? 'SIM' : 'NÃO'}).`, 'info');
 
-      for (let i = 0; i < this.waQueue.length; i++) {
-        const item = this.waQueue[i];
-        const percent = Math.round((i / this.waQueue.length) * 100);
-        if (this.waProgressBar) this.waProgressBar.style.width = `${percent}%`;
-        if (this.waProgressPercent) this.waProgressPercent.textContent = `${percent}%`;
-        if (this.waProgressLabel) this.waProgressLabel.textContent = `Processando ${item.row.setor} (${i+1}/${this.waQueue.length})...`;
+      try {
+        for (let i = 0; i < this.waQueue.length; i++) {
+          const item = this.waQueue[i];
+          const percent = Math.round((i / this.waQueue.length) * 100);
+          if (this.waProgressBar) this.waProgressBar.style.width = `${percent}%`;
+          if (this.waProgressPercent) this.waProgressPercent.textContent = `${percent}%`;
+          if (this.waProgressLabel) this.waProgressLabel.textContent = `Processando ${item.row.setor} (${i+1}/${this.waQueue.length})...`;
 
-        await this.processSingleWaItem(item, isTestMode);
+          await this.processSingleWaItem(item, isTestMode);
 
-        if (i < this.waQueue.length - 1) {
-          const delay = Math.floor(Math.random() * (10000 - 4000 + 1)) + 4000;
-          this.logWaEvent(`⏱️ Aguardando ${(delay/1000).toFixed(1)}s por segurança anti-bloqueio...`, 'info');
-          await new Promise(r => setTimeout(r, delay));
+          if (i < this.waQueue.length - 1) {
+            const delay = Math.floor(Math.random() * (10000 - 4000 + 1)) + 4000;
+            this.logWaEvent(`⏱️ Aguardando ${(delay/1000).toFixed(1)}s por segurança anti-bloqueio...`, 'info');
+            await new Promise(r => setTimeout(r, delay));
+          }
         }
+      } finally {
+        this.isWaBatchSending = false;
+        if (this.waProgressBar) this.waProgressBar.style.width = '100%';
+        if (this.waProgressPercent) this.waProgressPercent.textContent = '100%';
+        if (this.waProgressLabel) this.waProgressLabel.textContent = '✅ Envio em Lote Concluído';
+        
+        if (this.btnStartBatchSend) {
+          this.btnStartBatchSend.disabled = false;
+          this.btnStartBatchSend.textContent = `📲 Enviar Selecionados (${this.waQueue.length})`;
+        }
+        if (this.btnCloseWhatsAppModal) this.btnCloseWhatsAppModal.style.display = 'block';
+        if (this.btnCloseWhatsAppModalBottom) this.btnCloseWhatsAppModalBottom.style.display = 'block';
+        this.logWaEvent('🏁 Processamento finalizado.', 'info');
       }
-
-      if (this.waProgressBar) this.waProgressBar.style.width = '100%';
-      if (this.waProgressPercent) this.waProgressPercent.textContent = '100%';
-      if (this.waProgressLabel) this.waProgressLabel.textContent = '✅ Envio em Lote Concluído';
-      
-      if (this.btnStartBatchSend) {
-        this.btnStartBatchSend.disabled = false;
-        this.btnStartBatchSend.textContent = `📲 Enviar Selecionados (${this.waQueue.length})`;
-      }
-      if (this.btnCloseWhatsAppModal) this.btnCloseWhatsAppModal.style.display = 'block';
-      if (this.btnCloseWhatsAppModalBottom) this.btnCloseWhatsAppModalBottom.style.display = 'block';
-      this.logWaEvent('🏁 Processamento finalizado.', 'info');
     }
 
     async processSingleWaItem(item, isTestMode) {
