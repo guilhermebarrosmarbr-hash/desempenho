@@ -57,6 +57,20 @@
         document.getElementById('btnRegrasContrato').addEventListener('click', abrirModalRegras);
         document.getElementById('btnCalcularComissoes').addEventListener('click', processarApuracaoComissoes);
 
+        // Delegate: quitar comissão
+        listaComissoesBody.addEventListener('click', (e) => {
+            const btn = e.target.closest('.btn-quitar-comissao');
+            if (btn) window.quitarComissao(btn.dataset.id);
+        });
+
+        // Delegate: editar / excluir colaborador
+        listaColaboradoresBody.addEventListener('click', (e) => {
+            const btnEditar = e.target.closest('.btn-editar-colab');
+            if (btnEditar) { window.editarColaborador(btnEditar.dataset.id); return; }
+            const btnExcluir = e.target.closest('.btn-excluir-colab');
+            if (btnExcluir) window.deletarColaborador(btnExcluir.dataset.id);
+        });
+
         document.getElementById('formColaborador').addEventListener('submit', salvarColaborador);
         document.getElementById('formRegra').addEventListener('submit', salvarRegraContrato);
     });
@@ -170,7 +184,7 @@
                     <td>${statusBadge}</td>
                     <td>
                         ${c.status !== 'paid' ? `
-                            <button class="btn btn-secondary btn-sm" onclick="window.quitarComissao('${c.id}')">
+                            <button class="btn btn-secondary btn-sm btn-quitar-comissao" data-id="${c.id}">
                                 Quitar
                             </button>
                         ` : '<span style="color: var(--text-muted); font-size: 0.8rem;">Liquidado</span>'}
@@ -200,10 +214,10 @@
                 <td>${c.role}</td>
                 <td><span class="badge badge-success">Ativo</span></td>
                 <td style="display: flex; gap: 6px;">
-                    <button class="btn btn-secondary btn-sm" onclick="window.editarColaborador('${c.id}')">
+                    <button class="btn btn-secondary btn-sm btn-editar-colab" data-id="${c.id}">
                         ✏️ Editar
                     </button>
-                    <button class="btn btn-danger btn-sm" onclick="window.deletarColaborador('${c.id}')">
+                    <button class="btn btn-danger btn-sm btn-excluir-colab" data-id="${c.id}">
                         🗑️ Excluir
                     </button>
                 </td>
