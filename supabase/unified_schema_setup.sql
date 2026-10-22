@@ -1,6 +1,6 @@
 -- ==============================================================================
 -- UNIFIED_SCHEMA_SETUP.SQL
--- Script unificado para executar no SQL Editor do Supabase Dashboard
+-- Script unificado consolidado gerado a partir das migrações 001..007
 -- BPO Financeiro: Estrutura Completa de Tabelas (Módulos 01 a 08)
 -- ==============================================================================
 
@@ -28,6 +28,15 @@ CREATE TABLE IF NOT EXISTS companies (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
 );
 
+CREATE TABLE IF NOT EXISTS user_company_roles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL,
+    company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    role VARCHAR(50) NOT NULL DEFAULT 'financeiro',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+    CONSTRAINT uq_user_company UNIQUE (user_id, company_id)
+);
+
 CREATE TABLE IF NOT EXISTS people (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
@@ -47,21 +56,25 @@ CREATE TABLE IF NOT EXISTS people (
 CREATE TABLE IF NOT EXISTS contracts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
-    client_id UUID NOT NULL REFERENCES people(id) ON DELETE RESTRICT,
+    client_id UUID REFERENCES people(id) ON DELETE RESTRICT, -- NULLABLE conforme 006
     code VARCHAR(50) NOT NULL,
     name VARCHAR(255) NOT NULL,
     object TEXT,
-    start_date DATE NOT NULL,
+    start_date DATE, -- NULLABLE conforme 006
     end_date DATE,
     status VARCHAR(50) NOT NULL DEFAULT 'active',
     reference_value NUMERIC(15,2) NOT NULL DEFAULT 0.00,
     billing_frequency VARCHAR(20) NOT NULL DEFAULT 'monthly',
     activity_type VARCHAR(100),
+    tax_profile_id UUID,
+    municipality_code VARCHAR(10),
     commission_eligible BOOLEAN NOT NULL DEFAULT false,
     commission_basis VARCHAR(20) DEFAULT 'net_proportional',
     commission_cap_type VARCHAR(20) DEFAULT 'none',
     commission_cap_value NUMERIC(15,2) DEFAULT 0.00,
     intermediation_eligible BOOLEAN NOT NULL DEFAULT false,
+    intermediation_agreement_id UUID,
+    property_id UUID,
     notes TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
@@ -86,9 +99,12 @@ CREATE TABLE IF NOT EXISTS billing_documents (
     status VARCHAR(50) NOT NULL DEFAULT 'emitted',
     cancelled_at TIMESTAMPTZ,
     cancellation_reason TEXT,
+    replaces_id UUID REFERENCES billing_documents(id) ON DELETE SET NULL,
     attachment_path TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+    CONSTRAINT chk_net_amount CHECK (net_amount = (gross_amount - discounts - retentions)),
+    CONSTRAINT uq_billing_documents_series_number UNIQUE (company_id, document_type, series, document_number)
 );
 
 CREATE TABLE IF NOT EXISTS billing_installments (
@@ -110,6 +126,7 @@ CREATE TABLE IF NOT EXISTS receipts (
     account VARCHAR(100) NOT NULL,
     comprovante_path TEXT,
     idempotency_key VARCHAR(100) UNIQUE,
+    external_id VARCHAR(100),
     notes TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
 );
@@ -155,6 +172,8 @@ CREATE TABLE IF NOT EXISTS tax_assessments (
     company_id UUID NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
     competence_month CHAR(7) NOT NULL,
     period_type VARCHAR(20) NOT NULL DEFAULT 'monthly',
+    regime VARCHAR(50),
+    annex VARCHAR(10),
     status VARCHAR(50) NOT NULL DEFAULT 'draft',
     rbt12 NUMERIC(15,2) DEFAULT 0.00,
     factor_r NUMERIC(6,4) DEFAULT 0.0000,
@@ -162,7 +181,8 @@ CREATE TABLE IF NOT EXISTS tax_assessments (
     calculated_tax NUMERIC(15,2) NOT NULL DEFAULT 0.00,
     effective_rate NUMERIC(6,4) DEFAULT 0.0000,
     confirmed_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+    CONSTRAINT uq_tax_assessments_competence UNIQUE (company_id, competence_month, period_type)
 );
 
 -- 4. COMISSÕES (Módulo 06)
@@ -192,7 +212,7 @@ CREATE TABLE IF NOT EXISTS commission_calculations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
     collaborator_id UUID NOT NULL REFERENCES collaborators(id) ON DELETE RESTRICT,
-    contract_id UUID NOT NULL REFERENCES contracts(id) ON DELETE RESTRICT,
+    contract_id UUID REFERENCES contracts(id) ON DELETE SET NULL, -- NULLABLE conforme 007
     document_id UUID REFERENCES billing_documents(id) ON DELETE SET NULL,
     competence_month CHAR(7) NOT NULL,
     event_date DATE NOT NULL,
@@ -219,6 +239,7 @@ CREATE TABLE IF NOT EXISTS intermediation_agreements (
 
 CREATE TABLE IF NOT EXISTS intermediation_calculations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID REFERENCES companies(id) ON DELETE RESTRICT, -- Adicionado conforme 007
     agreement_id UUID NOT NULL REFERENCES intermediation_agreements(id) ON DELETE RESTRICT,
     contract_id UUID REFERENCES contracts(id) ON DELETE SET NULL,
     document_id UUID REFERENCES billing_documents(id) ON DELETE SET NULL,
@@ -254,6 +275,7 @@ CREATE TABLE IF NOT EXISTS property_participants (
 
 CREATE TABLE IF NOT EXISTS rental_contracts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID REFERENCES companies(id) ON DELETE RESTRICT, -- Adicionado conforme 007
     property_id UUID NOT NULL REFERENCES properties(id) ON DELETE RESTRICT,
     tenant_id UUID NOT NULL REFERENCES people(id) ON DELETE RESTRICT,
     start_date DATE NOT NULL,
@@ -266,6 +288,7 @@ CREATE TABLE IF NOT EXISTS rental_contracts (
 
 CREATE TABLE IF NOT EXISTS rental_distributions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID REFERENCES companies(id) ON DELETE RESTRICT, -- Adicionado conforme 007
     property_id UUID NOT NULL REFERENCES properties(id) ON DELETE RESTRICT,
     participant_id UUID NOT NULL REFERENCES people(id) ON DELETE RESTRICT,
     competence_month CHAR(7) NOT NULL,
@@ -291,11 +314,6 @@ CREATE TABLE IF NOT EXISTS audit_log (
     new_data JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
 );
-
--- INSERIR GRUPO INICIAL DEFAULT
-INSERT INTO groups (id, name) 
-VALUES ('00000000-0000-0000-0000-000000000001', 'Grupo Principal')
-ON CONFLICT (id) DO NOTHING;
 
 -- 8. PERSISTÊNCIA DOS MÓDULOS 01, 02 E 03
 CREATE TABLE IF NOT EXISTS weekly_performance_reports (
@@ -325,13 +343,12 @@ CREATE TABLE IF NOT EXISTS mei_providers (
 
 CREATE TABLE IF NOT EXISTS mei_query_batches (
     id VARCHAR(100) PRIMARY KEY,
-    competencias JSONB,
+    ano INT,
     status VARCHAR(50) NOT NULL DEFAULT 'PENDENTE',
-    total INT DEFAULT 0,
-    concluidos INT DEFAULT 0,
+    total_consultas INT DEFAULT 0,
+    concluidas INT DEFAULT 0,
     falhas INT DEFAULT 0,
     consultas JSONB,
-    zip_path TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
 );
@@ -350,3 +367,18 @@ CREATE TABLE IF NOT EXISTS monthly_performance_reports (
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
 );
 
+-- ÍNDICES PRINCIPAIS
+CREATE INDEX IF NOT EXISTS idx_contracts_company ON contracts(company_id);
+CREATE INDEX IF NOT EXISTS idx_billing_company_competence ON billing_documents(company_id, competence_month);
+CREATE INDEX IF NOT EXISTS idx_billing_contract ON billing_documents(contract_id);
+CREATE INDEX IF NOT EXISTS idx_installments_document ON billing_installments(document_id);
+CREATE INDEX IF NOT EXISTS idx_receipts_company ON receipts(company_id);
+CREATE INDEX IF NOT EXISTS idx_receipt_allocations_inst ON receipt_allocations(installment_id);
+CREATE INDEX IF NOT EXISTS idx_commissions_company_competence ON commission_calculations(company_id, competence_month);
+CREATE INDEX IF NOT EXISTS idx_intermediation_company ON intermediation_calculations(company_id, competence_month);
+CREATE INDEX IF NOT EXISTS idx_rental_dist_company ON rental_distributions(company_id, competence_month);
+
+-- INSERIR GRUPO INICIAL DEFAULT
+INSERT INTO groups (id, name) 
+VALUES ('00000000-0000-0000-0000-000000000001', 'Grupo Principal')
+ON CONFLICT (id) DO NOTHING;

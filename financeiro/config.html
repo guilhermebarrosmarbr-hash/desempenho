@@ -161,7 +161,7 @@
                         statusIndicator.className = 'status-badge connected';
                         statusIndicator.innerHTML = '● Conectado (Aguardando Migrações)';
                         feedbackMsg.style.color = '#fbbf24';
-                        feedbackMsg.innerText = 'Conectou ao Supabase com sucesso! As credenciais foram salvas. Execute o script de migração no SQL Editor.';
+                        feedbackMsg.innerText = 'Conectou ao Supabase com sucesso! As credenciais foram salvas. Execute o script supabase/unified_schema_setup.sql no SQL Editor do Supabase.';
                         return;
                     }
                     throw new Error(`Erro Supabase (${response.status}): ${errBody}`);
