@@ -204,9 +204,20 @@
             const queryDocs = `billing_documents?company_id=eq.${empresaAtiva.id}&competence_month=eq.${competenciaAtiva}&order=issue_date.desc`;
             documentos = await window.BpoSupabase.request(queryDocs, { method: 'GET' });
 
-            // Busca contratos ativos da empresa
-            const queryContratos = `contracts?company_id=eq.${empresaAtiva.id}&status=eq.active&order=name.asc`;
-            contratos = await window.BpoSupabase.request(queryContratos, { method: 'GET' });
+            // Busca clientes cadastrados para join real
+            let clientesMap = new Map();
+            try {
+                const clientes = await window.BpoSupabase.request(`people?company_id=eq.${empresaAtiva.id}`, { method: 'GET' });
+                clientes.forEach(p => clientesMap.set(p.id, p.name));
+            } catch (e) {}
+
+            // Busca contratos da empresa e anexa o nome real do cliente
+            const queryContratos = `contracts?company_id=eq.${empresaAtiva.id}&order=name.asc`;
+            const contratosDb = await window.BpoSupabase.request(queryContratos, { method: 'GET' });
+            contratos = contratosDb.map(c => ({
+                ...c,
+                _clientName: (c.client_id && clientesMap.get(c.client_id)) || ''
+            }));
 
             renderizarMetricas();
             renderizarDocumentos();
@@ -222,7 +233,8 @@
         let retencoesTotal = 0n;
         let recebidoTotal = 0n;
 
-        documentos.forEach(doc => {
+        // Exclui cancelados das métricas financeiras
+        documentos.filter(d => d.status !== 'cancelled').forEach(doc => {
             const bCents = window.BpoMoney.toCents(doc.gross_amount);
             const rCents = window.BpoMoney.toCents(doc.retentions);
             const lCents = window.BpoMoney.toCents(doc.net_amount);
@@ -249,7 +261,7 @@
             listaDocumentosBody.innerHTML = `
                 <tr>
                     <td colspan="9" style="text-align: center; color: var(--text-muted); padding: 32px;">
-                        Nenhum documento de faturamento emitido na competência ${competenciaAtiva}.
+                        Nenhum documento de faturamento emitido na competência ${escapeHtml(competenciaAtiva)}.
                     </td>
                 </tr>
             `;
@@ -260,24 +272,29 @@
             const statusBadge = getStatusBadge(doc.status);
             const podeReceber = doc.status !== 'paid' && doc.status !== 'cancelled';
             const contrato = contratos.find(c => c.id === doc.contract_id);
-            const contratoLabel = contrato ? `${contrato.code} — ${contrato.name}` : '<span style="color:var(--text-muted);font-size:0.8rem;">Sem contrato</span>';
+            const clientLabel = (contrato && contrato._clientName) 
+                ? escapeHtml(contrato._clientName)
+                : (contrato ? escapeHtml(contrato.name) : '<span style="color:var(--text-muted);font-size:0.8rem;">Sem cliente vinculado</span>');
 
             return `
                 <tr>
                     <td style="font-weight: 600; color: #fff;">
-                        ${doc.document_number}
-                        <span style="font-size: 0.75rem; color: var(--text-muted); display: block;">${doc.document_type.toUpperCase()}</span>
+                        ${escapeHtml(doc.document_number)}
+                        <span style="font-size: 0.75rem; color: var(--text-muted); display: block;">${escapeHtml(doc.document_type.toUpperCase())}</span>
                     </td>
-                    <td>${contratoLabel}</td>
-                    <td>${formatarData(doc.issue_date)}</td>
-                    <td>${formatarData(doc.due_date)}</td>
-                    <td>${window.BpoMoney.formatBRL(doc.gross_amount)}</td>
-                    <td style="color: var(--color-danger);">${window.BpoMoney.formatBRL(doc.retentions)}</td>
-                    <td style="font-weight: 700; color: #fff;">${window.BpoMoney.formatBRL(doc.net_amount)}</td>
+                    <td>${clientLabel}</td>
+                    <td>${escapeHtml(formatarData(doc.issue_date))}</td>
+                    <td>${escapeHtml(formatarData(doc.due_date))}</td>
+                    <td>${escapeHtml(window.BpoMoney.formatBRL(doc.gross_amount))}</td>
+                    <td style="color: var(--color-danger);">${escapeHtml(window.BpoMoney.formatBRL(doc.retentions))}</td>
+                    <td style="font-weight: 700; color: #fff;">${escapeHtml(window.BpoMoney.formatBRL(doc.net_amount))}</td>
                     <td>${statusBadge}</td>
                     <td>
                         ${podeReceber ? `
-                            <button class="btn btn-secondary btn-sm" onclick="window.abrirModalRecebimento('${doc.id}', '${doc.document_number}', '${doc.net_amount}')">
+                            <button class="btn btn-secondary btn-sm btn-dar-baixa" 
+                                data-id="${escapeHtml(doc.id)}" 
+                                data-numero="${escapeHtml(doc.document_number)}" 
+                                data-liquido="${escapeHtml(doc.net_amount)}">
                                 Dar Baixa
                             </button>
                         ` : '<span style="color: var(--text-muted); font-size: 0.8rem;">Concluído</span>'}
@@ -285,36 +302,57 @@
                 </tr>
             `;
         }).join('');
+
+        // Event listener desacoplado sem onclick inline
+        listaDocumentosBody.querySelectorAll('.btn-dar-baixa').forEach(btn => {
+            btn.addEventListener('click', () => {
+                window.abrirModalRecebimento(btn.dataset.id, btn.dataset.numero, btn.dataset.liquido);
+            });
+        });
     }
 
     function renderizarContratos() {
         if (contratos.length === 0) {
             listaContratosBody.innerHTML = `
                 <tr>
-                    <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 24px;">
-                        Nenhum contrato ativo cadastrado para ${empresaAtiva.name}.
+                    <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">
+                        Nenhum contrato cadastrado para ${escapeHtml(empresaAtiva.name)}.
                     </td>
                 </tr>
             `;
             return;
         }
 
-        // Renderiza contratos com opções de edição e exclusão
-        listaContratosBody.innerHTML = contratos.map(c => `
-            <tr>
-                <td style="font-weight: 600; color: #fff;">${c.code}</td>
-                <td>${c.name}</td>
-                <td>Cliente Geral</td>
-                <td>${window.BpoMoney.formatBRL(c.reference_value)}</td>
-                <td>${c.billing_frequency}</td>
-                <td>${c.commission_eligible ? 'Sim' : 'Não'}</td>
-                <td><span class="badge badge-success">Ativo</span></td>
-                <td>
-                    <button class="btn btn-primary btn-sm" onclick="window.editarContrato('${c.id}')">Editar</button>
-                    <button class="btn btn-danger btn-sm" onclick="window.deletarContrato('${c.id}')">Excluir</button>
-                </td>
-            </tr>
-        `).join('');
+        // Renderiza contratos com cliente real via join e 8 colunas exatas
+        listaContratosBody.innerHTML = contratos.map(c => {
+            const clienteExibicao = c._clientName ? escapeHtml(c._clientName) : '<span style="color:var(--text-muted);font-size:0.85rem;">Não informado</span>';
+            const statusBadge = c.status === 'active' 
+                ? '<span class="badge badge-success">Ativo</span>' 
+                : `<span class="badge badge-warning">${escapeHtml(c.status)}</span>`;
+
+            return `
+                <tr>
+                    <td style="font-weight: 600; color: #fff;">${escapeHtml(c.code)}</td>
+                    <td>${escapeHtml(c.name)}</td>
+                    <td>${clienteExibicao}</td>
+                    <td>${escapeHtml(window.BpoMoney.formatBRL(c.reference_value))}</td>
+                    <td>${escapeHtml(c.billing_frequency)}</td>
+                    <td>${c.commission_eligible ? 'Sim' : 'Não'}</td>
+                    <td>${statusBadge}</td>
+                    <td>
+                        <button class="btn btn-primary btn-sm btn-editar-contrato" data-id="${escapeHtml(c.id)}">Editar</button>
+                        <button class="btn btn-danger btn-sm btn-excluir-contrato" data-id="${escapeHtml(c.id)}">Excluir</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        listaContratosBody.querySelectorAll('.btn-editar-contrato').forEach(btn => {
+            btn.addEventListener('click', () => window.editarContrato(btn.dataset.id));
+        });
+        listaContratosBody.querySelectorAll('.btn-excluir-contrato').forEach(btn => {
+            btn.addEventListener('click', () => window.deletarContrato(btn.dataset.id));
+        });
     }
 
     function getStatusBadge(status) {
@@ -465,33 +503,112 @@
         const valorCents = window.BpoMoney.toCents(document.getElementById('recValor').value);
         const conta = document.getElementById('recConta').value;
 
+        // (a) Validação de valor
+        if (valorCents <= 0n) {
+            alert('O valor do recebimento deve ser maior que zero.');
+            return;
+        }
+
+        const doc = documentos.find(d => d.id === docId);
+        if (!doc) {
+            alert('Documento de faturamento não encontrado.');
+            return;
+        }
+
+        const docNetCents = window.BpoMoney.toCents(doc.net_amount);
+        if (valorCents > docNetCents) {
+            alert(`O valor informado (${window.BpoMoney.formatBRL(valorCents)}) não pode ser superior ao valor líquido do documento (${window.BpoMoney.formatBRL(docNetCents)}).`);
+            return;
+        }
+
+        // (e) Idempotency key determinística
+        const idempotencyKey = `rec_${docId}_${dataCredito}_${window.BpoMoney.toDecimalString(valorCents)}`;
+
+        let createdReceiptId = null;
+        let createdInstallmentId = null;
+        let createdAllocationId = null;
+
         try {
-            // 1. Registra recebimento
+            // (c) Vincular receipts ao documento via external_id ou notes
             const recPayload = {
                 company_id: empresaAtiva.id,
                 receipt_date: dataCredito,
                 gross_amount: window.BpoMoney.toDecimalString(valorCents),
                 account: conta,
-                idempotency_key: `rec_${docId}_${Date.now()}`,
-                notes: 'Baixa direta via Módulo 04'
+                idempotency_key: idempotencyKey,
+                external_id: docId,
+                notes: `Baixa do documento ${doc.document_number}`
             };
 
-            await window.BpoSupabase.request('receipts', {
+            const recRes = await window.BpoSupabase.request('receipts', {
                 method: 'POST',
                 body: JSON.stringify(recPayload)
             });
+            if (recRes && recRes[0]) {
+                createdReceiptId = recRes[0].id;
+            }
 
-            // 2. Atualiza status do documento para 'paid'
+            // (b) Criar billing_installments
+            const isFullPayment = valorCents === docNetCents;
+            const instPayload = {
+                document_id: docId,
+                installment_number: 1,
+                due_date: doc.due_date,
+                gross_amount: window.BpoMoney.toDecimalString(docNetCents),
+                paid_amount: window.BpoMoney.toDecimalString(valorCents),
+                status: isFullPayment ? 'paid' : 'partially_paid'
+            };
+
+            const instRes = await window.BpoSupabase.request('billing_installments', {
+                method: 'POST',
+                body: JSON.stringify(instPayload)
+            });
+            if (instRes && instRes[0]) {
+                createdInstallmentId = instRes[0].id;
+            }
+
+            // (b) Criar receipt_allocations
+            if (createdReceiptId && createdInstallmentId) {
+                const allocPayload = {
+                    receipt_id: createdReceiptId,
+                    installment_id: createdInstallmentId,
+                    allocated_principal: window.BpoMoney.toDecimalString(valorCents),
+                    allocated_interest: '0.00',
+                    allocated_discount: '0.00',
+                    allocated_retention: '0.00'
+                };
+                const allocRes = await window.BpoSupabase.request('receipt_allocations', {
+                    method: 'POST',
+                    body: JSON.stringify(allocPayload)
+                });
+                if (allocRes && allocRes[0]) {
+                    createdAllocationId = allocRes[0].id;
+                }
+            }
+
+            // (d) Marcar paid ou partially_paid conforme o valor
+            const novoStatus = isFullPayment ? 'paid' : 'partially_paid';
             await window.BpoSupabase.request(`billing_documents?id=eq.${docId}`, {
                 method: 'PATCH',
-                body: JSON.stringify({ status: 'paid' })
+                body: JSON.stringify({ status: novoStatus })
             });
 
             fecharModais();
             await carregarDadosCompetencia();
-            alert('Recebimento liquidado com sucesso!');
+            alert(`Recebimento liquidado com sucesso! Documento marcado como: ${novoStatus === 'paid' ? 'Liquidado' : 'Parcial'}`);
 
         } catch (err) {
+            // (f) Rollback manual atômico em caso de falha
+            console.error('Falha ao processar baixa financeira, executando rollback manual:', err);
+            if (createdAllocationId) {
+                try { await window.BpoSupabase.request(`receipt_allocations?id=eq.${createdAllocationId}`, { method: 'DELETE' }); } catch(e){}
+            }
+            if (createdInstallmentId) {
+                try { await window.BpoSupabase.request(`billing_installments?id=eq.${createdInstallmentId}`, { method: 'DELETE' }); } catch(e){}
+            }
+            if (createdReceiptId) {
+                try { await window.BpoSupabase.request(`receipts?id=eq.${createdReceiptId}`, { method: 'DELETE' }); } catch(e){}
+            }
             alert('Erro ao liquidar recebimento: ' + err.message);
         }
     }
@@ -567,12 +684,12 @@
                 reference_value: window.BpoMoney.toDecimalString(valorCents),
                 billing_frequency: periodicidade,
                 commission_eligible: comissao,
-                status: 'active',
                 ...(clientId && { client_id: clientId }),
                 ...(startDate && { start_date: startDate })
             };
 
             if (idExistente) {
+                // Ao editar, NÃO redefine o status (mantém o status atual do contrato)
                 await window.BpoSupabase.request(`contracts?id=eq.${idExistente}`, {
                     method: 'PATCH',
                     body: JSON.stringify(payload)
@@ -583,7 +700,7 @@
             } else {
                 await window.BpoSupabase.request('contracts', {
                     method: 'POST',
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify({ ...payload, status: 'active' })
                 });
                 fecharModais();
                 await carregarDadosCompetencia();

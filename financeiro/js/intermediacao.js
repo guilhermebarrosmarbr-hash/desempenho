@@ -88,9 +88,9 @@
                 { method: 'GET' }
             );
 
-            // 2. Repasses calculados da competência
+            // 2. Repasses calculados da competência filtrados pela empresa pagadora
             repasses = await window.BpoSupabase.request(
-                `intermediation_calculations?competence_month=eq.${competenciaAtiva}&order=created_at.desc`,
+                `intermediation_calculations?company_id=eq.${empresaPagadoraAtiva.id}&competence_month=eq.${competenciaAtiva}&order=created_at.desc`,
                 { method: 'GET' }
             );
 
@@ -119,10 +119,19 @@
             }
         });
 
+        // Calcula taxa média ponderada de verdade
+        let taxaMediaStr = '0.00%';
+        if (baseTotal > 0n) {
+            const taxaMediaNum = Number(apuradoTotal * 10000n / baseTotal) / 100;
+            taxaMediaStr = `${taxaMediaNum.toFixed(2)}%`;
+        } else if (acordos.length > 0) {
+            taxaMediaStr = `${parseFloat(acordos[0].rate).toFixed(2)}%`;
+        }
+
         valBaseIntermediacao.textContent = window.BpoMoney.formatBRL(baseTotal);
         valTotalApurado.textContent = window.BpoMoney.formatBRL(apuradoTotal);
         valRepassesLiquidados.textContent = window.BpoMoney.formatBRL(liquidadoTotal);
-        valTaxaMedia.textContent = acordos.length > 0 ? `${acordos[0].rate}%` : '10.00%';
+        valTaxaMedia.textContent = taxaMediaStr;
     }
 
     function renderizarExtrato() {
@@ -130,7 +139,7 @@
             listaIntermediacaoBody.innerHTML = `
                 <tr>
                     <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 32px;">
-                        Nenhum repasse intercompany apurado na competência ${competenciaAtiva}. Clique em "Processar Repasses".
+                        Nenhum repasse intercompany apurado na competência ${escapeHtml(competenciaAtiva)}. Clique em "Processar Repasses".
                     </td>
                 </tr>
             `;
@@ -142,18 +151,23 @@
                 ? '<span class="badge badge-success">Repassado</span>' 
                 : '<span class="badge badge-warning">A Faturar / Repassar</span>';
 
+            // Localiza o acordo para pegar a empresa recebedora real
+            const acordo = acordos.find(a => a.id === r.agreement_id);
+            const empresaRecebedora = acordo ? empresas.find(e => e.id === acordo.receiver_company_id) : null;
+            const nomeRecebedora = empresaRecebedora ? escapeHtml(empresaRecebedora.name) : 'Empresa Parceira';
+
             return `
                 <tr>
-                    <td style="font-weight: 700; color: #fff;">${r.competence_month}</td>
-                    <td>${empresaPagadoraAtiva.name}</td>
-                    <td>DZM / Ybox (Parceira)</td>
-                    <td>${window.BpoMoney.formatBRL(r.base_amount)}</td>
-                    <td style="color: var(--color-warning);">${r.rate}%</td>
-                    <td style="font-weight: 700; color: #fff;">${window.BpoMoney.formatBRL(r.intermediation_amount)}</td>
+                    <td style="font-weight: 700; color: #fff;">${escapeHtml(r.competence_month)}</td>
+                    <td>${escapeHtml(empresaPagadoraAtiva.name)}</td>
+                    <td>${nomeRecebedora}</td>
+                    <td>${escapeHtml(window.BpoMoney.formatBRL(r.base_amount))}</td>
+                    <td style="color: var(--color-warning);">${escapeHtml(r.rate)}%</td>
+                    <td style="font-weight: 700; color: #fff;">${escapeHtml(window.BpoMoney.formatBRL(r.intermediation_amount))}</td>
                     <td>${statusBadge}</td>
                     <td>
                         ${r.status !== 'paid' ? `
-                            <button class="btn btn-secondary btn-sm" onclick="window.quitarRepasse('${r.id}')">
+                            <button class="btn btn-secondary btn-sm btn-quitar-repasse" data-id="${escapeHtml(r.id)}">
                                 Quitar Repasse
                             </button>
                         ` : '<span style="color: var(--text-muted); font-size: 0.8rem;">Concluído</span>'}
@@ -161,6 +175,10 @@
                 </tr>
             `;
         }).join('');
+
+        listaIntermediacaoBody.querySelectorAll('.btn-quitar-repasse').forEach(btn => {
+            btn.addEventListener('click', () => window.quitarRepasse(btn.dataset.id));
+        });
     }
 
     function renderizarAcordos() {
@@ -179,11 +197,11 @@
             const rec = empresas.find(e => e.id === a.receiver_company_id) || { name: 'Empresa Parceira' };
             return `
                 <tr>
-                    <td style="font-weight: 600; color: #fff;">${empresaPagadoraAtiva.name}</td>
-                    <td>${rec.name}</td>
-                    <td style="color: var(--color-warning); font-weight: 700;">${a.rate}%</td>
+                    <td style="font-weight: 600; color: #fff;">${escapeHtml(empresaPagadoraAtiva.name)}</td>
+                    <td>${escapeHtml(rec.name)}</td>
+                    <td style="color: var(--color-warning); font-weight: 700;">${escapeHtml(a.rate)}%</td>
                     <td>${a.event_trigger === 'billing' ? 'Emissão de NFS-e' : 'Liquidação no Caixa'}</td>
-                    <td>Desde ${a.valid_from}</td>
+                    <td>Desde ${escapeHtml(a.valid_from)}</td>
                     <td><span class="badge badge-success">Vigente</span></td>
                 </tr>
             `;
@@ -194,8 +212,8 @@
         const selPag = document.getElementById('acordoPagadora');
         const selRec = document.getElementById('acordoRecebedora');
 
-        selPag.innerHTML = empresas.map(e => `<option value="${e.id}">${e.name}</option>`).join('');
-        selRec.innerHTML = empresas.map(e => `<option value="${e.id}">${e.name}</option>`).join('');
+        selPag.innerHTML = empresas.map(e => `<option value="${escapeHtml(e.id)}">${escapeHtml(e.name)}</option>`).join('');
+        selRec.innerHTML = empresas.map(e => `<option value="${escapeHtml(e.id)}">${escapeHtml(e.name)}</option>`).join('');
 
         if (empresaPagadoraAtiva) {
             selPag.value = empresaPagadoraAtiva.id;
@@ -251,19 +269,31 @@
                 return;
             }
 
-            // Pega primeiro acordo ou cria padrão
-            let acordoId = acordos.length > 0 ? acordos[0].id : null;
-            const taxa = acordos.length > 0 ? acordos[0].rate : 10.0;
+            // Seleciona acordos vigentes na competência (valid_from <= fim do mês e valid_until >= início do mês)
+            const hoje = new Date().toISOString().split('T')[0];
+            const acordosVigentes = acordos.filter(a => {
+                const validoDe = a.valid_from <= hoje;
+                const validoAte = !a.valid_until || a.valid_until >= hoje;
+                return validoDe && validoAte;
+            });
 
-            if (!acordoId) {
-                alert('Configure um acordo de intermediação primeiro.');
+            if (acordosVigentes.length === 0) {
+                alert('Nenhum acordo de intermediação vigente para esta empresa.');
                 abrirModalAcordo();
                 return;
             }
 
-            let gerados = 0;
+            const acordo = acordosVigentes[0];
+            const taxa = parseFloat(acordo.rate);
+            const lotesCalculos = [];
+
             for (const d of docs) {
                 if (d.status === 'cancelled') continue;
+
+                // Respeita event_trigger: se for 'receipt', só processa documentos pagos ou parcialmente pagos
+                if (acordo.event_trigger === 'receipt' && d.status !== 'paid' && d.status !== 'partially_paid') {
+                    continue;
+                }
 
                 const baseCents = window.BpoMoney.toCents(d.net_amount);
                 const res = window.BpoCommissionEngine.calcularIntermediacao({
@@ -271,35 +301,39 @@
                     ratePercentage: taxa
                 });
 
-                const idempotencyKey = `inter_${d.id}_${acordoId}`;
+                const idempotencyKey = `inter_${d.id}_${acordo.id}`;
 
-                await window.BpoSupabase.request('intermediation_calculations', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        agreement_id: acordoId,
-                        contract_id: d.contract_id || null,
-                        document_id: d.id,
-                        competence_month: competenciaAtiva,
-                        base_amount: window.BpoMoney.toDecimalString(baseCents),
-                        rate: taxa,
-                        intermediation_amount: window.BpoMoney.toDecimalString(res.intermediacaoCents),
-                        status: 'pending',
-                        idempotency_key: idempotencyKey
-                    })
+                lotesCalculos.push({
+                    company_id: empresaPagadoraAtiva.id,
+                    agreement_id: acordo.id,
+                    contract_id: d.contract_id || null,
+                    document_id: d.id,
+                    competence_month: competenciaAtiva,
+                    base_amount: window.BpoMoney.toDecimalString(baseCents),
+                    rate: taxa,
+                    intermediation_amount: window.BpoMoney.toDecimalString(res.intermediacaoCents),
+                    status: 'pending',
+                    idempotency_key: idempotencyKey
                 });
-                gerados++;
             }
+
+            if (lotesCalculos.length === 0) {
+                alert('Nenhum documento elegível para os critérios do acordo de intermediação.');
+                return;
+            }
+
+            // Upsert em lote com on_conflict=idempotency_key e ignore-duplicates
+            await window.BpoSupabase.request('intermediation_calculations?on_conflict=idempotency_key', {
+                method: 'POST',
+                prefer: 'resolution=ignore-duplicates,return=representation',
+                body: JSON.stringify(lotesCalculos)
+            });
 
             await carregarDadosIntermediacao();
-            alert(`Processamento concluído! ${gerados} repasse(s) calculado(s).`);
+            alert(`Processamento concluído! Lote de repasses avaliado e registrado.`);
 
         } catch (err) {
-            if (err.message.includes('idempotency_key') || err.message.includes('23505')) {
-                alert('Os repasses desta competência já foram processados.');
-                await carregarDadosIntermediacao();
-            } else {
-                alert('Erro ao processar repasses: ' + err.message);
-            }
+            alert('Erro ao processar repasses: ' + err.message);
         }
     }
 

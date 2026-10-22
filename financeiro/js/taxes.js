@@ -77,7 +77,10 @@
             const rbt12Cents = window.BpoMoney.toCents(rbt12);
             const faturamentoCents = window.BpoMoney.toCents(faturamentoMes);
 
-            const tabela = TABELAS_SIMPLES[anexoKey] || TABELAS_SIMPLES.anexo_iii;
+            if (!TABELAS_SIMPLES[anexoKey]) {
+                throw new Error(`Anexo "${anexoKey}" não reconhecido para o Simples Nacional.`);
+            }
+            const tabela = TABELAS_SIMPLES[anexoKey];
             const rbt12Reais = Number(rbt12Cents) / 100;
 
             // Encontra faixa correspondente
@@ -133,7 +136,9 @@
             const csllCents = window.BpoMoney.applyPercentage(fatCents, 2.88);
 
             const totalImpostoCents = pisCents + cofinsCents + issCents + irpjCents + csllCents;
-            const aliquotaTotalEfetiva = Number(totalImpostoCents * 10000n / fatCents) / 100;
+            const aliquotaTotalEfetiva = fatCents > 0n 
+                ? Number(totalImpostoCents * 10000n / fatCents) / 100
+                : (0.65 + 3.00 + aliquotaIssPercent + 4.80 + 2.88);
 
             return {
                 regime: 'lucro_presumido',
@@ -145,6 +150,7 @@
                     csll: { rate: '2.88%', amount: window.BpoMoney.formatBRL(csllCents), cents: csllCents }
                 },
                 aliquotaTotal: aliquotaTotalEfetiva.toFixed(2) + '%',
+                aliquotaEfetivaNumero: aliquotaTotalEfetiva / 100,
                 impostoCents: totalImpostoCents,
                 impostoFormatado: window.BpoMoney.formatBRL(totalImpostoCents)
             };

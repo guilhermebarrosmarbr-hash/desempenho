@@ -10,13 +10,21 @@
             if (typeof val === 'bigint') return val;
             
             let str = String(val).trim();
-            // Remove pontuação de milhar e normaliza vírgula decimal
+            // Remove símbolo de moeda e espaços
             str = str.replace(/R\$\s?/, '').replace(/\s/g, '');
+            
+            // Tratar formato BR "1.250" (ponto como milhar com 3 dígitos) vs "1.5" (decimal com 1 ou 2 dígitos)
             if (str.includes(',') && str.includes('.')) {
-                // Formato brasileiro: 1.250,50
+                // Ex: 1.250,50 -> 1250.50
                 str = str.replace(/\./g, '').replace(',', '.');
             } else if (str.includes(',')) {
+                // Ex: 1250,50 -> 1250.50
                 str = str.replace(',', '.');
+            } else if (str.includes('.')) {
+                // Se houver exatamente 3 dígitos após o ponto (ex: "1.250" ou "12.500"), é milhar brasileiro sem centavos!
+                if (/^\d{1,3}(\.\d{3})+$/.test(str)) {
+                    str = str.replace(/\./g, '');
+                }
             }
 
             const num = parseFloat(str);
@@ -48,11 +56,15 @@
         }
 
         // Multiplica centavos por uma taxa percentual (ex: 5.5% -> taxPercent = 5.5)
-        // Arredondamento banker's rounding / round half-up
+        // Arredonda corretamente números positivos e negativos
         static applyPercentage(cents, percentage) {
             const rateInBasisPoints = BigInt(Math.round(percentage * 10000)); // 5.5% = 55000 bps
-            const result = (cents * rateInBasisPoints + 500000n) / 1000000n;
-            return result;
+            const prod = cents * rateInBasisPoints;
+            if (prod >= 0n) {
+                return (prod + 500000n) / 1000000n;
+            } else {
+                return (prod - 500000n) / 1000000n;
+            }
         }
     }
 

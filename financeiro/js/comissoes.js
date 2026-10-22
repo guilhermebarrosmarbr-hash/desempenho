@@ -356,25 +356,83 @@
                 return;
             }
 
-            // Exemplo de cálculo: apura comissão dos documentos emitidos para o primeiro colaborador padrão ou regra
-            const colabPadrao = colaboradores[0];
-            let geradas = 0;
+            // Busca regras de comissão dos contratos
+            let regrasComissao = [];
+            try {
+                regrasComissao = await window.BpoSupabase.request('contract_commission_rules', { method: 'GET' });
+            } catch(e) {}
+
+            const lotesComissoes = [];
+            const hoje = new Date().toISOString().split('T')[0];
 
             for (const d of docs) {
                 if (d.status === 'cancelled') continue;
 
-                const baseCents = window.BpoMoney.toCents(d.net_amount);
-                const percentual = 5.0; // 5% regra padrão
-                const res = window.BpoCommissionEngine.calcularComissao({
-                    baseAmount: baseCents,
-                    percentage: percentual
+                // Contrato associado
+                const contrato = contratos.find(c => c.id === d.contract_id);
+                // Se contrato existir mas não for elegível a comissão, pula
+                if (contrato && !contrato.commission_eligible) continue;
+
+                // Regras vinculadas ao contrato e vigentes
+                const regrasDoContrato = regrasComissao.filter(r => {
+                    if (r.contract_id !== d.contract_id) return false;
+                    const de = r.valid_from <= hoje;
+                    const ate = !r.valid_until || r.valid_until >= hoje;
+                    return de && ate;
                 });
 
-                const chaveIdempotente = `com_${d.id}_${colabPadrao.id}`;
+                if (regrasDoContrato.length > 0) {
+                    for (const regra of regrasDoContrato) {
+                        const colabId = regra.collaborator_id;
+                        const percentual = parseFloat(regra.percentage) || 5.0;
+                        const baseType = regra.basis_override || (contrato ? contrato.commission_basis : 'net_proportional');
 
-                await window.BpoSupabase.request('commission_calculations', {
-                    method: 'POST',
-                    body: JSON.stringify({
+                        let baseCents = 0n;
+                        if (baseType === 'gross_invoiced') {
+                            baseCents = window.BpoMoney.toCents(d.gross_amount);
+                        } else {
+                            baseCents = window.BpoMoney.toCents(d.net_amount);
+                        }
+
+                        const capType = contrato ? (contrato.commission_cap_type || 'none') : 'none';
+                        const capValue = contrato ? (contrato.commission_cap_value || 0) : 0;
+
+                        const res = window.BpoCommissionEngine.calcularComissao({
+                            baseAmount: baseCents,
+                            percentage: percentual,
+                            capType,
+                            capValue
+                        });
+
+                        const chaveIdempotente = `com_${d.id}_${colabId}`;
+
+                        lotesComissoes.push({
+                            company_id: empresaAtiva.id,
+                            collaborator_id: colabId,
+                            contract_id: d.contract_id || null,
+                            document_id: d.id,
+                            competence_month: competenciaAtiva,
+                            event_date: d.issue_date,
+                            base_amount: window.BpoMoney.toDecimalString(baseCents),
+                            percentage: percentual,
+                            commission_amount: window.BpoMoney.toDecimalString(res.comissaoCents),
+                            status: 'pending',
+                            idempotency_key: chaveIdempotente
+                        });
+                    }
+                } else if (!contrato || contrato.commission_eligible) {
+                    // Fallback para vendedor padrão caso contrato seja elegível sem regra específica
+                    const colabPadrao = colaboradores[0];
+                    const percentual = 5.0;
+                    const baseCents = window.BpoMoney.toCents(d.net_amount);
+                    const res = window.BpoCommissionEngine.calcularComissao({
+                        baseAmount: baseCents,
+                        percentage: percentual
+                    });
+
+                    const chaveIdempotente = `com_${d.id}_${colabPadrao.id}`;
+
+                    lotesComissoes.push({
                         company_id: empresaAtiva.id,
                         collaborator_id: colabPadrao.id,
                         contract_id: d.contract_id || null,
@@ -386,22 +444,27 @@
                         commission_amount: window.BpoMoney.toDecimalString(res.comissaoCents),
                         status: 'pending',
                         idempotency_key: chaveIdempotente
-                    })
-                });
-                geradas++;
+                    });
+                }
             }
+
+            if (lotesComissoes.length === 0) {
+                alert('Nenhum documento elegível para apuração de comissões nesta competência.');
+                return;
+            }
+
+            // Upsert em lote ignorando duplicatas existentes
+            await window.BpoSupabase.request('commission_calculations?on_conflict=idempotency_key', {
+                method: 'POST',
+                prefer: 'resolution=ignore-duplicates,return=representation',
+                body: JSON.stringify(lotesComissoes)
+            });
 
             await carregarDadosComissoes();
-            alert(`Apuração concluída! ${geradas} comissão(ões) processada(s).`);
+            alert(`Apuração concluída! Comissões avaliadas e registradas.`);
 
         } catch (err) {
-            // Se já foi gerado (violação de chave única de idempotência), avisa o usuário sem quebrar
-            if (err.message.includes('idempotency_key') || err.message.includes('23505')) {
-                alert('As comissões desta competência já foram processadas anteriormente.');
-                await carregarDadosComissoes();
-            } else {
-                alert('Erro ao processar: ' + err.message);
-            }
+            alert('Erro ao processar comissões: ' + err.message);
         }
     }
 

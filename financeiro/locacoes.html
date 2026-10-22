@@ -176,6 +176,10 @@
                     <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Imóvel *</label>
                     <select id="locImovel" required class="select-control" style="width: 100%;"></select>
                 </div>
+                <div style="margin-bottom: 16px;">
+                    <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Inquilino / Locatário *</label>
+                    <select id="locLocatario" required class="select-control" style="width: 100%;"></select>
+                </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
                     <div>
                         <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Valor Mensal (R$) *</label>
@@ -195,6 +199,7 @@
         </div>
     </div>
 
+    <script src="js/utils.js"></script>
     <script src="js/supabase.js"></script>
     <script src="js/money.js"></script>
     <script src="js/rentals.js"></script>

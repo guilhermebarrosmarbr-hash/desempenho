@@ -9,6 +9,7 @@
     let imoveis = [];
     let contratosLocacao = [];
     let distribuicoes = [];
+    let pessoas = [];
 
     // DOM
     const selectEmpresa = document.getElementById('selectEmpresa');
@@ -99,16 +100,29 @@
         if (!empresaAtiva) return;
 
         try {
-            // 1. Imóveis da empresa
+            // 1. Pessoas vinculadas à empresa (para participantes/locatários)
+            pessoas = await window.BpoSupabase.request(`people?company_id=eq.${empresaAtiva.id}&order=name.asc`, { method: 'GET' });
+
+            // 2. Imóveis da empresa ativa
             imoveis = await window.BpoSupabase.request(`properties?company_id=eq.${empresaAtiva.id}&order=name.asc`, { method: 'GET' });
             valTotalImoveis.textContent = imoveis.length;
 
-            // 2. Contratos de locação
-            contratosLocacao = await window.BpoSupabase.request(`rental_contracts?status=eq.active`, { method: 'GET' });
+            const imovelIds = imoveis.map(i => i.id);
 
-            // 3. Distribuições já registradas na competência
+            // 3. Contratos de locação ativos vinculados aos imóveis da empresa ativa
+            if (imovelIds.length > 0) {
+                const idsParam = `in.(${imovelIds.join(',')})`;
+                contratosLocacao = await window.BpoSupabase.request(
+                    `rental_contracts?status=eq.active&property_id=${idsParam}`,
+                    { method: 'GET' }
+                );
+            } else {
+                contratosLocacao = [];
+            }
+
+            // 4. Distribuições da empresa ativa na competência
             distribuicoes = await window.BpoSupabase.request(
-                `rental_distributions?competence_month=eq.${competenciaAtiva}&order=created_at.desc`,
+                `rental_distributions?company_id=eq.${empresaAtiva.id}&competence_month=eq.${competenciaAtiva}&order=created_at.desc`,
                 { method: 'GET' }
             );
 
@@ -142,7 +156,7 @@
             listaDistribuicoesBody.innerHTML = `
                 <tr>
                     <td colspan="9" style="text-align: center; color: var(--text-muted); padding: 32px;">
-                        Nenhum rateio societário registrado para a competência ${competenciaAtiva}. Clique em "Processar Rateio Societário".
+                        Nenhum rateio societário registrado para a competência ${window.BpoUtils.escapeHtml(competenciaAtiva)}. Clique em "Processar Rateio Societário".
                     </td>
                 </tr>
             `;
@@ -150,24 +164,25 @@
         }
 
         listaDistribuicoesBody.innerHTML = distribuicoes.map(d => {
-            const imovel = imoveis.find(i => i.id === d.property_id) || { name: 'Imóvel Ybox' };
+            const imovel = imoveis.find(i => i.id === d.property_id) || { name: 'Imóvel' };
+            const participante = pessoas.find(p => p.id === d.participant_id) || { name: 'Sócio Participante' };
             const statusBadge = d.status === 'paid' 
                 ? '<span class="badge badge-success">Pago</span>' 
                 : '<span class="badge badge-warning">A Repassar</span>';
 
             return `
                 <tr>
-                    <td style="font-weight: 700; color: #fff;">${d.competence_month}</td>
-                    <td>${imovel.name}</td>
-                    <td style="font-weight: 600; color: #fff;">Sócio Participante</td>
+                    <td style="font-weight: 700; color: #fff;">${window.BpoUtils.escapeHtml(d.competence_month)}</td>
+                    <td>${window.BpoUtils.escapeHtml(imovel.name)}</td>
+                    <td style="font-weight: 600; color: #fff;">${window.BpoUtils.escapeHtml(participante.name)}</td>
                     <td>${window.BpoMoney.formatBRL(d.gross_received)}</td>
                     <td style="color: var(--color-danger);">${window.BpoMoney.formatBRL(d.deductions)}</td>
-                    <td style="color: var(--color-warning);">${d.participation_pct}%</td>
+                    <td style="color: var(--color-warning);">${Number(d.participation_pct).toFixed(2)}%</td>
                     <td style="font-weight: 700; color: #fff;">${window.BpoMoney.formatBRL(d.distribution_amount)}</td>
                     <td>${statusBadge}</td>
                     <td>
                         ${d.status !== 'paid' ? `
-                            <button class="btn btn-secondary btn-sm" onclick="window.quitarDistribuicao('${d.id}')">
+                            <button class="btn btn-secondary btn-sm" onclick="window.quitarDistribuicao('${window.BpoUtils.escapeHtml(d.id)}')">
                                 Quitar Repasse
                             </button>
                         ` : '<span style="color: var(--text-muted); font-size: 0.8rem;">Concluído</span>'}
@@ -181,7 +196,7 @@
         if (imoveis.length === 0) {
             listaImoveisBody.innerHTML = `
                 <tr>
-                    <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 24px;">
+                    <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;">
                         Nenhum imóvel cadastrado para esta empresa.
                     </td>
                 </tr>
@@ -196,16 +211,16 @@
 
             return `
                 <tr>
-                    <td style="font-weight: 600; color: #fff;">${i.name}</td>
-                    <td>${i.address || 'Santos / SP'}</td>
+                    <td style="font-weight: 600; color: #fff;">${window.BpoUtils.escapeHtml(i.name)}</td>
+                    <td>${window.BpoUtils.escapeHtml(i.address || 'Santos / SP')}</td>
                     <td style="color: var(--color-success); font-weight: 700;">${valorLoc}</td>
                     <td>${diaVenc}</td>
                     <td><span class="badge badge-success">Ativo</span></td>
                     <td style="display: flex; gap: 6px;">
-                        <button class="btn btn-secondary btn-sm" onclick="window.editarImovel('${i.id}')">
+                        <button class="btn btn-secondary btn-sm" onclick="window.editarImovel('${window.BpoUtils.escapeHtml(i.id)}')">
                             ✏️ Editar
                         </button>
-                        <button class="btn btn-danger btn-sm" onclick="window.deletarImovel('${i.id}')">
+                        <button class="btn btn-danger btn-sm" onclick="window.deletarImovel('${window.BpoUtils.escapeHtml(i.id)}')">
                             🗑️ Excluir
                         </button>
                     </td>
@@ -244,7 +259,13 @@
 
     function abrirModalContrato() {
         const selImovel = document.getElementById('locImovel');
-        selImovel.innerHTML = imoveis.map(i => `<option value="${i.id}">${i.name}</option>`).join('') || '<option value="">Sem imóveis</option>';
+        selImovel.innerHTML = imoveis.map(i => `<option value="${window.BpoUtils.escapeHtml(i.id)}">${window.BpoUtils.escapeHtml(i.name)}</option>`).join('') || '<option value="">Sem imóveis cadastrados</option>';
+
+        const selLocatario = document.getElementById('locLocatario');
+        if (selLocatario) {
+            selLocatario.innerHTML = pessoas.map(p => `<option value="${window.BpoUtils.escapeHtml(p.id)}">${window.BpoUtils.escapeHtml(p.name)} (${window.BpoUtils.escapeHtml(p.person_type || 'cliente')})</option>`).join('') || '<option value="">Nenhuma pessoa cadastrada</option>';
+        }
+
         modalContratoLocacao.style.display = 'flex';
     }
 
@@ -293,29 +314,25 @@
     async function salvarContratoLocacao(e) {
         e.preventDefault();
         const imovelId = document.getElementById('locImovel').value;
+        const tenantId = document.getElementById('locLocatario') ? document.getElementById('locLocatario').value : '';
         const valorCents = window.BpoMoney.toCents(document.getElementById('locValor').value);
         const dia = parseInt(document.getElementById('locDia').value) || 10;
 
+        if (!imovelId) {
+            alert('Selecione um imóvel válido.');
+            return;
+        }
+
+        if (!tenantId) {
+            alert('Cadastre ou selecione um inquilino/locatário cadastrado para esta empresa.');
+            return;
+        }
+
         try {
-            // Busca ou usa pessoa padrão para locatário
-            const pessoas = await window.BpoSupabase.request('people?limit=1', { method: 'GET' });
-            let tenantId = pessoas.length > 0 ? pessoas[0].id : null;
-
-            if (!tenantId) {
-                const novaPessoa = await window.BpoSupabase.request('people', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        company_id: empresaAtiva.id,
-                        name: 'Inquilino / Locatário Geral',
-                        person_type: 'tenant'
-                    })
-                });
-                tenantId = novaPessoa[0].id;
-            }
-
             await window.BpoSupabase.request('rental_contracts', {
                 method: 'POST',
                 body: JSON.stringify({
+                    company_id: empresaAtiva.id,
                     property_id: imovelId,
                     tenant_id: tenantId,
                     start_date: new Date().toISOString().split('T')[0],
@@ -340,57 +357,87 @@
         }
 
         try {
-            // Exemplo de rateio: se há contrato de locação ativo, divide 50%/50% entre sócios
             let gerados = 0;
-            const pessoas = await window.BpoSupabase.request('people?limit=2', { method: 'GET' });
-            const socioId = pessoas.length > 0 ? pessoas[0].id : '00000000-0000-0000-0000-000000000001';
+            const distributionsToInsert = [];
+
+            // Obtém todos os participantes associados aos imóveis desta empresa
+            const imovelIds = imoveis.map(i => i.id);
+            const participantsAll = await window.BpoSupabase.request(
+                `property_participants?property_id=in.(${imovelIds.join(',')})`,
+                { method: 'GET' }
+            );
 
             for (const imovel of imoveis) {
                 const contrato = contratosLocacao.find(cl => cl.property_id === imovel.id);
                 if (!contrato) continue;
 
-                const brutoCents = window.BpoMoney.toCents(contrato.monthly_amount);
-                const deducoesCents = 0n; // Sem deduções padrão
-                const distributableCents = brutoCents;
+                // Participantes válidos na competência
+                const compDateStr = `${competenciaAtiva}-01`;
+                const participantsProperty = participantsAll.filter(p => {
+                    if (p.property_id !== imovel.id) return false;
+                    const fromOk = !p.valid_from || p.valid_from <= compDateStr;
+                    const untilOk = !p.valid_until || p.valid_until >= compDateStr;
+                    return fromOk && untilOk;
+                });
 
-                const res = window.BpoRentalEngine.calcularDistribuicao({
+                if (participantsProperty.length === 0) {
+                    console.warn(`Imóvel "${imovel.name}" não possui participantes configurados em property_participants.`);
+                    continue;
+                }
+
+                const brutoCents = window.BpoMoney.toCents(contrato.monthly_amount);
+                const deducoesCents = 0n; // Deduções específicas do contrato/imóvel
+
+                // Usa admin_pct do primeiro participante ou média se aplicável
+                const adminRate = parseFloat(participantsProperty[0].admin_pct) || 0;
+
+                const calculo = window.BpoRentalEngine.calcularDistribuicao({
                     grossReceived: brutoCents,
                     deductions: deducoesCents,
-                    participants: [
-                        { person_id: socioId, name: 'Sócio 01', participation_pct: 100 }
-                    ]
+                    adminRate: adminRate,
+                    participants: participantsProperty
                 });
 
-                const idempotencyKey = `dist_${imovel.id}_${competenciaAtiva}`;
-
-                await window.BpoSupabase.request('rental_distributions', {
-                    method: 'POST',
-                    body: JSON.stringify({
+                calculo.distribuicoes.forEach(item => {
+                    const idempotencyKey = `dist_${imovel.id}_${item.person_id}_${competenciaAtiva}`;
+                    distributionsToInsert.push({
+                        company_id: empresaAtiva.id,
                         property_id: imovel.id,
-                        participant_id: socioId,
+                        participant_id: item.person_id,
                         competence_month: competenciaAtiva,
-                        gross_received: window.BpoMoney.toDecimalString(brutoCents),
-                        deductions: window.BpoMoney.toDecimalString(deducoesCents),
-                        distributable_amount: window.BpoMoney.toDecimalString(distributableCents),
-                        participation_pct: 100.0,
-                        distribution_amount: window.BpoMoney.toDecimalString(distributableCents),
+                        gross_received: window.BpoMoney.toDecimalString(calculo.grossCents),
+                        deductions: window.BpoMoney.toDecimalString(calculo.deductionsCents),
+                        distributable_amount: window.BpoMoney.toDecimalString(calculo.distributableCents),
+                        participation_pct: item.participation_pct,
+                        distribution_amount: window.BpoMoney.toDecimalString(item.amountCents),
                         status: 'pending',
                         idempotency_key: idempotencyKey
-                    })
+                    });
                 });
-                gerados++;
             }
 
+            if (distributionsToInsert.length === 0) {
+                alert('Nenhum rateio calculado. Verifique se os imóveis possuem contratos ativos e participantes em "property_participants".');
+                return;
+            }
+
+            // Upsert em lote com header de conflito
+            await window.BpoSupabase.request(
+                'rental_distributions?on_conflict=idempotency_key',
+                {
+                    method: 'POST',
+                    headers: { 'Prefer': 'resolution=ignore-duplicates' },
+                    body: JSON.stringify(distributionsToInsert)
+                }
+            );
+
+            gerados = distributionsToInsert.length;
             await carregarDadosLocacoes();
-            alert(`Processamento concluído! ${gerados} rateio(s) calculado(s).`);
+            alert(`Processamento concluído! ${gerados} rateio(s) registrado(s) para a competência ${competenciaAtiva}.`);
 
         } catch (err) {
-            if (err.message.includes('idempotency_key') || err.message.includes('23505')) {
-                alert('Os rateios desta competência já foram processados anteriormente.');
-                await carregarDadosLocacoes();
-            } else {
-                alert('Erro ao processar: ' + err.message);
-            }
+            console.error("Erro ao processar rateio:", err);
+            alert('Erro ao processar rateio: ' + err.message);
         }
     }
 

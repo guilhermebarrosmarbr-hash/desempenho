@@ -28,6 +28,12 @@
                 if (capCents > 0n && comissaoCents > capCents) {
                     comissaoCents = capCents;
                 }
+            } else if (capType === 'percentage') {
+                const capPct = parseFloat(capValue) || 0;
+                const maxCapCents = window.BpoMoney.applyPercentage(baseCents, capPct);
+                if (maxCapCents > 0n && comissaoCents > maxCapCents) {
+                    comissaoCents = maxCapCents;
+                }
             }
 
             return {
