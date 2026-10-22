@@ -57,6 +57,7 @@
             document.getElementById('empresaId').value = '';
             document.getElementById('modalEmpresaTitulo').textContent = 'Cadastrar Nova Empresa';
             document.getElementById('formNovaEmpresa').reset();
+            document.getElementById('btnExcluirEmpresa').style.display = 'none';
             abrirModal(modalEmpresa);
         });
 
@@ -456,23 +457,33 @@
         if (!empresaAtiva) return;
 
         const tipo = document.getElementById('docTipo').value;
+        const serie = '1'; // Série padrão; futuramente pode ser configurável por empresa
         const numero = document.getElementById('docNumero').value.trim();
         const emissao = document.getElementById('docEmissao').value;
         const vencimento = document.getElementById('docVencimento').value;
         const brutoCents = window.BpoMoney.toCents(document.getElementById('docValorBruto').value);
         const retCents = window.BpoMoney.toCents(document.getElementById('docRetencoes').value);
-        const liqCents = brutoCents - retCents;
+        // discounts deve ser 0 pois a constraint do banco exige: net = gross - discounts - retentions
+        const discountsCents = 0n;
+        const liqCents = brutoCents - discountsCents - retCents;
         const descricao = document.getElementById('docDescricao').value.trim();
         const contratoId = document.getElementById('docContrato').value || null;
+
+        if (liqCents < 0n) {
+            alert('As retenções não podem ser maiores que o valor bruto.');
+            return;
+        }
 
         const payload = {
             company_id: empresaAtiva.id,
             competence_month: competenciaAtiva,
             document_type: tipo,
+            series: serie,
             document_number: numero,
             issue_date: emissao,
             due_date: vencimento,
             gross_amount: window.BpoMoney.toDecimalString(brutoCents),
+            discounts: '0.00',
             retentions: window.BpoMoney.toDecimalString(retCents),
             net_amount: window.BpoMoney.toDecimalString(liqCents),
             description: descricao,
@@ -489,10 +500,15 @@
             fecharModais();
             document.getElementById('formNovoDocumento').reset();
             await carregarDadosCompetencia();
-            alert('Documento registrado com sucesso!');
+            alert('Lançamento registrado com sucesso!');
 
         } catch (err) {
-            alert('Erro ao gravar documento: ' + err.message);
+            // Mensagem amigável para violação de unicidade (número duplicado)
+            if (err.message && err.message.includes('uq_billing_documents_series_number')) {
+                alert(`Já existe um documento do tipo "${tipo}" com o número "${numero}" cadastrado para esta empresa. Verifique o número do documento.`);
+            } else {
+                alert('Erro ao gravar lançamento: ' + err.message);
+            }
         }
     }
 
@@ -636,7 +652,8 @@
         document.getElementById('contratoValor').value = window.BpoMoney.toDecimalString(window.BpoMoney.toCents(c.reference_value));
         document.getElementById('contratoPeriodicidade').value = c.billing_frequency || 'monthly';
         document.getElementById('contratoComissao').checked = c.commission_eligible || false;
-        document.getElementById('contratoCliente').value = c._clientName || '';
+        // Usa o nome do cliente real (join via people) ou fallback vazio
+        document.getElementById('contratoCliente').value = c._clientName || c.name || '';
         document.getElementById('contratoInicio').value = c.start_date || '';
         document.getElementById('btnExcluirContratoModal').style.display = 'inline-flex';
         abrirModal(modalContrato);
