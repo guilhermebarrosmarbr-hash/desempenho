@@ -196,10 +196,27 @@
                     <td style="color: var(--color-success); font-weight: 700;">${valorLoc}</td>
                     <td>${diaVenc}</td>
                     <td><span class="badge badge-success">Ativo</span></td>
+                    <td>
+                        <button class="btn btn-secondary btn-sm" onclick="window.editarImovel('${i.id}')">
+                            ✏️ Editar
+                        </button>
+                    </td>
                 </tr>
             `;
         }).join('');
     }
+
+    window.editarImovel = function(id) {
+        const i = imoveis.find(im => im.id === id);
+        if (!i) return;
+
+        document.getElementById('imovelId').value = i.id;
+        document.getElementById('modalImovelTitulo').textContent = 'Editar Imóvel';
+        document.getElementById('imovelNome').value = i.name || '';
+        document.getElementById('imovelEndereco').value = i.address || '';
+
+        modalImovel.style.display = 'flex';
+    };
 
     function abrirModalContrato() {
         const selImovel = document.getElementById('locImovel');
@@ -209,10 +226,27 @@
 
     async function salvarImovel(e) {
         e.preventDefault();
+        const idExistente = document.getElementById('imovelId').value;
         const nome = document.getElementById('imovelNome').value.trim();
         const end = document.getElementById('imovelEndereco').value.trim();
 
         try {
+            if (idExistente) {
+                await window.BpoSupabase.request(`properties?id=eq.${idExistente}`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({
+                        name: nome,
+                        address: end
+                    })
+                });
+
+                fecharModais();
+                document.getElementById('formImovel').reset();
+                await carregarDadosLocacoes();
+                alert('Imóvel atualizado com sucesso!');
+                return;
+            }
+
             await window.BpoSupabase.request('properties', {
                 method: 'POST',
                 body: JSON.stringify({
@@ -228,7 +262,7 @@
             await carregarDadosLocacoes();
             alert('Imóvel cadastrado com sucesso!');
         } catch (err) {
-            alert('Erro ao cadastrar imóvel: ' + err.message);
+            alert('Erro ao salvar imóvel: ' + err.message);
         }
     }
 

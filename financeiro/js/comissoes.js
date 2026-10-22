@@ -194,9 +194,28 @@
                 <td>${c.email || '-'}</td>
                 <td>${c.role}</td>
                 <td><span class="badge badge-success">Ativo</span></td>
+                <td>
+                    <button class="btn btn-secondary btn-sm" onclick="window.editarColaborador('${c.id}')">
+                        ✏️ Editar
+                    </button>
+                </td>
             </tr>
         `).join('');
     }
+
+    window.editarColaborador = function(id) {
+        const c = colaboradores.find(col => col.id === id);
+        if (!c) return;
+
+        document.getElementById('colabId').value = c.id;
+        document.getElementById('modalColaboradorTitulo').textContent = 'Editar Colaborador';
+        document.getElementById('colabNome').value = c.name || '';
+        document.getElementById('colabCpf').value = c.document || '';
+        document.getElementById('colabFuncao').value = c.role || 'Vendedor Técnico';
+        document.getElementById('colabEmail').value = c.email || '';
+
+        modalColaborador.style.display = 'flex';
+    };
 
     function formatarData(dataStr) {
         if (!dataStr) return '-';
@@ -216,12 +235,31 @@
 
     async function salvarColaborador(e) {
         e.preventDefault();
+        const idExistente = document.getElementById('colabId').value;
         const nome = document.getElementById('colabNome').value.trim();
         const cpf = document.getElementById('colabCpf').value.trim();
         const funcao = document.getElementById('colabFuncao').value.trim();
         const email = document.getElementById('colabEmail').value.trim();
 
         try {
+            if (idExistente) {
+                await window.BpoSupabase.request(`collaborators?id=eq.${idExistente}`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({
+                        name: nome,
+                        document: cpf,
+                        role: funcao,
+                        email: email
+                    })
+                });
+
+                fecharModais();
+                document.getElementById('formColaborador').reset();
+                await carregarDadosComissoes();
+                alert('Colaborador atualizado com sucesso!');
+                return;
+            }
+
             await window.BpoSupabase.request('collaborators', {
                 method: 'POST',
                 body: JSON.stringify({
@@ -239,7 +277,7 @@
             await carregarDadosComissoes();
             alert('Colaborador cadastrado com sucesso!');
         } catch (err) {
-            alert('Erro ao cadastrar colaborador: ' + err.message);
+            alert('Erro ao salvar colaborador: ' + err.message);
         }
     }
 

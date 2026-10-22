@@ -122,11 +122,12 @@
                             <th>Aluguel Mensal</th>
                             <th>Dia Venc.</th>
                             <th>Status</th>
+                            <th>Ações</th>
                         </tr>
                     </thead>
                     <tbody id="listaImoveisBody">
                         <tr>
-                            <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 24px;">
+                            <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;">
                                 Nenhum imóvel cadastrado.
                             </td>
                         </tr>
@@ -136,13 +137,14 @@
         </section>
     </main>
 
-    <!-- Modal Novo Imóvel -->
+    <!-- Modal Novo / Editar Imóvel -->
     <div class="modal-overlay" id="modalImovel">
         <div class="modal-card">
-            <h2 class="card-title" style="margin-bottom: 8px;">Cadastrar Novo Imóvel</h2>
-            <p class="card-subtitle" style="margin-bottom: 20px;">Adicione um galpão, prédio ou unidade locada.</p>
+            <h2 class="card-title" id="modalImovelTitulo" style="margin-bottom: 8px;">Cadastrar Novo Imóvel</h2>
+            <p class="card-subtitle" style="margin-bottom: 20px;">Adicione ou edite um galpão, prédio ou unidade locada.</p>
 
             <form id="formImovel">
+                <input type="hidden" id="imovelId" value="">
                 <div style="margin-bottom: 16px;">
                     <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Identificação do Imóvel *</label>
                     <input type="text" id="imovelNome" required class="select-control" style="width: 100%;" placeholder="Ex: Galpão Logístico Ybox - Santos">

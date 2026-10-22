@@ -53,6 +53,23 @@
         });
 
         document.getElementById('btnNovaEmpresa').addEventListener('click', () => {
+            document.getElementById('empresaId').value = '';
+            document.getElementById('modalEmpresaTitulo').textContent = 'Cadastrar Nova Empresa';
+            document.getElementById('formNovaEmpresa').reset();
+            abrirModal(modalEmpresa);
+        });
+
+        document.getElementById('btnEditarEmpresa').addEventListener('click', () => {
+            if (!empresaAtiva) {
+                alert('Selecione uma empresa para editar.');
+                return;
+            }
+            document.getElementById('empresaId').value = empresaAtiva.id;
+            document.getElementById('modalEmpresaTitulo').textContent = 'Editar Empresa';
+            document.getElementById('empresaNome').value = empresaAtiva.name || '';
+            document.getElementById('empresaFantasia').value = empresaAtiva.trade_name || '';
+            document.getElementById('empresaCnpj').value = empresaAtiva.document || '';
+            document.getElementById('empresaRegime').value = empresaAtiva.tax_regime || 'simples_nacional';
             abrirModal(modalEmpresa);
         });
 
@@ -270,18 +287,39 @@
 
     async function salvarNovaEmpresa(e) {
         e.preventDefault();
+        const idExistente = document.getElementById('empresaId').value;
         const nome = document.getElementById('empresaNome').value.trim();
         const fantasia = document.getElementById('empresaFantasia').value.trim();
         const cnpj = document.getElementById('empresaCnpj').value.trim();
         const regime = document.getElementById('empresaRegime').value;
 
         try {
-            // Obter id do grupo default
+            if (idExistente) {
+                // Atualização / Edição da Empresa existente
+                const updatePayload = {
+                    name: nome,
+                    trade_name: fantasia,
+                    document: cnpj,
+                    tax_regime: regime,
+                    updated_at: new Date().toISOString()
+                };
+
+                await window.BpoSupabase.request(`companies?id=eq.${idExistente}`, {
+                    method: 'PATCH',
+                    body: JSON.stringify(updatePayload)
+                });
+
+                fecharModais();
+                await carregarEmpresas();
+                alert('Empresa atualizada com sucesso!');
+                return;
+            }
+
+            // Inserção de Nova Empresa
             const grupos = await window.BpoSupabase.request('groups?limit=1', { method: 'GET' });
             let groupId = grupos.length > 0 ? grupos[0].id : null;
 
             if (!groupId) {
-                // Cria grupo se não existir
                 const novoGrupo = await window.BpoSupabase.request('groups', {
                     method: 'POST',
                     body: JSON.stringify({ name: 'Grupo Principal' })
@@ -308,7 +346,7 @@
             alert('Empresa cadastrada com sucesso!');
 
         } catch (err) {
-            alert('Erro ao cadastrar empresa: ' + err.message);
+            alert('Erro ao salvar empresa: ' + err.message);
         }
     }
 

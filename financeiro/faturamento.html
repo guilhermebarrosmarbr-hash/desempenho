@@ -35,7 +35,8 @@
                 <input type="month" id="inputCompetencia" class="select-control" style="color-scheme: dark;">
             </div>
 
-            <button class="btn btn-secondary btn-sm" id="btnNovaEmpresa">+ Cadastrar Empresa</button>
+            <button class="btn btn-secondary btn-sm" id="btnNovaEmpresa">+ Nova Empresa</button>
+            <button class="btn btn-outline btn-sm" id="btnEditarEmpresa" style="border: 1px solid var(--border-color); color: #38bdf8;">✏️ Editar Empresa</button>
         </div>
     </header>
 
@@ -145,13 +146,14 @@
         </section>
     </main>
 
-    <!-- MODAL: Cadastrar Empresa -->
+    <!-- MODAL: Cadastrar / Editar Empresa -->
     <div class="modal-overlay" id="modalEmpresa">
         <div class="modal-card">
-            <h2 class="card-title" style="margin-bottom: 8px;">Cadastrar Nova Empresa</h2>
+            <h2 class="card-title" id="modalEmpresaTitulo" style="margin-bottom: 8px;">Cadastrar Nova Empresa</h2>
             <p class="card-subtitle" style="margin-bottom: 20px;">Insira a Razão Social e CNPJ real da empresa do grupo.</p>
             
             <form id="formNovaEmpresa">
+                <input type="hidden" id="empresaId" value="">
                 <div style="margin-bottom: 16px;">
                     <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Razão Social *</label>
                     <input type="text" id="empresaNome" required class="select-control" style="width: 100%;" placeholder="Ex: Mar Brasil Climatização Ltda">

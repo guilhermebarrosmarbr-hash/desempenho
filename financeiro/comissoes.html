@@ -121,11 +121,12 @@
                             <th>E-mail</th>
                             <th>Função</th>
                             <th>Status</th>
+                            <th>Ações</th>
                         </tr>
                     </thead>
                     <tbody id="listaColaboradoresBody">
                         <tr>
-                            <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 24px;">
+                            <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;">
                                 Nenhum colaborador cadastrado.
                             </td>
                         </tr>
@@ -135,13 +136,14 @@
         </section>
     </main>
 
-    <!-- Modal Novo Colaborador -->
+    <!-- Modal Novo / Editar Colaborador -->
     <div class="modal-overlay" id="modalColaborador">
         <div class="modal-card">
-            <h2 class="card-title" style="margin-bottom: 8px;">Cadastrar Colaborador</h2>
+            <h2 class="card-title" id="modalColaboradorTitulo" style="margin-bottom: 8px;">Cadastrar Colaborador</h2>
             <p class="card-subtitle" style="margin-bottom: 20px;">Vendedor ou consultor elegível a comissão comercial.</p>
 
             <form id="formColaborador">
+                <input type="hidden" id="colabId" value="">
                 <div style="margin-bottom: 16px;">
                     <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Nome Completo *</label>
                     <input type="text" id="colabNome" required class="select-control" style="width: 100%;" placeholder="Ex: Carlos Oliveira">

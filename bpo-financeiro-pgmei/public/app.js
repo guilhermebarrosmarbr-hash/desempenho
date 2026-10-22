@@ -117,9 +117,14 @@ function renderListaPrestadores() {
           <span>${cnpjFmt}</span>
         </div>
       </label>
-      <button type="button" class="btn-del-prest" title="Excluir prestador" onclick="excluirPrestador('${p.id}', '${p.razaoSocial}')">
-        🗑️
-      </button>
+      <div style="display: flex; gap: 4px; align-items: center;">
+        <button type="button" class="btn-del-prest" title="Editar prestador" onclick="editarPrestador('${p.id}')" style="color: #38bdf8;">
+          ✏️
+        </button>
+        <button type="button" class="btn-del-prest" title="Excluir prestador" onclick="excluirPrestador('${p.id}', '${p.razaoSocial}')">
+          🗑️
+        </button>
+      </div>
     `;
     listaPrestadoresSelect.appendChild(item);
   });
@@ -165,6 +170,21 @@ window.excluirPrestador = async function(id, nome) {
       alert('Erro ao excluir: ' + e.message);
     }
   }
+};
+
+// Editar Prestador
+window.editarPrestador = function(id) {
+  const p = prestadoresCadastrados.find(prest => prest.id === id);
+  if (!p) return;
+
+  const cnpjFmt = p.cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+  cadCnpj.value = cnpjFmt;
+  cadRazaoSocial.value = p.razaoSocial;
+  btnSalvarPrestador.textContent = '💾 Atualizar Prestador';
+  cadRazaoSocial.focus();
+
+  // Scroll suave até o formulário de cadastro
+  cadCnpj.scrollIntoView({ behavior: 'smooth', block: 'center' });
 };
 
 // Envio do formulário para iniciar lote com prestadores selecionados
