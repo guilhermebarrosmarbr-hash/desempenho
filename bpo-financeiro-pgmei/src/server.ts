@@ -6,16 +6,43 @@ import { DatabaseStore } from './storage/db.js';
 import { PgmeiAdapter } from './crawler/pgmeiAdapter.js';
 import { QueueManager } from './crawler/queueManager.js';
 import { processarListaCnpj } from './utils/cnpj.js';
+import {
+  PORT,
+  HOST,
+  PUBLIC_DIR,
+  DATA_DIR,
+  resolveApiToken,
+  RATE_LIMIT_MAX_REQUESTS,
+  RATE_LIMIT_WINDOW_MS
+} from './config.js';
+import { requireApiToken } from './middleware/auth.js';
+import { createRateLimiter } from './middleware/rateLimit.js';
+import { createIndexHtmlHandler } from './middleware/injectToken.js';
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+export const app = express();
+export const apiToken = resolveApiToken();
+
+const rateLimiter = createRateLimiter({
+  maxRequests: RATE_LIMIT_MAX_REQUESTS,
+  windowMs: RATE_LIMIT_WINDOW_MS
+});
 
 app.use(express.json());
-app.use(express.static(path.resolve(process.cwd(), 'public')));
 
-const db = new DatabaseStore();
+// Injeta o token dinâmico no index.html servido ao navegador
+app.use(createIndexHtmlHandler(apiToken));
+app.use(express.static(PUBLIC_DIR));
+
+const db = new DatabaseStore(DATA_DIR);
 const adapter = new PgmeiAdapter();
 const queue = new QueueManager(db, adapter);
+
+// Rate limiter nas rotas /api
+app.use('/api', rateLimiter);
+
+// Autenticação por token em /api e /screenshots
+app.use('/api', requireApiToken(apiToken));
+app.use('/screenshots', requireApiToken(apiToken));
 
 // Serve screenshots de evidência
 app.use('/screenshots', express.static(db.getScreenshotsDir()));
@@ -135,9 +162,16 @@ app.get('/api/lotes/:id/download-zip', (req, res) => {
   archive.finalize();
 });
 
-app.listen(PORT, () => {
-  console.log(`\n======================================================`);
-  console.log(`🚀 BPO Financeiro - Módulo Consulta MEI (PGMEI) ativo!`);
-  console.log(`🌐 Painel Web acessível em: http://localhost:${PORT}`);
-  console.log(`======================================================\n`);
-});
+const isMainModule = process.argv[1] && (
+  process.argv[1].endsWith('server.ts') || 
+  process.argv[1].endsWith('server.js')
+);
+
+if (isMainModule) {
+  app.listen(PORT, HOST, () => {
+    console.log(`\n======================================================`);
+    console.log(`🚀 BPO Financeiro - Módulo Consulta MEI (PGMEI) ativo!`);
+    console.log(`🌐 Painel Web acessível em: http://${HOST}:${PORT}`);
+    console.log(`======================================================\n`);
+  });
+}

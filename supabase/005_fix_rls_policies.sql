@@ -1,6 +1,8 @@
 -- ==============================================================================
--- 005_FIX_RLS_POLICIES.SQL (CORRIGIDO E SEGURO)
--- Desabilita RLS apenas para tabelas que já existem no schema public
+-- 005_FIX_RLS_POLICIES.SQL
+-- Provisório: Permissões para service_role e authenticated
+-- NOTA: Sem login/auth configurado no frontend, tabelas precisam de definição
+-- de controle de acesso adequada (ver [DECISÃO] sobre caminhos A ou B).
 -- ==============================================================================
 
 DO $$
@@ -13,11 +15,9 @@ BEGIN
         WHERE schemaname = 'public'
     ) 
     LOOP
-        -- Desativa RLS para a tabela existente
-        EXECUTE format('ALTER TABLE public.%I DISABLE ROW LEVEL SECURITY;', r.tablename);
-        
-        -- Concede permissões para anon, authenticated e service_role
-        EXECUTE format('GRANT ALL ON TABLE public.%I TO anon, authenticated, service_role;', r.tablename);
+        -- Permissões essenciais para operações autenticadas e service_role
+        EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.%I TO authenticated, service_role;', r.tablename);
+        -- NÃO conceder GRANT ALL indiscriminado ao role anon
     END LOOP;
 END $$;
 

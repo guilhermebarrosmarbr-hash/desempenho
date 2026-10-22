@@ -138,31 +138,46 @@
             feedbackMsg.style.color = '#38bdf8';
             feedbackMsg.innerText = 'Testando conexão...';
 
-            const url = urlInput.value.trim();
+            const url = urlInput.value.trim().replace(/\/+$/, '');
             const anon = anonInput.value.trim();
 
-            window.BpoSupabase.saveConfig(url, anon);
-
             try {
-                // Tenta consultar grupos ou verificar saúde
-                await window.BpoSupabase.request('groups?limit=1', { method: 'GET' });
+                // Tenta consultar a API com as credenciais fornecidas antes de salvar
+                const testUrl = `${url}/rest/v1/groups?limit=1`;
+                const response = await fetch(testUrl, {
+                    method: 'GET',
+                    headers: {
+                        'apikey': anon,
+                        'Authorization': `Bearer ${anon}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    const errBody = await response.text();
+                    // Se for erro de tabela que não existe (404 ou relation "groups" does not exist), as credenciais são válidas!
+                    if (errBody.includes('relation "groups" does not exist') || errBody.includes('PGRST204') || errBody.includes('PGRST200') || errBody.includes('42P01')) {
+                        window.BpoSupabase.saveConfig(url, anon);
+                        statusIndicator.className = 'status-badge connected';
+                        statusIndicator.innerHTML = '● Conectado (Aguardando Migrações)';
+                        feedbackMsg.style.color = '#fbbf24';
+                        feedbackMsg.innerText = 'Conectou ao Supabase com sucesso! As credenciais foram salvas. Execute o script de migração no SQL Editor.';
+                        return;
+                    }
+                    throw new Error(`Erro Supabase (${response.status}): ${errBody}`);
+                }
+
+                // Sucesso completo
+                window.BpoSupabase.saveConfig(url, anon);
                 statusIndicator.className = 'status-badge connected';
                 statusIndicator.innerHTML = '● Conexão bem-sucedida!';
                 feedbackMsg.style.color = '#4ade80';
-                feedbackMsg.innerText = 'Conectado com sucesso ao Supabase! As tabelas estão prontas para uso.';
+                feedbackMsg.innerText = 'Conectado com sucesso ao Supabase! Credenciais salvas com sucesso.';
             } catch (err) {
-                // Se der erro 404 de tabela inexistente, significa que conectou na URL mas a tabela ainda não foi criada via SQL
-                if (err.message.includes('404') || err.message.includes('relation "groups" does not exist') || err.message.includes('PGRST204')) {
-                    statusIndicator.className = 'status-badge connected';
-                    statusIndicator.innerHTML = '● Conectado (Aguardando Migrações)';
-                    feedbackMsg.style.color = '#fbbf24';
-                    feedbackMsg.innerText = 'Conectou ao Supabase com sucesso! Execute o script 001_base_schema.sql no SQL Editor do Supabase.';
-                } else {
-                    statusIndicator.className = 'status-badge disconnected';
-                    statusIndicator.innerHTML = '● Erro de Conexão';
-                    feedbackMsg.style.color = '#f87171';
-                    feedbackMsg.innerText = 'Falha ao conectar: ' + err.message;
-                }
+                statusIndicator.className = 'status-badge disconnected';
+                statusIndicator.innerHTML = '● Erro de Conexão';
+                feedbackMsg.style.color = '#f87171';
+                feedbackMsg.innerText = 'Falha ao conectar: ' + err.message + '. As credenciais NÃO foram salvas.';
             }
         });
     </script>

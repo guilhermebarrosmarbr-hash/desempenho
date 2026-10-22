@@ -1,5 +1,17 @@
 // Frontend Logic for BPO Financeiro - Consulta DAS MEI em Lote
 
+const API_TOKEN = window.__API_TOKEN__ || '';
+
+// Interceptor global do fetch para injetar automaticamente o header de autenticação X-Api-Token
+const originalFetch = window.fetch;
+window.fetch = function(input, init = {}) {
+  const headers = new Headers(init.headers || {});
+  if (API_TOKEN && !headers.has('X-Api-Token')) {
+    headers.set('X-Api-Token', API_TOKEN);
+  }
+  return originalFetch(input, { ...init, headers });
+};
+
 let pollingInterval = null;
 let loteAtivoId = null;
 

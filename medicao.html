@@ -566,19 +566,19 @@
 
         <div class="form-group">
           <label class="form-label" for="inputWorkerUrl">URL do Cloudflare Worker:</label>
-          <input type="url" id="inputWorkerUrl" class="form-input" placeholder="https://pmoc-whatsapp-proxy.guilherme-barrosmarbr.workers.dev" />
+          <input type="url" id="inputWorkerUrl" class="form-input" placeholder="https://seu-worker.workers.dev" />
           <span style="font-size: 11px; color: #64748b;">Endereço público do worker publicado no Cloudflare.</span>
         </div>
 
         <div class="form-group">
           <label class="form-label" for="inputWorkerToken">Token de Acesso (Bearer Token):</label>
-          <input type="password" id="inputWorkerToken" class="form-input" placeholder="marbrasilpmoc2025" />
+          <input type="password" id="inputWorkerToken" class="form-input" placeholder="Insira o token configurado no Worker" />
           <span style="font-size: 11px; color: #64748b;">Salvo exclusivamente no seu navegador (localStorage). Nunca no código-fonte.</span>
         </div>
 
         <div class="form-group">
           <label class="form-label">Remetente Oficial (Evolution API):</label>
-          <input type="text" class="form-input" value="+55 13 99149-8882 (Instância Conectada)" disabled style="background-color: #f8fafc; color: #64748b;" />
+          <input type="text" class="form-input" value="Instância Conectada" disabled style="background-color: #f8fafc; color: #64748b;" />
         </div>
 
         <div class="form-group">
@@ -591,9 +591,6 @@
           <div style="display: flex; gap: 8px;">
             <button type="button" class="btn btn-outline btn-sm" id="btnTestWorkerConnection">
               ⚡ Testar Conexão com Worker
-            </button>
-            <button type="button" class="btn btn-outline btn-sm" id="btnRestoreDefaultWaConfig" title="Preencher com os dados do Worker oficial da Mar Brasil">
-              🔄 Restaurar URL Padrão
             </button>
           </div>
           <span id="workerStatusBadge" style="font-size: 12px; font-weight: 600;"></span>

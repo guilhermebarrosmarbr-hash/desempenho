@@ -2,8 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import { LoteConsultas, ConsultaResultado, Prestador } from '../types.js';
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://rdjdieirkjlyoooxtdfw.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || 'sb_publishable_OSLZXYjeAk8dVmwAt5-QIQ_kkFxC-V_';
+const SUPABASE_URL = process.env.SUPABASE_URL || '';
+const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || '';
 
 async function syncToSupabase(table: string, payload: any) {
   try {
@@ -162,13 +162,12 @@ export class DatabaseStore {
     // Sincroniza lote no Supabase
     syncToSupabase('mei_query_batches', {
       id: lote.id,
-      competencias: lote.competencias,
+      ano: lote.ano,
       status: lote.status,
-      total: lote.total,
-      concluidos: lote.concluidas,
+      total_consultas: lote.totalConsultas,
+      concluidas: lote.concluidas,
       falhas: lote.falhas,
       consultas: lote.consultas,
-      zip_path: lote.zipPath || null,
       updated_at: new Date().toISOString()
     });
   }

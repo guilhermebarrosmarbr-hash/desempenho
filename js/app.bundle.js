@@ -2286,28 +2286,24 @@
        WHATSAPP INTEGRATION & WORKER API
        ========================================================================== */
     loadWaConfig() {
-      const DEFAULT_URL = 'https://pmoc-whatsapp-proxy.guilherme-barrosmarbr.workers.dev';
-      const DEFAULT_TOKEN = 'marbrasilpmoc2025';
       const saved = localStorage.getItem('MAR_BRASIL_PMOC_WA_CONFIG_V1');
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
           if (parsed && typeof parsed === 'object') {
-            if (!parsed.workerUrl || parsed.workerUrl.includes('pmoc-worker.guilhermebarros.workers.dev')) {
-              parsed.workerUrl = DEFAULT_URL;
-            }
-            if (!parsed.accessToken) {
-              parsed.accessToken = DEFAULT_TOKEN;
-            }
-            return parsed;
+            return {
+              workerUrl: parsed.workerUrl || '',
+              accessToken: parsed.accessToken || '',
+              captionTemplate: parsed.captionTemplate || 'Olá, {tecnico}! Segue o relatório de produtividade de {competencia} do {setor}.\nQualquer dúvida, responda esta mensagem. — Mar Brasil'
+            };
           }
         } catch (e) {
           console.error('Erro ao ler WA Config', e);
         }
       }
       return {
-        workerUrl: DEFAULT_URL,
-        accessToken: DEFAULT_TOKEN,
+        workerUrl: '',
+        accessToken: '',
         captionTemplate: 'Olá, {tecnico}! Segue o relatório de produtividade de {competencia} do {setor}.\nQualquer dúvida, responda esta mensagem. — Mar Brasil'
       };
     }
@@ -2380,14 +2376,7 @@
       }
 
       if (this.btnRestoreDefaultWaConfig) {
-        this.btnRestoreDefaultWaConfig.addEventListener('click', () => {
-          if (this.inputWorkerUrl) this.inputWorkerUrl.value = 'https://pmoc-whatsapp-proxy.guilherme-barrosmarbr.workers.dev';
-          if (this.inputWorkerToken) this.inputWorkerToken.value = 'marbrasilpmoc2025';
-          if (this.workerStatusBadge) {
-            this.workerStatusBadge.textContent = 'Valores padrão preenchidos!';
-            this.workerStatusBadge.style.color = '#0284c7';
-          }
-        });
+        this.btnRestoreDefaultWaConfig.style.display = 'none';
       }
 
       if (this.btnSaveWhatsAppConfig) {
@@ -2816,42 +2805,39 @@
         let success = false;
         let messageId = null;
 
-        if (url && token) {
-          const res = await fetch(`${url}/send`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({
-              phone: targetPhone,
-              base64Data: base64,
-              fileName: pdfFileName,
-              caption: finalCaption
-            })
-          });
-
-          if (!res.ok) {
-            let errDetail = `HTTP ${res.status}`;
-            try {
-              const errJson = await res.json();
-              if (errJson && errJson.details) {
-                errDetail = errJson.details;
-              } else if (errJson && errJson.error) {
-                errDetail = errJson.error;
-              }
-            } catch (_) {}
-            throw new Error(errDetail);
-          }
-          const data = await res.json();
-          messageId = data.messageId || 'sim-id';
-          success = true;
-        } else {
-          this.logWaEvent(`⚠️ Simulação local ativa (Worker não configurado). Enviando ${pdfFileName} para ${targetPhone}...`, 'info');
-          await new Promise(r => setTimeout(r, 1000));
-          success = true;
-          messageId = 'sim-local-id';
+        if (!url || !token) {
+          throw new Error('Worker do WhatsApp não configurado. Acesse Configurações do WhatsApp para informar a URL e o Token.');
         }
+
+        const res = await fetch(`${url}/send`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            phone: targetPhone,
+            base64Data: base64,
+            fileName: pdfFileName,
+            caption: finalCaption
+          })
+        });
+
+        if (!res.ok) {
+          let errDetail = `HTTP ${res.status}`;
+          try {
+            const errJson = await res.json();
+            if (errJson && errJson.details) {
+              errDetail = errJson.details;
+            } else if (errJson && errJson.error) {
+              errDetail = errJson.error;
+            }
+          } catch (_) {}
+          throw new Error(errDetail);
+        }
+        const data = await res.json();
+        messageId = data.messageId || 'msg-sent';
+        success = true;
 
         if (success) {
           if (badge) {

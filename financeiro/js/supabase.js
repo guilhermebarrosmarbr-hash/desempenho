@@ -6,13 +6,10 @@
     const STORAGE_KEY_URL = 'bpo_supabase_url';
     const STORAGE_KEY_ANON = 'bpo_supabase_anon_key';
 
-    const DEFAULT_URL = 'https://rdjdieirkjlyoooxtdfw.supabase.co';
-    const DEFAULT_ANON = 'sb_publishable_OSLZXYjeAk8dVmwAt5-QIQ_kkFxC-V_';
-
     class SupabaseClientAdapter {
         constructor() {
-            this.url = localStorage.getItem(STORAGE_KEY_URL) || DEFAULT_URL;
-            this.anonKey = localStorage.getItem(STORAGE_KEY_ANON) || DEFAULT_ANON;
+            this.url = localStorage.getItem(STORAGE_KEY_URL) || '';
+            this.anonKey = localStorage.getItem(STORAGE_KEY_ANON) || '';
         }
 
         isConfigured() {

@@ -16,6 +16,12 @@ get_qr.ps1
 
 # Logs e Temporários
 *.log
+tsc_out.txt
+*.vbs
+worker/.wrangler/
+worker/test-worker.js
+**/data/*.json
+**/data/.api-token
 
 # Módulo BPO Financeiro PGMEI
 **/node_modules/
