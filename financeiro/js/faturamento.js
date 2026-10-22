@@ -519,6 +519,8 @@
         document.getElementById('contratoValor').value = window.BpoMoney.toDecimalString(window.BpoMoney.toCents(c.reference_value));
         document.getElementById('contratoPeriodicidade').value = c.billing_frequency || 'monthly';
         document.getElementById('contratoComissao').checked = c.commission_eligible || false;
+        document.getElementById('contratoCliente').value = c._clientName || '';
+        document.getElementById('contratoInicio').value = c.start_date || '';
         document.getElementById('btnExcluirContratoModal').style.display = 'inline-flex';
         abrirModal(modalContrato);
     };
@@ -532,18 +534,44 @@
         const valorCents = window.BpoMoney.toCents(document.getElementById('contratoValor').value);
         const periodicidade = document.getElementById('contratoPeriodicidade').value;
         const comissao = document.getElementById('contratoComissao').checked;
-
-        const payload = {
-            company_id: empresaAtiva.id,
-            code: codigo,
-            name: nome,
-            reference_value: window.BpoMoney.toDecimalString(valorCents),
-            billing_frequency: periodicidade,
-            commission_eligible: comissao,
-            status: 'active'
-        };
+        const clienteNome = document.getElementById('contratoCliente').value.trim();
+        const startDate = document.getElementById('contratoInicio').value || null;
 
         try {
+            // Resolve client_id: busca ou cria pessoa com o nome informado
+            let clientId = null;
+            if (clienteNome) {
+                const pessoasExistentes = await window.BpoSupabase.request(
+                    `people?name=eq.${encodeURIComponent(clienteNome)}&company_id=eq.${empresaAtiva.id}&limit=1`,
+                    { method: 'GET' }
+                );
+                if (pessoasExistentes.length > 0) {
+                    clientId = pessoasExistentes[0].id;
+                } else {
+                    const novaPessoa = await window.BpoSupabase.request('people', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            company_id: empresaAtiva.id,
+                            name: clienteNome,
+                            person_type: 'client'
+                        })
+                    });
+                    clientId = novaPessoa[0].id;
+                }
+            }
+
+            const payload = {
+                company_id: empresaAtiva.id,
+                code: codigo,
+                name: nome,
+                reference_value: window.BpoMoney.toDecimalString(valorCents),
+                billing_frequency: periodicidade,
+                commission_eligible: comissao,
+                status: 'active',
+                ...(clientId && { client_id: clientId }),
+                ...(startDate && { start_date: startDate })
+            };
+
             if (idExistente) {
                 await window.BpoSupabase.request(`contracts?id=eq.${idExistente}`, {
                     method: 'PATCH',
