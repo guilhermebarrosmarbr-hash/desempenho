@@ -163,9 +163,12 @@
                     <input type="email" id="colabEmail" class="select-control" style="width: 100%;" placeholder="carlos@marbrasil.com.br">
                 </div>
 
-                <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
-                    <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">Salvar Colaborador</button>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px;">
+                    <button type="button" class="btn btn-danger btn-sm" id="btnExcluirColaborador" style="display: none;" onclick="window.deletarColaboradorModal()">🗑️ Excluir Colaborador</button>
+                    <div style="display: flex; gap: 12px; margin-left: auto;">
+                        <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">Salvar Colaborador</button>
+                    </div>
                 </div>
             </form>
         </div>

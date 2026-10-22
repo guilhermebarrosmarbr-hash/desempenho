@@ -25,6 +25,7 @@
     const modalEmpresa = document.getElementById('modalEmpresa');
     const modalDocumento = document.getElementById('modalDocumento');
     const modalRecebimento = document.getElementById('modalRecebimento');
+    const modalContrato = document.getElementById('modalContrato');
 
     // Inicialização
     window.addEventListener('DOMContentLoaded', async () => {
@@ -70,6 +71,7 @@
             document.getElementById('empresaFantasia').value = empresaAtiva.trade_name || '';
             document.getElementById('empresaCnpj').value = empresaAtiva.document || '';
             document.getElementById('empresaRegime').value = empresaAtiva.tax_regime || 'simples_nacional';
+            document.getElementById('btnExcluirEmpresa').style.display = 'inline-flex';
             abrirModal(modalEmpresa);
         });
 
@@ -81,15 +83,58 @@
             abrirModal(modalDocumento);
         });
 
+        // Novo Contrato
+        document.getElementById('btnNovoContrato').addEventListener('click', () => {
+            if (!empresaAtiva) { alert('Selecione uma empresa primeiro.'); return; }
+            document.getElementById('contratoId').value = '';
+            document.getElementById('modalContratoTitulo').textContent = 'Cadastrar Novo Contrato';
+            document.getElementById('formContrato').reset();
+            document.getElementById('btnExcluirContratoModal').style.display = 'none';
+            abrirModal(modalContrato);
+        });
+
+        // Excluir Empresa
+        document.getElementById('btnExcluirEmpresa').addEventListener('click', async () => {
+            const id = document.getElementById('empresaId').value;
+            if (!id) return;
+            if (!confirm('Tem certeza que deseja excluir esta empresa? Esta ação não pode ser desfeita.')) return;
+            try {
+                await window.BpoSupabase.request(`companies?id=eq.${id}`, { method: 'DELETE' });
+                fecharModais();
+                empresaAtiva = null;
+                await carregarEmpresas();
+                alert('Empresa excluída com sucesso.');
+            } catch (err) {
+                alert('Erro ao excluir empresa: ' + err.message);
+            }
+        });
+
+        // Excluir Contrato (dentro do modal)
+        document.getElementById('btnExcluirContratoModal').addEventListener('click', async () => {
+            const id = document.getElementById('contratoId').value;
+            if (!id) return;
+            if (!confirm('Tem certeza que deseja excluir este contrato?')) return;
+            try {
+                await window.BpoSupabase.request(`contracts?id=eq.${id}`, { method: 'DELETE' });
+                fecharModais();
+                await carregarDadosCompetencia();
+                alert('Contrato excluído com sucesso.');
+            } catch (err) {
+                alert('Erro ao excluir contrato: ' + err.message);
+            }
+        });
+
         document.getElementById('formNovaEmpresa').addEventListener('submit', salvarNovaEmpresa);
         document.getElementById('formNovoDocumento').addEventListener('submit', salvarNovoDocumento);
         document.getElementById('formRecebimento').addEventListener('submit', salvarRecebimento);
+        document.getElementById('formContrato').addEventListener('submit', salvarContrato);
     });
 
     window.fecharModais = function() {
         modalEmpresa.style.display = 'none';
         modalDocumento.style.display = 'none';
         modalRecebimento.style.display = 'none';
+        if (modalContrato) modalContrato.style.display = 'none';
     };
 
     function abrirModal(modal) {
@@ -241,6 +286,7 @@
             return;
         }
 
+        // Renderiza contratos com opções de edição e exclusão
         listaContratosBody.innerHTML = contratos.map(c => `
             <tr>
                 <td style="font-weight: 600; color: #fff;">${c.code}</td>
@@ -250,6 +296,10 @@
                 <td>${c.billing_frequency}</td>
                 <td>${c.commission_eligible ? 'Sim' : 'Não'}</td>
                 <td><span class="badge badge-success">Ativo</span></td>
+                <td>
+                    <button class="btn btn-primary btn-sm" onclick="window.editarContrato('${c.id}')">Editar</button>
+                    <button class="btn btn-danger btn-sm" onclick="window.deletarContrato('${c.id}')">Excluir</button>
+                </td>
             </tr>
         `).join('');
     }
@@ -428,6 +478,76 @@
 
         } catch (err) {
             alert('Erro ao liquidar recebimento: ' + err.message);
+        }
+    }
+
+    // Delete contrato
+    window.deletarContrato = async function(contractId) {
+        if (!confirm('Tem certeza que deseja excluir este contrato?')) return;
+        try {
+            await window.BpoSupabase.request(`contracts?id=eq.${contractId}`, { method: 'DELETE' });
+            alert('Contrato excluído com sucesso.');
+            await carregarDadosCompetencia();
+        } catch (err) {
+            alert('Erro ao excluir contrato: ' + err.message);
+        }
+    };
+
+    // Editar contrato — abre modal preenchido
+    window.editarContrato = function(contractId) {
+        const c = contratos.find(x => x.id === contractId);
+        if (!c) return;
+        document.getElementById('contratoId').value = c.id;
+        document.getElementById('modalContratoTitulo').textContent = 'Editar Contrato';
+        document.getElementById('contratoCodigo').value = c.code || '';
+        document.getElementById('contratoNome').value = c.name || '';
+        document.getElementById('contratoValor').value = window.BpoMoney.toDecimalString(window.BpoMoney.toCents(c.reference_value));
+        document.getElementById('contratoPeriodicidade').value = c.billing_frequency || 'monthly';
+        document.getElementById('contratoComissao').checked = c.commission_eligible || false;
+        document.getElementById('btnExcluirContratoModal').style.display = 'inline-flex';
+        abrirModal(modalContrato);
+    };
+
+    async function salvarContrato(e) {
+        e.preventDefault();
+        if (!empresaAtiva) return;
+        const idExistente = document.getElementById('contratoId').value;
+        const codigo = document.getElementById('contratoCodigo').value.trim();
+        const nome = document.getElementById('contratoNome').value.trim();
+        const valorCents = window.BpoMoney.toCents(document.getElementById('contratoValor').value);
+        const periodicidade = document.getElementById('contratoPeriodicidade').value;
+        const comissao = document.getElementById('contratoComissao').checked;
+
+        const payload = {
+            company_id: empresaAtiva.id,
+            code: codigo,
+            name: nome,
+            reference_value: window.BpoMoney.toDecimalString(valorCents),
+            billing_frequency: periodicidade,
+            commission_eligible: comissao,
+            status: 'active'
+        };
+
+        try {
+            if (idExistente) {
+                await window.BpoSupabase.request(`contracts?id=eq.${idExistente}`, {
+                    method: 'PATCH',
+                    body: JSON.stringify(payload)
+                });
+                fecharModais();
+                await carregarDadosCompetencia();
+                alert('Contrato atualizado com sucesso!');
+            } else {
+                await window.BpoSupabase.request('contracts', {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                });
+                fecharModais();
+                await carregarDadosCompetencia();
+                alert('Contrato cadastrado com sucesso!');
+            }
+        } catch (err) {
+            alert('Erro ao salvar contrato: ' + err.message);
         }
     }
 })();

@@ -46,6 +46,11 @@
         });
 
         document.getElementById('btnNovoImovel').addEventListener('click', () => {
+            document.getElementById('imovelId').value = '';
+            document.getElementById('modalImovelTitulo').textContent = 'Cadastrar Novo Imóvel';
+            document.getElementById('formImovel').reset();
+            const btnExc = document.getElementById('btnExcluirImovel');
+            if (btnExc) btnExc.style.display = 'none';
             modalImovel.style.display = 'flex';
         });
 
@@ -196,9 +201,12 @@
                     <td style="color: var(--color-success); font-weight: 700;">${valorLoc}</td>
                     <td>${diaVenc}</td>
                     <td><span class="badge badge-success">Ativo</span></td>
-                    <td>
+                    <td style="display: flex; gap: 6px;">
                         <button class="btn btn-secondary btn-sm" onclick="window.editarImovel('${i.id}')">
                             ✏️ Editar
+                        </button>
+                        <button class="btn btn-danger btn-sm" onclick="window.deletarImovel('${i.id}')">
+                            🗑️ Excluir
                         </button>
                     </td>
                 </tr>
@@ -214,8 +222,24 @@
         document.getElementById('modalImovelTitulo').textContent = 'Editar Imóvel';
         document.getElementById('imovelNome').value = i.name || '';
         document.getElementById('imovelEndereco').value = i.address || '';
+        const btnExc = document.getElementById('btnExcluirImovel');
+        if (btnExc) btnExc.style.display = 'inline-flex';
 
         modalImovel.style.display = 'flex';
+    };
+
+    window.deletarImovelModal = async function() {
+        const id = document.getElementById('imovelId').value;
+        if (!id) return;
+        if (!confirm('Tem certeza que deseja excluir este imóvel?')) return;
+        try {
+            await window.BpoSupabase.request(`properties?id=eq.${id}`, { method: 'DELETE' });
+            fecharModais();
+            await carregarDadosLocacoes();
+            alert('Imóvel excluído com sucesso.');
+        } catch (err) {
+            alert('Erro ao excluir imóvel: ' + err.message);
+        }
     };
 
     function abrirModalContrato() {
@@ -381,6 +405,17 @@
             alert('Repasse quitado com sucesso!');
         } catch (err) {
             alert('Erro ao quitar repasse: ' + err.message);
+        }
+    };
+
+    window.deletarImovel = async function(id) {
+        if (!confirm('Tem certeza que deseja excluir este imóvel?')) return;
+        try {
+            await window.BpoSupabase.request(`properties?id=eq.${id}`, { method: 'DELETE' });
+            await carregarDadosLocacoes();
+            alert('Imóvel excluído com sucesso.');
+        } catch (err) {
+            alert('Erro ao excluir imóvel: ' + err.message);
         }
     };
 })();

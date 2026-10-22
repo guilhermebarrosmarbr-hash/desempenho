@@ -46,6 +46,11 @@
         });
 
         document.getElementById('btnNovoColaborador').addEventListener('click', () => {
+            document.getElementById('colabId').value = '';
+            document.getElementById('modalColaboradorTitulo').textContent = 'Cadastrar Colaborador';
+            document.getElementById('formColaborador').reset();
+            const btnExc = document.getElementById('btnExcluirColaborador');
+            if (btnExc) btnExc.style.display = 'none';
             modalColaborador.style.display = 'flex';
         });
 
@@ -194,9 +199,12 @@
                 <td>${c.email || '-'}</td>
                 <td>${c.role}</td>
                 <td><span class="badge badge-success">Ativo</span></td>
-                <td>
+                <td style="display: flex; gap: 6px;">
                     <button class="btn btn-secondary btn-sm" onclick="window.editarColaborador('${c.id}')">
                         ✏️ Editar
+                    </button>
+                    <button class="btn btn-danger btn-sm" onclick="window.deletarColaborador('${c.id}')">
+                        🗑️ Excluir
                     </button>
                 </td>
             </tr>
@@ -213,8 +221,24 @@
         document.getElementById('colabCpf').value = c.document || '';
         document.getElementById('colabFuncao').value = c.role || 'Vendedor Técnico';
         document.getElementById('colabEmail').value = c.email || '';
+        const btnExc = document.getElementById('btnExcluirColaborador');
+        if (btnExc) btnExc.style.display = 'inline-flex';
 
         modalColaborador.style.display = 'flex';
+    };
+
+    window.deletarColaboradorModal = async function() {
+        const id = document.getElementById('colabId').value;
+        if (!id) return;
+        if (!confirm('Tem certeza que deseja excluir este colaborador?')) return;
+        try {
+            await window.BpoSupabase.request(`collaborators?id=eq.${id}`, { method: 'DELETE' });
+            fecharModais();
+            await carregarDadosComissoes();
+            alert('Colaborador excluído com sucesso.');
+        } catch (err) {
+            alert('Erro ao excluir colaborador: ' + err.message);
+        }
     };
 
     function formatarData(dataStr) {
@@ -392,6 +416,17 @@
             alert('Comissão quitada com sucesso!');
         } catch (err) {
             alert('Erro ao quitar: ' + err.message);
+        }
+    };
+
+    window.deletarColaborador = async function(id) {
+        if (!confirm('Tem certeza que deseja excluir este colaborador?')) return;
+        try {
+            await window.BpoSupabase.request(`collaborators?id=eq.${id}`, { method: 'DELETE' });
+            await carregarDadosComissoes();
+            alert('Colaborador excluído com sucesso.');
+        } catch (err) {
+            alert('Erro ao excluir colaborador: ' + err.message);
         }
     };
 })();
