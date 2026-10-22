@@ -219,6 +219,9 @@
       <div class="preview-toolbar">
         <span class="preview-info">📄 Pré-visualização do Relatório Oficial Mensal (Formato A4)</span>
         <div style="display: flex; gap: 8px; align-items: center;">
+          <button type="button" class="btn btn-outline" id="btnSyncMensalSupabase" style="font-size: 12px; padding: 6px 12px; border-color: #3b82f6; color: #60a5fa;">
+            ☁️ Salvar no Supabase
+          </button>
           <button type="button" class="btn btn-primary" id="btnQuickPrint" style="font-size: 12px; padding: 6px 12px;">
             🖨️ Imprimir Página
           </button>
@@ -234,6 +237,39 @@
   </main>
 
   <!-- Script com o motor do Módulo 03 -->
+  <script src="financeiro/js/supabase.js"></script>
   <script src="js/mensal.bundle.js"></script>
+  <script>
+    document.getElementById('btnSyncMensalSupabase')?.addEventListener('click', async () => {
+      if (!window.BpoSupabase || !window.BpoSupabase.isConfigured()) {
+        alert('Supabase não configurado. Acesse a tela de configurações no financeiro/config.html.');
+        return;
+      }
+      try {
+        const hoje = new Date();
+        const ano = hoje.getFullYear();
+        const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+        const competencia = `${ano}-${mes}`;
+        
+        const payload = {
+          competence_month: competencia,
+          prestador_nome: 'Prestador PMOC Mensal',
+          categoria: 'CONSOLIDADO',
+          report_data: {
+            timestamp: new Date().toISOString(),
+            origem: 'medicao_mensal'
+          }
+        };
+
+        await window.BpoSupabase.request('monthly_performance_reports', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+        alert('Apuração Mensal do Módulo 03 gravada com sucesso no Supabase!');
+      } catch (err) {
+        alert('Erro ao gravar no Supabase: ' + err.message);
+      }
+    });
+  </script>
 </body>
 </html>

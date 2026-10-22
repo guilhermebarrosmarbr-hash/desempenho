@@ -14,9 +14,11 @@ const inputAno = document.getElementById('inputAno');
 const listaPrestadoresSelect = document.getElementById('listaPrestadoresSelect');
 const prestadorCounter = document.getElementById('prestadorCounter');
 const btnToggleSelectAll = document.getElementById('btnToggleSelectAll');
+const btnOrdenarAlfabetico = document.getElementById('btnOrdenarAlfabetico');
 const btnIniciarLote = document.getElementById('btnIniciarLote');
 
 let prestadoresCadastrados = [];
+let listaOrdenadaAlfabetico = false;
 
 // Formatar CNPJ automaticamente no input
 cadCnpj.addEventListener('input', (e) => {
@@ -82,8 +84,15 @@ async function carregarPrestadores() {
 }
 
 function renderListaPrestadores() {
+  // Ensure list is cleared
   listaPrestadoresSelect.innerHTML = '';
-  if (prestadoresCadastrados.length === 0) {
+  // Normalize: remove anything that's not a letter (including digits) for comparison
+  const normalize = s => (s || '').replace(/[^A-Za-zÀ-ú]/g, '').toLowerCase();
+  // Only sort alphabetically when toggle is active; otherwise keep registration order
+  const sortedPrestadores = listaOrdenadaAlfabetico
+    ? [...prestadoresCadastrados].sort((a, b) => normalize(a.razaoSocial).localeCompare(normalize(b.razaoSocial)))
+    : [...prestadoresCadastrados];
+  if (sortedPrestadores.length === 0) {
     listaPrestadoresSelect.innerHTML = `
       <div style="padding: 20px 10px; text-align: center; color: #94a3b8; font-size: 12px;">
         Nenhum prestador cadastrado ainda.<br>Preencha os campos acima para cadastrar.
@@ -93,7 +102,7 @@ function renderListaPrestadores() {
     return;
   }
 
-  prestadoresCadastrados.forEach(p => {
+  sortedPrestadores.forEach(p => {
     const item = document.createElement('div');
     item.className = 'prestador-item';
 
@@ -135,6 +144,13 @@ btnToggleSelectAll.addEventListener('click', () => {
   const algumDesmarcado = Array.from(checkboxes).some(c => !c.checked);
   checkboxes.forEach(c => c.checked = algumDesmarcado);
   atualizarContadorSelecao();
+});
+
+// Ordenar A-Z (alternando com cadastro natural)
+btnOrdenarAlfabetico.addEventListener('click', () => {
+  listaOrdenadaAlfabetico = !listaOrdenadaAlfabetico;
+  btnOrdenarAlfabetico.textContent = listaOrdenadaAlfabetico ? 'Ordem Natural' : 'Ordenar A‑Z';
+  renderListaPrestadores();
 });
 
 // Excluir Prestador
@@ -232,9 +248,15 @@ function atualizarPainelLote(lote) {
     btnDownloadZip.href = `/api/lotes/${lote.id}/download-zip`;
   }
 
-  // Renderiza tabela de consultas
+  // Renderiza tabela de consultas (ordenada alfabeticamente pelo nome, ignorando números)
   tabelaConsultasCorpo.innerHTML = '';
-  lote.consultas.forEach((c) => {
+  const normalizeNome = s => (s || '').replace(/[^A-Za-z\u00C0-\u00FA]/g, '').toLowerCase();
+  const consultasOrdenadas = [...lote.consultas].sort((a, b) =>
+    normalizeNome(a.nomeContribuinte || a.cnpjFormatado).localeCompare(
+      normalizeNome(b.nomeContribuinte || b.cnpjFormatado)
+    )
+  );
+  consultasOrdenadas.forEach((c) => {
     const tr = document.createElement('tr');
 
     const badgeClass = {
@@ -356,7 +378,9 @@ async function carregarHistorico() {
         <tbody>
     `;
 
-    lotes.forEach(l => {
+    // Lotes ordenados do mais recente para o mais antigo
+    const sortedLotes = [...lotes].sort((a, b) => new Date(b.dataHoraCriacao) - new Date(a.dataHoraCriacao));
+    sortedLotes.forEach(l => {
       const dataFormatada = new Date(l.dataHoraCriacao).toLocaleString('pt-BR');
       html += `
         <tr>

@@ -153,6 +153,72 @@ export class QueueManager {
         console.log(`[Queue] Finalizado CNPJ ${consulta.cnpjSolicitado}: ${consulta.status}`);
       }
 
+      // ── RETRY AUTOMÁTICO ──────────────────────────────────────────────────────
+      // Após processar todos os itens, tenta novamente os que falharam (1 vez).
+      if (!this.cancelFlags.has(loteId)) {
+        const loteAtualizado = this.db.getLote(loteId)!;
+        const falhos = loteAtualizado.consultas.filter(c => c.status === 'FALHOU');
+
+        if (falhos.length > 0) {
+          console.log(`[Queue] Iniciando retry de ${falhos.length} consulta(s) que falharam...`);
+
+          for (const consulta of falhos) {
+            if (this.cancelFlags.has(loteId)) break;
+
+            console.log(`[Queue] [RETRY] CNPJ ${consulta.cnpjSolicitado} (tentativa ${consulta.tentativas + 1})...`);
+            consulta.status = 'EM_PROCESSAMENTO';
+            consulta.tentativas++;
+            consulta.mensagemErro = undefined;
+            consulta.codigoErro = undefined;
+            this.db.updateConsulta(loteId, consulta);
+
+            const resultado = await this.adapter.consultarCnpj(
+              consulta.cnpjSolicitado,
+              consulta.anoSolicitado,
+              this.db.getScreenshotsDir(),
+              consulta.id,
+              false,
+              consulta.nomeContribuinte,
+              async (page, context) => {
+                consulta.status = 'AGUARDANDO_VERIFICACAO_HUMANA';
+                consulta.requerIntervencao = true;
+                this.db.updateConsulta(loteId, consulta);
+                console.warn(`[Queue][RETRY] CNPJ ${consulta.cnpjSolicitado} aguardando operador...`);
+                await new Promise<void>((resolve) => {
+                  this.humanInterventionWaiters.set(consulta.id, resolve);
+                  setTimeout(resolve, 180000);
+                });
+                consulta.requerIntervencao = false;
+                consulta.status = 'EM_PROCESSAMENTO';
+                this.db.updateConsulta(loteId, consulta);
+              }
+            );
+
+            consulta.dataHoraFim = new Date().toISOString();
+
+            if (resultado.sucesso) {
+              consulta.status = 'CONCLUIDO';
+              consulta.cnpjIdentificado = resultado.cnpjIdentificado;
+              consulta.anoConfirmado = resultado.anoConfirmado;
+              consulta.linhasApuracao = resultado.linhasApuracao;
+              consulta.screenshotPath = resultado.screenshotPath;
+              consulta.screenshotFilename = resultado.screenshotFilename;
+              consulta.urlOrigem = resultado.urlFinal;
+              consulta.resumoSituacao = interpretarResumoDas(resultado.linhasApuracao, consulta.anoSolicitado);
+            } else {
+              consulta.status = 'FALHOU';
+              consulta.codigoErro = resultado.codigoErro;
+              consulta.mensagemErro = resultado.mensagemErro;
+              consulta.screenshotFilename = resultado.screenshotFilename;
+            }
+
+            this.db.updateConsulta(loteId, consulta);
+            console.log(`[Queue] [RETRY] Finalizado CNPJ ${consulta.cnpjSolicitado}: ${consulta.status}`);
+          }
+        }
+      }
+      // ─────────────────────────────────────────────────────────────────────────
+
     } finally {
       this.isProcessing = false;
     }

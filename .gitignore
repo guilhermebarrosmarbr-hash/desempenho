@@ -23,3 +23,7 @@ get_qr.ps1
 bpo-financeiro-pgmei/data/screenshots/
 
 
+
+# Credenciais e ambientes
+.env
+.env.local

@@ -77,9 +77,12 @@
           </div>
 
           <div class="form-group">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 6px;">
               <label class="form-label" style="margin-bottom: 0;">Prestadores Selecionados:</label>
-              <button type="button" class="btn-link" id="btnToggleSelectAll">Marcar/Desmarcar Todos</button>
+              <div style="display:flex; gap:6px;">
+                <button type="button" class="btn-link" id="btnOrdenarAlfabetico">Ordenar A‑Z</button>
+                <button type="button" class="btn-link" id="btnToggleSelectAll">Marcar/Desmarcar Todos</button>
+              </div>
             </div>
             <div id="listaPrestadoresSelect" class="prestadores-checklist">
               <!-- Gerado via JS -->
@@ -93,15 +96,7 @@
         </form>
       </div>
 
-      <!-- Card Informativo de Boas Práticas -->
-      <div class="card card-muted">
-        <h3 class="card-subtitle">ℹ️ Informações Importantes</h3>
-        <ul class="info-list">
-          <li><strong>Formato do Print:</strong> Salvo no formato <code>razaosocial-cnpj.png</code> para identificação imediata.</li>
-          <li><strong>Intervenção Humana:</strong> Se o portal solicitar hCaptcha visual, o navegador ficará visível para você resolver.</li>
-          <li><strong>Download em ZIP:</strong> Todas as telas de comprovante são baixadas organizadas em um arquivo ZIP.</li>
-        </ul>
-      </div>
+
     </aside>
 
     <!-- Conteúdo Principal: Acompanhamento em Tempo Real & Histórico -->

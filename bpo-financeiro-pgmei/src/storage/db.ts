@@ -2,6 +2,27 @@ import fs from 'fs';
 import path from 'path';
 import { LoteConsultas, ConsultaResultado, Prestador } from '../types.js';
 
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://rdjdieirkjlyoooxtdfw.supabase.co';
+const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || 'sb_publishable_OSLZXYjeAk8dVmwAt5-QIQ_kkFxC-V_';
+
+async function syncToSupabase(table: string, payload: any) {
+  try {
+    if (!SUPABASE_URL || !SUPABASE_KEY) return;
+    await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates'
+      },
+      body: JSON.stringify(payload)
+    });
+  } catch (err) {
+    // Falha silenciosa para não quebrar operação offline/local
+  }
+}
+
 export class DatabaseStore {
   private dataDir: string;
   private dbFile: string;
@@ -76,6 +97,17 @@ export class DatabaseStore {
       const tempFile = `${this.prestadoresFile}.tmp`;
       fs.writeFileSync(tempFile, JSON.stringify(data, null, 2), 'utf8');
       fs.renameSync(tempFile, this.prestadoresFile);
+
+      // Sincroniza cada prestador com a nuvem Supabase
+      data.forEach(p => {
+        syncToSupabase('mei_providers', {
+          id: p.id,
+          razao_social: p.razaoSocial,
+          cnpj: p.cnpj,
+          ativo: true,
+          updated_at: new Date().toISOString()
+        });
+      });
     } catch (err) {
       console.error('[DB] Erro ao salvar prestadores:', err);
     }
@@ -126,6 +158,19 @@ export class DatabaseStore {
   public saveLote(lote: LoteConsultas) {
     this.lotes.set(lote.id, lote);
     this.save();
+
+    // Sincroniza lote no Supabase
+    syncToSupabase('mei_query_batches', {
+      id: lote.id,
+      competencias: lote.competencias,
+      status: lote.status,
+      total: lote.total,
+      concluidos: lote.concluidas,
+      falhas: lote.falhas,
+      consultas: lote.consultas,
+      zip_path: lote.zipPath || null,
+      updated_at: new Date().toISOString()
+    });
   }
 
   public getLote(id: string): LoteConsultas | undefined {

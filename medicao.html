@@ -36,6 +36,9 @@
       <a href="http://localhost:3000" target="_blank" class="btn btn-outline" style="text-decoration: none;" title="Abrir Módulo 02: Consulta DAS MEI (PGMEI)">
         🔍 Consulta MEI (PGMEI)
       </a>
+      <button type="button" class="btn btn-outline" id="btnSyncSupabase" title="Gravar e sincronizar medição da semana no Supabase" style="border-color: #3b82f6; color: #60a5fa;">
+        ☁️ Salvar no Supabase
+      </button>
       <button type="button" class="btn btn-outline" id="btnOpenConfigModal" title="Gerenciar contratos, setores e técnicos cadastrados">
         ⚙️ Gestão de Contrato
       </button>
@@ -608,7 +611,33 @@
   </div>
 
   <!-- Script Principal Universal (Compatível com file:// direto e HTTP) -->
+  <script src="financeiro/js/supabase.js"></script>
   <script src="js/auvo.js"></script>
   <script src="js/app.bundle.js"></script>
+  <script>
+    document.getElementById('btnSyncSupabase')?.addEventListener('click', async () => {
+      if (!window.BpoSupabase || !window.BpoSupabase.isConfigured()) {
+        alert('Supabase não configurado. Acesse a tela de configurações no financeiro/config.html.');
+        return;
+      }
+      try {
+        const periodo = document.getElementById('reportPeriodTitle')?.innerText || 'Medição Semanal PMOC';
+        const payload = {
+          period_label: periodo,
+          report_data: {
+            timestamp: new Date().toISOString(),
+            origem: 'medicao_semanal_pmoc'
+          }
+        };
+        await window.BpoSupabase.request('weekly_performance_reports', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+        alert('Relatório de Desempenho Semanal gravado com sucesso no Supabase!');
+      } catch (err) {
+        alert('Erro ao sincronizar com Supabase: ' + err.message);
+      }
+    });
+  </script>
 </body>
 </html>

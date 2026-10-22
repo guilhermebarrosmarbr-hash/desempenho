@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Módulo 04 — Controle de Faturamento & Recebimentos</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Barra Superior / Seletor de Empresa -->
+    <header class="top-navbar">
+        <div class="brand-section">
+            <a href="../index.html" style="text-decoration: none; display: flex; align-items: center; gap: 12px;">
+                <div class="brand-logo">04</div>
+                <div>
+                    <h1 class="brand-title">Controle de Faturamento</h1>
+                    <div class="brand-subtitle">BPO Financeiro Mar Brasil • Módulo 04</div>
+                </div>
+            </a>
+        </div>
+
+        <div class="company-selector-bar">
+            <div>
+                <label for="selectEmpresa" style="font-size: 0.75rem; color: var(--text-muted); display: block;">Empresa Ativa:</label>
+                <select id="selectEmpresa" class="select-control">
+                    <option value="">Carregando empresas...</option>
+                </select>
+            </div>
+
+            <div>
+                <label for="inputCompetencia" style="font-size: 0.75rem; color: var(--text-muted); display: block;">Competência:</label>
+                <input type="month" id="inputCompetencia" class="select-control" style="color-scheme: dark;">
+            </div>
+
+            <button class="btn btn-secondary btn-sm" id="btnNovaEmpresa">+ Cadastrar Empresa</button>
+        </div>
+    </header>
+
+    <!-- Conteúdo Principal -->
+    <main class="layout-container">
+        <!-- Métricas Rápidas -->
+        <section class="metrics-grid">
+            <div class="metric-card primary">
+                <div class="metric-label">Faturamento Emitido (Bruto)</div>
+                <div class="metric-value" id="valFaturadoBruto">R$ 0,00</div>
+            </div>
+            <div class="metric-card success">
+                <div class="metric-label">Total Liquidado (Recebido)</div>
+                <div class="metric-value" id="valTotalRecebido">R$ 0,00</div>
+            </div>
+            <div class="metric-card warning">
+                <div class="metric-label">A Receber no Período</div>
+                <div class="metric-value" id="valAReceber">R$ 0,00</div>
+            </div>
+            <div class="metric-card danger">
+                <div class="metric-label">Retenções & Descontos</div>
+                <div class="metric-value" id="valRetencoes">R$ 0,00</div>
+            </div>
+        </section>
+
+        <!-- Seção de Ações Rápidas -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+            <div style="display: flex; gap: 12px;">
+                <button class="btn btn-primary" id="btnNovoDocumento">+ Emitir / Registrar Documento</button>
+                <button class="btn btn-secondary" id="btnNovoContrato">+ Novo Contrato</button>
+                <button class="btn btn-secondary" id="btnNovoCliente">+ Cadastrar Cliente</button>
+            </div>
+            <div>
+                <a href="config.html" class="btn btn-secondary btn-sm">⚙ Conexão Supabase</a>
+            </div>
+        </div>
+
+        <!-- Tabela de Documentos de Faturamento da Competência -->
+        <section class="finance-card">
+            <div class="card-header">
+                <div>
+                    <h2 class="card-title">Documentos de Faturamento</h2>
+                    <p class="card-subtitle">Notas Fiscais de Serviço (NFS-e), Faturas e Recibos da competência selecionada</p>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-secondary btn-sm" id="btnFiltrarStatus">Todos os Status</button>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table-custom" id="tabelaDocumentos">
+                    <thead>
+                        <tr>
+                            <th>Número / Série</th>
+                            <th>Cliente</th>
+                            <th>Emissão</th>
+                            <th>Vencimento</th>
+                            <th>Valor Bruto</th>
+                            <th>Retenções</th>
+                            <th>Valor Líquido</th>
+                            <th>Status</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="listaDocumentosBody">
+                        <tr>
+                            <td colspan="9" style="text-align: center; color: var(--text-muted); padding: 32px;">
+                                Selecione uma empresa para carregar os documentos.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Seção de Contratos Ativos -->
+        <section class="finance-card">
+            <div class="card-header">
+                <div>
+                    <h2 class="card-title">Contratos Vinculados</h2>
+                    <p class="card-subtitle">Contratos de clientes com regras de faturamento, comissão e tributação</p>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table-custom" id="tabelaContratos">
+                    <thead>
+                        <tr>
+                            <th>Código</th>
+                            <th>Contrato / Objeto</th>
+                            <th>Cliente</th>
+                            <th>Valor Base</th>
+                            <th>Periodicidade</th>
+                            <th>Comissão</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="listaContratosBody">
+                        <tr>
+                            <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 24px;">
+                                Nenhum contrato cadastrado para esta empresa.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <!-- MODAL: Cadastrar Empresa -->
+    <div class="modal-overlay" id="modalEmpresa">
+        <div class="modal-card">
+            <h2 class="card-title" style="margin-bottom: 8px;">Cadastrar Nova Empresa</h2>
+            <p class="card-subtitle" style="margin-bottom: 20px;">Insira a Razão Social e CNPJ real da empresa do grupo.</p>
+            
+            <form id="formNovaEmpresa">
+                <div style="margin-bottom: 16px;">
+                    <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Razão Social *</label>
+                    <input type="text" id="empresaNome" required class="select-control" style="width: 100%;" placeholder="Ex: Mar Brasil Climatização Ltda">
+                </div>
+                <div style="margin-bottom: 16px;">
+                    <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Nome Fantasia</label>
+                    <input type="text" id="empresaFantasia" class="select-control" style="width: 100%;" placeholder="Ex: Mar Brasil">
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">CNPJ *</label>
+                        <input type="text" id="empresaCnpj" required class="select-control" style="width: 100%;" placeholder="00.000.000/0000-00">
+                    </div>
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Regime Tributário</label>
+                        <select id="empresaRegime" class="select-control" style="width: 100%;">
+                            <option value="simples_nacional">Simples Nacional</option>
+                            <option value="lucro_presumido">Lucro Presumido</option>
+                            <option value="lucro_real">Lucro Real</option>
+                            <option value="mei">MEI</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
+                    <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Salvar Empresa</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: Novo Documento de Faturamento -->
+    <div class="modal-overlay" id="modalDocumento">
+        <div class="modal-card" style="max-width: 680px;">
+            <h2 class="card-title" style="margin-bottom: 8px;">Registrar Documento de Faturamento</h2>
+            <p class="card-subtitle" style="margin-bottom: 20px;">Lançamento de NFS-e, fatura de medição ou recibo emitido.</p>
+            
+            <form id="formNovoDocumento">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Tipo de Documento</label>
+                        <select id="docTipo" class="select-control" style="width: 100%;">
+                            <option value="nfse">NFS-e (Nota Fiscal de Serviço)</option>
+                            <option value="fatura">Fatura / Medição</option>
+                            <option value="recibo">Recibo</option>
+                            <option value="locacao">Contrato de Locação</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Número do Documento *</label>
+                        <input type="text" id="docNumero" required class="select-control" style="width: 100%;" placeholder="Ex: 2026/0014">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Data de Emissão *</label>
+                        <input type="date" id="docEmissao" required class="select-control" style="width: 100%; color-scheme: dark;">
+                    </div>
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Data de Vencimento *</label>
+                        <input type="date" id="docVencimento" required class="select-control" style="width: 100%; color-scheme: dark;">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Valor Bruto (R$) *</label>
+                        <input type="text" id="docValorBruto" required class="select-control" style="width: 100%;" placeholder="0,00">
+                    </div>
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Retenções (R$)</label>
+                        <input type="text" id="docRetencoes" class="select-control" style="width: 100%;" placeholder="0,00" value="0,00">
+                    </div>
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Valor Líquido (R$)</label>
+                        <input type="text" id="docValorLiquido" readonly class="select-control" style="width: 100%; background: rgba(255,255,255,0.03);" value="0,00">
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 16px;">
+                    <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Descrição dos Serviços / Objeto</label>
+                    <textarea id="docDescricao" class="select-control" style="width: 100%; height: 60px;" placeholder="Serviços de manutenção preventiva PMOC..."></textarea>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
+                    <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Gravar Documento</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: Registrar Recebimento / Baixa -->
+    <div class="modal-overlay" id="modalRecebimento">
+        <div class="modal-card">
+            <h2 class="card-title" style="margin-bottom: 8px;">Registrar Baixa de Recebimento</h2>
+            <p class="card-subtitle" style="margin-bottom: 20px;">Confirme o crédito em conta bancária para liquidação do documento.</p>
+            
+            <form id="formRecebimento">
+                <input type="hidden" id="recDocId">
+                <div style="margin-bottom: 16px;">
+                    <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Documento a Liquidar</label>
+                    <input type="text" id="recDocIdentificacao" readonly class="select-control" style="width: 100%; background: rgba(255,255,255,0.03);">
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Data do Crédito *</label>
+                        <input type="date" id="recData" required class="select-control" style="width: 100%; color-scheme: dark;">
+                    </div>
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Valor Recebido (R$) *</label>
+                        <input type="text" id="recValor" required class="select-control" style="width: 100%;">
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 16px;">
+                    <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Conta de Destino *</label>
+                    <select id="recConta" class="select-control" style="width: 100%;">
+                        <option value="Conta Principal - Banco Itaú">Banco Itaú (Conta Principal)</option>
+                        <option value="Banco Inter">Banco Inter</option>
+                        <option value="Banco Santander">Banco Santander</option>
+                        <option value="Caixa / Dinheiro">Caixa / Dinheiro</option>
+                    </select>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
+                    <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" style="background: var(--color-success);">Confirmar Recebimento</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="js/supabase.js"></script>
+    <script src="js/money.js"></script>
+    <script src="js/faturamento.js"></script>
+</body>
+</html>

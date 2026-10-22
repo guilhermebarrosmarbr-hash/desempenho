@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Módulo 08 — Gestão de Locações & Rateio Societário</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Top Navbar -->
+    <header class="top-navbar">
+        <div class="brand-section">
+            <a href="../index.html" style="text-decoration: none; display: flex; align-items: center; gap: 12px;">
+                <div class="brand-logo" style="background: linear-gradient(135deg, #ec4899, #be185d);">08</div>
+                <div>
+                    <h1 class="brand-title">Gestão de Locações</h1>
+                    <div class="brand-subtitle">Imóveis Ybox • Rateio Societário • Deduções e Repasses</div>
+                </div>
+            </a>
+        </div>
+
+        <div class="company-selector-bar">
+            <div>
+                <label for="selectEmpresa" style="font-size: 0.75rem; color: var(--text-muted); display: block;">Empresa Titular (ex: Ybox):</label>
+                <select id="selectEmpresa" class="select-control">
+                    <option value="">Carregando...</option>
+                </select>
+            </div>
+
+            <div>
+                <label for="inputCompetencia" style="font-size: 0.75rem; color: var(--text-muted); display: block;">Competência:</label>
+                <input type="month" id="inputCompetencia" class="select-control" style="color-scheme: dark;">
+            </div>
+
+            <button class="btn btn-primary btn-sm" id="btnNovoImovel">+ Cadastrar Imóvel</button>
+        </div>
+    </header>
+
+    <main class="layout-container">
+        <!-- Métricas Rápidas -->
+        <section class="metrics-grid">
+            <div class="metric-card primary">
+                <div class="metric-label">Aluguéis Faturados</div>
+                <div class="metric-value" id="valAlugueisBruto">R$ 0,00</div>
+            </div>
+            <div class="metric-card danger">
+                <div class="metric-label">Deduções (IPTU/Cond./Adm)</div>
+                <div class="metric-value" id="valDeducoes">R$ 0,00</div>
+            </div>
+            <div class="metric-card success">
+                <div class="metric-label">Líquido Distribuível</div>
+                <div class="metric-value" id="valDistribuivel">R$ 0,00</div>
+            </div>
+            <div class="metric-card info">
+                <div class="metric-label">Imóveis Ativos</div>
+                <div class="metric-value" id="valTotalImoveis">0</div>
+            </div>
+        </section>
+
+        <!-- Ações -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+            <div style="display: flex; gap: 12px;">
+                <button class="btn btn-primary" id="btnProcessarDistribuicao">⚡ Processar Rateio Societário</button>
+                <button class="btn btn-secondary" id="btnNovoContratoLocacao">+ Contrato de Locação</button>
+                <button class="btn btn-secondary" id="btnParticipantesSocios">Participantes / Sócios</button>
+            </div>
+        </div>
+
+        <!-- Tabela de Distribuição da Competência -->
+        <section class="finance-card">
+            <div class="card-header">
+                <div>
+                    <h2 class="card-title">Extrato de Rateio por Participante</h2>
+                    <p class="card-subtitle">Valores líquidos divididos rigorosamente por percentual de titularidade</p>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table-custom">
+                    <thead>
+                        <tr>
+                            <th>Competência</th>
+                            <th>Imóvel</th>
+                            <th>Sócio / Participante</th>
+                            <th>Receita Bruta</th>
+                            <th>Deduções</th>
+                            <th>Participação (%)</th>
+                            <th>Valor Líquido a Receber</th>
+                            <th>Status</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="listaDistribuicoesBody">
+                        <tr>
+                            <td colspan="9" style="text-align: center; color: var(--text-muted); padding: 32px;">
+                                Nenhuma distribuição processada nesta competência.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Imóveis Cadastrados -->
+        <section class="finance-card">
+            <div class="card-header">
+                <div>
+                    <h2 class="card-title">Imóveis e Galpões Ybox</h2>
+                    <p class="card-subtitle">Cadastro de patrimônio imobiliário e inquilinos</p>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table-custom">
+                    <thead>
+                        <tr>
+                            <th>Nome do Imóvel</th>
+                            <th>Endereço</th>
+                            <th>Aluguel Mensal</th>
+                            <th>Dia Venc.</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="listaImoveisBody">
+                        <tr>
+                            <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 24px;">
+                                Nenhum imóvel cadastrado.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal Novo Imóvel -->
+    <div class="modal-overlay" id="modalImovel">
+        <div class="modal-card">
+            <h2 class="card-title" style="margin-bottom: 8px;">Cadastrar Novo Imóvel</h2>
+            <p class="card-subtitle" style="margin-bottom: 20px;">Adicione um galpão, prédio ou unidade locada.</p>
+
+            <form id="formImovel">
+                <div style="margin-bottom: 16px;">
+                    <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Identificação do Imóvel *</label>
+                    <input type="text" id="imovelNome" required class="select-control" style="width: 100%;" placeholder="Ex: Galpão Logístico Ybox - Santos">
+                </div>
+                <div style="margin-bottom: 16px;">
+                    <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Endereço Completo</label>
+                    <input type="text" id="imovelEndereco" class="select-control" style="width: 100%;" placeholder="Av. Portuária, 1500 - Santos/SP">
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
+                    <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Salvar Imóvel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Contrato Locação -->
+    <div class="modal-overlay" id="modalContratoLocacao">
+        <div class="modal-card">
+            <h2 class="card-title" style="margin-bottom: 8px;">Novo Contrato de Locação</h2>
+            <p class="card-subtitle" style="margin-bottom: 20px;">Defina o locatário e o valor mensal do aluguel.</p>
+
+            <form id="formContratoLocacao">
+                <div style="margin-bottom: 16px;">
+                    <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Imóvel *</label>
+                    <select id="locImovel" required class="select-control" style="width: 100%;"></select>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Valor Mensal (R$) *</label>
+                        <input type="text" id="locValor" required class="select-control" style="width: 100%;" placeholder="5.000,00">
+                    </div>
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Dia do Vencimento</label>
+                        <input type="number" id="locDia" min="1" max="31" class="select-control" style="width: 100%;" value="10">
+                    </div>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
+                    <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Gravar Contrato</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="js/supabase.js"></script>
+    <script src="js/money.js"></script>
+    <script src="js/rentals.js"></script>
+    <script src="js/locacoes.js"></script>
+</body>
+</html>

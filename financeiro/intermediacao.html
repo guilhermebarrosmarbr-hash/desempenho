@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Módulo 07 — Intermediação de Negócios</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header class="top-navbar">
+        <div class="brand-section">
+            <a href="../index.html" style="text-decoration: none; display: flex; align-items: center; gap: 12px;">
+                <div class="brand-logo" style="background: linear-gradient(135deg, #06b6d4, #0891b2);">07</div>
+                <div>
+                    <h1 class="brand-title">Intermediação de Negócios</h1>
+                    <div class="brand-subtitle">Operações Intercompany • Mar Brasil &bull; DZM &bull; Ybox</div>
+                </div>
+            </a>
+        </div>
+
+        <div class="company-selector-bar">
+            <div>
+                <label for="selectEmpresaPagadora" style="font-size: 0.75rem; color: var(--text-muted); display: block;">Empresa Pagadora (Faturadora):</label>
+                <select id="selectEmpresaPagadora" class="select-control">
+                    <option value="">Carregando...</option>
+                </select>
+            </div>
+
+            <div>
+                <label for="inputCompetencia" style="font-size: 0.75rem; color: var(--text-muted); display: block;">Competência:</label>
+                <input type="month" id="inputCompetencia" class="select-control" style="color-scheme: dark;">
+            </div>
+
+            <button class="btn btn-primary btn-sm" id="btnNovoAcordo">+ Novo Acordo Intercompany</button>
+        </div>
+    </header>
+
+    <main class="layout-container">
+        <!-- Métricas Rápidas -->
+        <section class="metrics-grid">
+            <div class="metric-card primary">
+                <div class="metric-label">Base Faturada Elegível</div>
+                <div class="metric-value" id="valBaseIntermediacao">R$ 0,00</div>
+            </div>
+            <div class="metric-card info">
+                <div class="metric-label">Taxa Média de Intermediação</div>
+                <div class="metric-value" id="valTaxaMedia">0,00%</div>
+            </div>
+            <div class="metric-card warning">
+                <div class="metric-label">Total Apurado Intercompany</div>
+                <div class="metric-value" id="valTotalApurado">R$ 0,00</div>
+            </div>
+            <div class="metric-card success">
+                <div class="metric-label">Repasses Liquidados</div>
+                <div class="metric-value" id="valRepassesLiquidados">R$ 0,00</div>
+            </div>
+        </section>
+
+        <!-- Ações -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+            <div style="display: flex; gap: 12px;">
+                <button class="btn btn-primary" id="btnProcessarIntermediacao">⚡ Processar Repasses Intercompany</button>
+            </div>
+            <a href="locacoes.html" class="btn btn-secondary btn-sm">Módulo 08: Locações &rarr;</a>
+        </div>
+
+        <!-- Tabela de Repasses -->
+        <section class="finance-card">
+            <div class="card-header">
+                <div>
+                    <h2 class="card-title">Extrato de Repasses de Intermediação</h2>
+                    <p class="card-subtitle">Cálculo auditável entre a empresa faturadora e a beneficiária</p>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table-custom">
+                    <thead>
+                        <tr>
+                            <th>Competência</th>
+                            <th>Faturadora (Pagadora)</th>
+                            <th>Beneficiária (Recebedora)</th>
+                            <th>Base Faturamento</th>
+                            <th>Taxa (%)</th>
+                            <th>Valor a Repassar</th>
+                            <th>Status</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="listaIntermediacaoBody">
+                        <tr>
+                            <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 32px;">
+                                Nenhum repasse gerado para esta competência.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Acordos Vigentes -->
+        <section class="finance-card">
+            <div class="card-header">
+                <div>
+                    <h2 class="card-title">Acordos de Intermediação Configurados</h2>
+                    <p class="card-subtitle">Regras formais de taxa e evento gerador entre empresas</p>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table-custom">
+                    <thead>
+                        <tr>
+                            <th>Devedora / Pagadora</th>
+                            <th>Credora / Recebedora</th>
+                            <th>Taxa de Intermediação</th>
+                            <th>Evento Gerador</th>
+                            <th>Vigência</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="listaAcordosBody">
+                        <tr>
+                            <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;">
+                                Nenhum acordo cadastrado.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal Novo Acordo -->
+    <div class="modal-overlay" id="modalAcordo">
+        <div class="modal-card">
+            <h2 class="card-title" style="margin-bottom: 8px;">Configurar Acordo de Intermediação</h2>
+            <p class="card-subtitle" style="margin-bottom: 20px;">Defina expressamente o sentido de pagamento e a taxa acordada.</p>
+
+            <form id="formAcordo">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Empresa Pagadora *</label>
+                        <select id="acordoPagadora" required class="select-control" style="width: 100%;"></select>
+                    </div>
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Empresa Recebedora *</label>
+                        <select id="acordoRecebedora" required class="select-control" style="width: 100%;"></select>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Taxa de Intermediação (%) *</label>
+                        <input type="number" step="0.1" id="acordoTaxa" required class="select-control" style="width: 100%;" value="10.0">
+                    </div>
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Gatilho do Repasse</label>
+                        <select id="acordoGatilho" class="select-control" style="width: 100%;">
+                            <option value="billing">Faturamento Emitido (NFS-e)</option>
+                            <option value="receipt">Efetiva Liquidação / Recebimento</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
+                    <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Salvar Acordo</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="js/supabase.js"></script>
+    <script src="js/money.js"></script>
+    <script src="js/commissions.js"></script>
+    <script src="js/intermediacao.js"></script>
+</body>
+</html>
