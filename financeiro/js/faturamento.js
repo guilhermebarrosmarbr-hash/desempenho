@@ -213,7 +213,8 @@
 
         } catch (err) {
             console.error("Erro ao carregar empresas:", err);
-            selectEmpresa.innerHTML = '<option value="">Erro ao conectar ao Supabase</option>';
+            const msgErro = err && err.message ? err.message : 'Falha na conexão';
+            selectEmpresa.innerHTML = `<option value="">Erro Supabase: ${escapeHtml(msgErro)}</option>`;
         }
     }
 
