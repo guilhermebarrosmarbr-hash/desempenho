@@ -22,11 +22,11 @@
             </a>
         </div>
 
-        <div class="company-selector-bar">
+        <div class="company-selector-bar" style="flex-wrap: wrap; gap: 12px;">
             <div>
-                <label for="selectEmpresa" style="font-size: 0.75rem; color: var(--text-muted); display: block;">Empresa Ativa:</label>
+                <label for="selectEmpresa" style="font-size: 0.75rem; color: var(--text-muted); display: block;">Empresa:</label>
                 <select id="selectEmpresa" class="select-control">
-                    <option value="">Carregando empresas...</option>
+                    <option value="all">Todas as Empresas (Consolidado)</option>
                 </select>
             </div>
 
@@ -35,8 +35,26 @@
                 <input type="month" id="inputCompetencia" class="select-control" style="color-scheme: dark;">
             </div>
 
+            <div>
+                <label for="filtroContrato" style="font-size: 0.75rem; color: var(--text-muted); display: block;">Contrato:</label>
+                <select id="filtroContrato" class="select-control">
+                    <option value="all">Todos os Contratos</option>
+                </select>
+            </div>
+
+            <div>
+                <label for="filtroStatus" style="font-size: 0.75rem; color: var(--text-muted); display: block;">Situação:</label>
+                <select id="filtroStatus" class="select-control">
+                    <option value="all">Todos os Status</option>
+                    <option value="emitted">Emitidos (Abertos)</option>
+                    <option value="paid">Liquidados (Recebidos)</option>
+                    <option value="partially_paid">Parciais</option>
+                    <option value="cancelled">Cancelados</option>
+                </select>
+            </div>
+
             <button class="btn btn-secondary btn-sm" id="btnNovaEmpresa">+ Nova Empresa</button>
-            <button class="btn btn-outline btn-sm" id="btnEditarEmpresa" style="border: 1px solid var(--border-color); color: #38bdf8;">✏️ Editar Empresa</button>
+            <button class="btn btn-outline btn-sm" id="btnEditarEmpresa" style="border: 1px solid var(--border-color); color: #38bdf8; display: none;">✏️ Editar Empresa</button>
         </div>
     </header>
 
@@ -53,11 +71,11 @@
                 <div class="metric-value" id="valTotalRecebido">R$ 0,00</div>
             </div>
             <div class="metric-card warning">
-                <div class="metric-label">A Receber no Período</div>
+                <div class="metric-label">A Receber no Período (Saldo)</div>
                 <div class="metric-value" id="valAReceber">R$ 0,00</div>
             </div>
             <div class="metric-card danger">
-                <div class="metric-label">Retenções & Descontos</div>
+                <div class="metric-label">Retenções Aplicáveis</div>
                 <div class="metric-value" id="valRetencoes">R$ 0,00</div>
             </div>
         </section>
@@ -69,6 +87,7 @@
                 <button class="btn btn-secondary" id="btnNovoContrato">+ Novo Contrato</button>
             </div>
             <div>
+                <a href="impostos.html" class="btn btn-secondary btn-sm" style="margin-right: 8px;">Ir para Impostos (05)</a>
                 <a href="config.html" class="btn btn-secondary btn-sm">⚙ Conexão Supabase</a>
             </div>
         </div>
@@ -80,8 +99,8 @@
                     <h2 class="card-title">Documentos de Faturamento</h2>
                     <p class="card-subtitle">Notas Fiscais de Serviço (NFS-e), Faturas e Recibos da competência selecionada</p>
                 </div>
-                <div style="display: flex; gap: 8px;">
-                    <button class="btn btn-secondary btn-sm" id="btnFiltrarStatus">Todos os Status</button>
+                <div style="font-size: 0.85rem; color: var(--text-muted);" id="resumoContagemDocs">
+                    Exibindo 0 lançamentos
                 </div>
             </div>
 
@@ -89,22 +108,24 @@
                 <table class="table-custom" id="tabelaDocumentos">
                     <thead>
                         <tr>
+                            <th>Empresa</th>
                             <th>Número / Série</th>
-                            <th>Cliente</th>
+                            <th>Contrato / Cliente</th>
                             <th>Emissão</th>
                             <th>Vencimento</th>
                             <th>Recebimento</th>
                             <th>Valor Bruto</th>
+                            <th>Impostos Atribuídos</th>
                             <th>Retenções</th>
                             <th>Valor Líquido</th>
-                            <th>Status</th>
+                            <th>Situação</th>
                             <th>Ações</th>
                         </tr>
                     </thead>
                     <tbody id="listaDocumentosBody">
                         <tr>
-                            <td colspan="10" style="text-align: center; color: var(--text-muted); padding: 32px;">
-                                Selecione uma empresa para carregar os documentos.
+                            <td colspan="12" style="text-align: center; color: var(--text-muted); padding: 32px;">
+                                Carregando lançamentos...
                             </td>
                         </tr>
                     </tbody>
@@ -201,21 +222,36 @@
             <form id="formNovoDocumento">
                 <input type="hidden" id="docId" value="">
 
-                <div style="margin-bottom: 16px;">
-                    <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Contrato Vinculado</label>
-                    <select id="docContrato" class="select-control" style="width: 100%;">
-                        <option value="">— Sem vínculo de contrato —</option>
-                    </select>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Empresa Emitente *</label>
+                        <select id="docEmpresaId" required class="select-control" style="width: 100%;">
+                            <option value="">Selecione a empresa...</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Contrato Vinculado</label>
+                        <select id="docContrato" class="select-control" style="width: 100%;">
+                            <option value="">— Sem vínculo de contrato —</option>
+                        </select>
+                    </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px;">
                     <div>
                         <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Tipo de Documento</label>
                         <select id="docTipo" class="select-control" style="width: 100%;">
-                            <option value="nfse">NFS-e (Nota Fiscal de Serviço)</option>
+                            <option value="nfse">NFS-e (Nota de Serviço)</option>
                             <option value="fatura">Fatura / Medição</option>
                             <option value="recibo">Recibo</option>
                             <option value="locacao">Contrato de Locação</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Natureza / Item *</label>
+                        <select id="docItemTipo" class="select-control" style="width: 100%;">
+                            <option value="servico">Prestação de Serviço</option>
+                            <option value="produto">Venda de Produto / Mercadoria</option>
                         </select>
                     </div>
                     <div>
@@ -245,12 +281,80 @@
                         <input type="text" id="docValorBruto" required class="select-control" style="width: 100%;" placeholder="0,00">
                     </div>
                     <div>
-                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Retenções (R$)</label>
-                        <input type="text" id="docRetencoes" class="select-control" style="width: 100%;" placeholder="0,00" value="0,00">
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Retenções Aplicáveis (R$)</label>
+                        <input type="text" id="docRetencoes" readonly class="select-control" style="width: 100%; background: rgba(255,255,255,0.03);" placeholder="0,00" value="0,00">
                     </div>
                     <div>
-                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Valor Líquido (R$)</label>
-                        <input type="text" id="docValorLiquido" readonly class="select-control" style="width: 100%; background: rgba(255,255,255,0.03);" value="0,00">
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Líquido a Receber (R$)</label>
+                        <input type="text" id="docValorLiquido" readonly class="select-control" style="width: 100%; background: rgba(255,255,255,0.03); font-weight: 600; color: var(--color-success);" value="0,00">
+                    </div>
+                </div>
+
+                <!-- Painel Impostos e Retenções com Prévia Dinâmica -->
+                <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <h4 style="font-size: 0.9rem; font-weight: 600; margin: 0; color: var(--text-main);">Impostos e Retenções (Prévia em Tempo Real)</h4>
+                        <span id="badgeRegimePrevia" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3);">Regime Fiscal</span>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 12px;">
+                        <!-- IRRF -->
+                        <div style="border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; padding: 10px; background: rgba(0,0,0,0.15);">
+                            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.82rem; cursor: pointer;">
+                                <input type="checkbox" id="chkIrrf" style="cursor: pointer;">
+                                <span>Retenção de IRRF</span>
+                            </label>
+                            <div id="boxIrrfConfig" style="display: none; margin-top: 8px;">
+                                <div style="display: flex; align-items: center; gap: 4px;">
+                                    <input type="number" id="aliqIrrf" value="4.8" step="0.01" min="0" max="100" class="select-control" style="padding: 4px 6px; font-size: 0.8rem; width: 65px;">
+                                    <span style="font-size: 0.78rem; color: var(--text-muted);">% (R$ <span id="valIrrfPreview">0,00</span>)</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- INSS -->
+                        <div style="border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; padding: 10px; background: rgba(0,0,0,0.15);">
+                            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.82rem; cursor: pointer;">
+                                <input type="checkbox" id="chkInss" style="cursor: pointer;">
+                                <span>Retenção de INSS</span>
+                            </label>
+                            <div id="boxInssConfig" style="display: none; margin-top: 8px;">
+                                <div style="display: flex; align-items: center; gap: 4px;">
+                                    <input type="number" id="aliqInss" value="11" step="0.01" min="0" max="100" class="select-control" style="padding: 4px 6px; font-size: 0.8rem; width: 65px;">
+                                    <span style="font-size: 0.78rem; color: var(--text-muted);">% (R$ <span id="valInssPreview">0,00</span>)</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ISS -->
+                        <div style="border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; padding: 10px; background: rgba(0,0,0,0.15);">
+                            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+                                <span style="font-size: 0.82rem; font-weight: 500;">Alíquota ISS:</span>
+                                <input type="number" id="aliqIss" value="5.0" step="0.01" min="2" max="5" class="select-control" style="padding: 4px 6px; font-size: 0.8rem; width: 65px;">
+                                <span style="font-size: 0.78rem; color: var(--text-muted);">%</span>
+                            </div>
+                            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.78rem; cursor: pointer;">
+                                <input type="checkbox" id="chkIssRetido" style="cursor: pointer;">
+                                <span>ISS Retido pelo tomador</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Resumo da Prévia Calculada pelo Motor Puro -->
+                    <div id="previaDetalhesBox" style="font-size: 0.8rem; color: var(--text-secondary); background: rgba(0,0,0,0.25); border-radius: 6px; padding: 10px; border: 1px solid rgba(255,255,255,0.05);">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                            <span>Impostos Atribuídos (Custo Econômico):</span>
+                            <strong id="previaTotalImpostos" style="color: #f59e0b;">R$ 0,00</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                            <span>Total de Retenções (Abatimento no Recebimento):</span>
+                            <strong id="previaTotalRetencoes" style="color: #ef4444;">R$ 0,00</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                            <span>Líquido Econômico (Receita Líquida Real):</span>
+                            <strong id="previaLiquidoEconomico" style="color: #10b981;">R$ 0,00</strong>
+                        </div>
+                        <div id="previaPendenciasTexto" style="color: #f87171; font-size: 0.74rem; margin-top: 6px; display: none;"></div>
                     </div>
                 </div>
 
@@ -401,6 +505,7 @@
     <script src="js/utils.js"></script>
     <script src="js/supabase.js"></script>
     <script src="js/money.js"></script>
+    <script src="js/taxes.js"></script>
     <script src="js/faturamento.js"></script>
 </body>
 </html>

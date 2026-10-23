@@ -1,17 +1,24 @@
 // ==============================================================================
 // faturamento.js — Lógica do Módulo 04 (Controle de Faturamento e Recebimentos)
+// Atualizado com suporte a Visão Consolidada Inicial, Filtros Multi-empresa,
+// Painel de Impostos/Retenções e Prévia em Tempo Real pelo Motor Puro.
 // ==============================================================================
 
 (function() {
     let empresas = [];
-    let empresaAtiva = null;
+    let empresaAtivaId = 'all'; // Default: "Todas as empresas"
     let competenciaAtiva = '';
+    let contratoFiltro = '';
+    let situacaoFiltro = '';
     let documentos = [];
     let contratos = [];
+    let companiesMap = new Map();
 
     // Elementos DOM
     const selectEmpresa = document.getElementById('selectEmpresa');
     const inputCompetencia = document.getElementById('inputCompetencia');
+    const selectFiltroContrato = document.getElementById('selectFiltroContrato');
+    const selectFiltroSituacao = document.getElementById('selectFiltroSituacao');
     const listaDocumentosBody = document.getElementById('listaDocumentosBody');
     const listaContratosBody = document.getElementById('listaContratosBody');
 
@@ -27,6 +34,10 @@
     const modalRecebimento = document.getElementById('modalRecebimento');
     const modalContrato = document.getElementById('modalContrato');
 
+    // Controle de concorrência / debounce para prévia de impostos
+    let debounceTimerPrevia = null;
+    let requestIdPrevia = 0;
+
     // Inicialização
     window.addEventListener('DOMContentLoaded', async () => {
         // Define competência padrão: ano-mês atual
@@ -36,15 +47,16 @@
         competenciaAtiva = `${ano}-${mes}`;
         inputCompetencia.value = competenciaAtiva;
 
-        // Configura inputs de cálculo de líquido em tempo real
-        configurarCalculoLiquido();
+        // Configura inputs do formulário de lançamento para prévia em tempo real
+        configurarPainelPreviaImpostos();
 
         // Carrega empresas do Supabase
         await carregarEmpresas();
 
-        // Eventos
+        // Eventos dos Filtros Principais
         selectEmpresa.addEventListener('change', async (e) => {
-            empresaAtiva = empresas.find(emp => emp.id === e.target.value) || null;
+            empresaAtivaId = e.target.value || 'all';
+            atualizarDropdownFiltroContratos();
             await carregarDadosCompetencia();
         });
 
@@ -53,6 +65,23 @@
             await carregarDadosCompetencia();
         });
 
+        if (selectFiltroContrato) {
+            selectFiltroContrato.addEventListener('change', (e) => {
+                contratoFiltro = e.target.value;
+                renderizarDocumentos();
+                renderizarMetricas();
+            });
+        }
+
+        if (selectFiltroSituacao) {
+            selectFiltroSituacao.addEventListener('change', (e) => {
+                situacaoFiltro = e.target.value;
+                renderizarDocumentos();
+                renderizarMetricas();
+            });
+        }
+
+        // Botões de Ação
         document.getElementById('btnNovaEmpresa').addEventListener('click', () => {
             document.getElementById('empresaId').value = '';
             document.getElementById('modalEmpresaTitulo').textContent = 'Cadastrar Nova Empresa';
@@ -62,57 +91,25 @@
         });
 
         document.getElementById('btnEditarEmpresa').addEventListener('click', () => {
-            if (!empresaAtiva) {
-                alert('Selecione uma empresa para editar.');
+            if (empresaAtivaId === 'all') {
+                alert('Selecione uma empresa específica no topo para editar seus dados.');
                 return;
             }
-            document.getElementById('empresaId').value = empresaAtiva.id;
+            const emp = companiesMap.get(empresaAtivaId);
+            if (!emp) return;
+
+            document.getElementById('empresaId').value = emp.id;
             document.getElementById('modalEmpresaTitulo').textContent = 'Editar Empresa';
-            document.getElementById('empresaNome').value = empresaAtiva.name || '';
-            document.getElementById('empresaFantasia').value = empresaAtiva.trade_name || '';
-            document.getElementById('empresaCnpj').value = empresaAtiva.document || '';
-            document.getElementById('empresaRegime').value = empresaAtiva.tax_regime || 'simples_nacional';
+            document.getElementById('empresaNome').value = emp.name || '';
+            document.getElementById('empresaFantasia').value = emp.trade_name || '';
+            document.getElementById('empresaCnpj').value = emp.document || '';
+            document.getElementById('empresaRegime').value = emp.tax_regime || 'simples_nacional';
             document.getElementById('btnExcluirEmpresa').style.display = 'inline-flex';
             abrirModal(modalEmpresa);
         });
 
         document.getElementById('btnNovoDocumento').addEventListener('click', () => {
-            if (!empresaAtiva) {
-                alert('Selecione ou cadastre uma empresa primeiro.');
-                return;
-            }
-            document.getElementById('docId').value = '';
-            document.getElementById('modalDocumentoTitulo').textContent = 'Criar Lançamento';
-            document.getElementById('btnExcluirDocumentoModal').style.display = 'none';
-
-            // Popula dropdown de contratos
-            const selContrato = document.getElementById('docContrato');
-            selContrato.innerHTML = '<option value="">— Sem vínculo de contrato —</option>';
-            contratos.forEach(c => {
-                const opt = document.createElement('option');
-                opt.value = c.id;
-                opt.textContent = `${c.code} — ${c.name}`;
-                selContrato.appendChild(opt);
-            });
-            document.getElementById('formNovoDocumento').reset();
-            selContrato.value = '';
-            document.getElementById('docRecebimento').value = '';
-            abrirModal(modalDocumento);
-        });
-
-        // Excluir Lançamento (dentro do modal)
-        document.getElementById('btnExcluirDocumentoModal').addEventListener('click', async () => {
-            const id = document.getElementById('docId').value;
-            if (!id) return;
-            if (!confirm('Tem certeza que deseja excluir este lançamento?')) return;
-            try {
-                await window.BpoSupabase.request(`billing_documents?id=eq.${id}`, { method: 'DELETE' });
-                fecharModais();
-                await carregarDadosCompetencia();
-                alert('Lançamento excluído com sucesso.');
-            } catch (err) {
-                alert('Erro ao excluir lançamento: ' + err.message);
-            }
+            prepararModalNovoDocumento();
         });
 
         // Alternância PF / PJ no formulário de Contrato
@@ -133,9 +130,14 @@
 
         // Novo Contrato
         document.getElementById('btnNovoContrato').addEventListener('click', () => {
-            if (!empresaAtiva) { alert('Selecione uma empresa primeiro.'); return; }
+            if (empresaAtivaId === 'all' && empresas.length > 0) {
+                // Se estiver no consolidado, solicita escolher para qual empresa ou usa a primeira
+            }
+            const targetEmpresa = empresaAtivaId !== 'all' ? companiesMap.get(empresaAtivaId) : empresas[0];
+            if (!targetEmpresa) { alert('Cadastre ao menos uma empresa primeiro.'); return; }
+
             document.getElementById('contratoId').value = '';
-            document.getElementById('modalContratoTitulo').textContent = 'Cadastrar Novo Contrato';
+            document.getElementById('modalContratoTitulo').textContent = `Cadastrar Contrato (${targetEmpresa.name})`;
             document.getElementById('formContrato').reset();
             document.getElementById('contratoTipo').value = 'B2B';
             document.getElementById('contratoTipoCliente').value = 'PJ';
@@ -145,37 +147,7 @@
             abrirModal(modalContrato);
         });
 
-        // Excluir Empresa
-        document.getElementById('btnExcluirEmpresa').addEventListener('click', async () => {
-            const id = document.getElementById('empresaId').value;
-            if (!id) return;
-            if (!confirm('Tem certeza que deseja excluir esta empresa? Esta ação não pode ser desfeita.')) return;
-            try {
-                await window.BpoSupabase.request(`companies?id=eq.${id}`, { method: 'DELETE' });
-                fecharModais();
-                empresaAtiva = null;
-                await carregarEmpresas();
-                alert('Empresa excluída com sucesso.');
-            } catch (err) {
-                alert('Erro ao excluir empresa: ' + err.message);
-            }
-        });
-
-        // Excluir Contrato (dentro do modal)
-        document.getElementById('btnExcluirContratoModal').addEventListener('click', async () => {
-            const id = document.getElementById('contratoId').value;
-            if (!id) return;
-            if (!confirm('Tem certeza que deseja excluir este contrato?')) return;
-            try {
-                await window.BpoSupabase.request(`contracts?id=eq.${id}`, { method: 'DELETE' });
-                fecharModais();
-                await carregarDadosCompetencia();
-                alert('Contrato excluído com sucesso.');
-            } catch (err) {
-                alert('Erro ao excluir contrato: ' + err.message);
-            }
-        });
-
+        // Form submits (salvamento normal do operador, sem chamadas automáticas)
         document.getElementById('formNovaEmpresa').addEventListener('submit', salvarNovaEmpresa);
         document.getElementById('formNovoDocumento').addEventListener('submit', salvarNovoDocumento);
         document.getElementById('formRecebimento').addEventListener('submit', salvarRecebimento);
@@ -193,32 +165,19 @@
         modal.style.display = 'flex';
     }
 
-    // Calcula líquido automaticamente ao digitar bruto e retenções
-    function configurarCalculoLiquido() {
-        const brutoInp = document.getElementById('docValorBruto');
-        const retInp = document.getElementById('docRetencoes');
-        const liqInp = document.getElementById('docValorLiquido');
-
-        function atualizar() {
-            const brutoCents = window.BpoMoney.toCents(brutoInp.value);
-            const retCents = window.BpoMoney.toCents(retInp.value);
-            const liqCents = brutoCents > retCents ? brutoCents - retCents : 0n;
-            liqInp.value = window.BpoMoney.toDecimalString(liqCents);
-        }
-
-        brutoInp.addEventListener('input', atualizar);
-        retInp.addEventListener('input', atualizar);
-    }
-
     async function carregarEmpresas() {
         try {
             empresas = await window.BpoSupabase.request('companies?order=name.asc', { method: 'GET' });
+            companiesMap.clear();
+            empresas.forEach(emp => companiesMap.set(emp.id, emp));
             
             selectEmpresa.innerHTML = '';
-            if (empresas.length === 0) {
-                selectEmpresa.innerHTML = '<option value="">Nenhuma empresa cadastrada</option>';
-                return;
-            }
+            
+            // Requisito 2: "O filtro inicial deve ser Empresa: Todas as empresas. Não abra automaticamente Mar Brasil, DZM ou Ybox."
+            const optTodas = document.createElement('option');
+            optTodas.value = 'all';
+            optTodas.textContent = 'Todas as Empresas (Consolidado)';
+            selectEmpresa.appendChild(optTodas);
 
             empresas.forEach(emp => {
                 const opt = document.createElement('option');
@@ -227,29 +186,36 @@
                 selectEmpresa.appendChild(opt);
             });
 
-            empresaAtiva = empresas[0];
-            selectEmpresa.value = empresaAtiva.id;
+            // Mantém "all" como padrão inicial consolidado
+            empresaAtivaId = 'all';
+            selectEmpresa.value = 'all';
+
             await carregarDadosCompetencia();
 
         } catch (err) {
             console.error("Erro ao carregar empresas:", err);
             const msgErro = err && err.message ? err.message : 'Falha na conexão';
-            selectEmpresa.innerHTML = `<option value="">Erro Supabase: ${escapeHtml(msgErro)}</option>`;
+            selectEmpresa.innerHTML = `<option value="all">Erro Supabase: ${escapeHtml(msgErro)}</option>`;
         }
     }
 
     async function carregarDadosCompetencia() {
-        if (!empresaAtiva) return;
-
         try {
-            // Busca documentos de faturamento da empresa na competência
-            const queryDocs = `billing_documents?company_id=eq.${empresaAtiva.id}&competence_month=eq.${competenciaAtiva}&order=issue_date.desc`;
+            // Busca documentos de faturamento conforme filtro de empresa (all ou específica)
+            let queryDocs = `billing_documents?competence_month=eq.${competenciaAtiva}&order=issue_date.desc`;
+            if (empresaAtivaId !== 'all') {
+                queryDocs += `&company_id=eq.${empresaAtivaId}`;
+            }
             const docsDb = await window.BpoSupabase.request(queryDocs, { method: 'GET' });
 
-            // Busca recebimentos da empresa para mapear a data de recebimento do documento
+            // Busca recebimentos da competência/empresa para mapear pagamentos
             let receiptsMap = new Map();
             try {
-                const recs = await window.BpoSupabase.request(`receipts?company_id=eq.${empresaAtiva.id}&order=receipt_date.desc`, { method: 'GET' });
+                let queryRecs = `receipts?order=receipt_date.desc`;
+                if (empresaAtivaId !== 'all') {
+                    queryRecs += `&company_id=eq.${empresaAtivaId}`;
+                }
+                const recs = await window.BpoSupabase.request(queryRecs, { method: 'GET' });
                 recs.forEach(r => {
                     if (r.external_id && !receiptsMap.has(r.external_id)) {
                         receiptsMap.set(r.external_id, r.receipt_date);
@@ -262,15 +228,20 @@
                 payment_date: d.payment_date || receiptsMap.get(d.id) || null
             }));
 
-            // Busca clientes cadastrados para join real
+            // Busca clientes cadastrados
             let clientesMap = new Map();
             try {
-                const clientes = await window.BpoSupabase.request(`people?company_id=eq.${empresaAtiva.id}`, { method: 'GET' });
+                let queryCli = 'people';
+                if (empresaAtivaId !== 'all') queryCli += `?company_id=eq.${empresaAtivaId}`;
+                const clientes = await window.BpoSupabase.request(queryCli, { method: 'GET' });
                 clientes.forEach(p => clientesMap.set(p.id, p));
             } catch (e) {}
 
-            // Busca contratos da empresa e anexa dados reais do cliente
-            const queryContratos = `contracts?company_id=eq.${empresaAtiva.id}&order=name.asc`;
+            // Busca contratos
+            let queryContratos = 'contracts?order=name.asc';
+            if (empresaAtivaId !== 'all') {
+                queryContratos += `&company_id=eq.${empresaAtivaId}`;
+            }
             const contratosDb = await window.BpoSupabase.request(queryContratos, { method: 'GET' });
             contratos = contratosDb.map(c => {
                 const cli = c.client_id ? clientesMap.get(c.client_id) : null;
@@ -282,6 +253,7 @@
                 };
             });
 
+            atualizarDropdownFiltroContratos();
             renderizarMetricas();
             renderizarDocumentos();
             renderizarContratos();
@@ -291,13 +263,45 @@
         }
     }
 
+    function atualizarDropdownFiltroContratos() {
+        if (!selectFiltroContrato) return;
+        const currentVal = selectFiltroContrato.value;
+        selectFiltroContrato.innerHTML = '<option value="">Todos os Contratos</option>';
+
+        contratos.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.id;
+            const emp = companiesMap.get(c.company_id);
+            const prefix = (empresaAtivaId === 'all' && emp) ? `[${emp.trade_name || emp.name}] ` : '';
+            opt.textContent = `${prefix}${c.code} — ${c.name}`;
+            selectFiltroContrato.appendChild(opt);
+        });
+
+        if (contratos.some(c => c.id === currentVal)) {
+            selectFiltroContrato.value = currentVal;
+            contratoFiltro = currentVal;
+        } else {
+            selectFiltroContrato.value = '';
+            contratoFiltro = '';
+        }
+    }
+
+    function getDocumentosFiltrados() {
+        return documentos.filter(doc => {
+            if (contratoFiltro && doc.contract_id !== contratoFiltro) return false;
+            if (situacaoFiltro && doc.status !== situacaoFiltro) return false;
+            return true;
+        });
+    }
+
     function renderizarMetricas() {
         let brutoTotal = 0n;
         let retencoesTotal = 0n;
         let recebidoTotal = 0n;
 
         // Exclui cancelados das métricas financeiras
-        documentos.filter(d => d.status !== 'cancelled').forEach(doc => {
+        const docsAtivos = getDocumentosFiltrados().filter(d => d.status !== 'cancelled');
+        docsAtivos.forEach(doc => {
             const bCents = window.BpoMoney.toCents(doc.gross_amount);
             const rCents = window.BpoMoney.toCents(doc.retentions);
             const lCents = window.BpoMoney.toCents(doc.net_amount);
@@ -320,40 +324,57 @@
     }
 
     function renderizarDocumentos() {
-        if (documentos.length === 0) {
+        const docsExibicao = getDocumentosFiltrados();
+
+        if (docsExibicao.length === 0) {
             listaDocumentosBody.innerHTML = `
                 <tr>
-                    <td colspan="10" style="text-align: center; color: var(--text-muted); padding: 32px;">
-                        Nenhum documento de faturamento emitido na competência ${escapeHtml(competenciaAtiva)}.
+                    <td colspan="12" style="text-align: center; color: var(--text-muted); padding: 32px;">
+                        Nenhum documento de faturamento encontrado para os filtros selecionados na competência ${escapeHtml(competenciaAtiva)}.
                     </td>
                 </tr>
             `;
             return;
         }
 
-        listaDocumentosBody.innerHTML = documentos.map(doc => {
+        listaDocumentosBody.innerHTML = docsExibicao.map(doc => {
             const statusBadge = getStatusBadge(doc.status);
             const podeReceber = doc.status !== 'paid' && doc.status !== 'cancelled';
             const contrato = contratos.find(c => c.id === doc.contract_id);
+            const emp = companiesMap.get(doc.company_id);
+            const empBadge = emp ? `<span class="badge badge-primary" style="font-size:0.75rem;">${escapeHtml(emp.trade_name || emp.name)}</span>` : '<span style="color:var(--text-muted);">-</span>';
+
             const clientLabel = (contrato && contrato._clientName) 
                 ? escapeHtml(contrato._clientName)
                 : (contrato ? escapeHtml(contrato.name) : '<span style="color:var(--text-muted);font-size:0.8rem;">Sem cliente vinculado</span>');
+
+            const contratoLabel = contrato ? `<span style="font-size:0.8rem; color:var(--text-secondary); display:block;">CTR: ${escapeHtml(contrato.code)}</span>` : '';
 
             const recebimentoLabel = doc.payment_date 
                 ? `<span style="color: var(--color-success); font-weight: 500;">${escapeHtml(formatarData(doc.payment_date))}</span>`
                 : '<span style="color: var(--text-muted); font-size: 0.8rem;">Pendente</span>';
 
+            // Impostos atribuídos (campo tax_details ou estimativa gerencial)
+            const impostosAtrib = doc.tax_details && doc.tax_details.total_tax
+                ? window.BpoMoney.formatBRL(doc.tax_details.total_tax)
+                : '<span style="color:var(--text-muted);font-size:0.8rem;">—</span>';
+
             return `
                 <tr>
+                    <td>${empBadge}</td>
                     <td style="font-weight: 600; color: #fff;">
                         ${escapeHtml(doc.document_number)}
-                        <span style="font-size: 0.75rem; color: var(--text-muted); display: block;">${escapeHtml(doc.document_type.toUpperCase())}</span>
+                        <span style="font-size: 0.72rem; color: var(--text-muted); display: block;">${escapeHtml((doc.document_type || 'nfse').toUpperCase())}</span>
                     </td>
-                    <td>${clientLabel}</td>
+                    <td>
+                        ${clientLabel}
+                        ${contratoLabel}
+                    </td>
                     <td>${escapeHtml(formatarData(doc.issue_date))}</td>
                     <td>${escapeHtml(formatarData(doc.due_date))}</td>
                     <td>${recebimentoLabel}</td>
                     <td>${escapeHtml(window.BpoMoney.formatBRL(doc.gross_amount))}</td>
+                    <td style="color: #f59e0b;">${impostosAtrib}</td>
                     <td style="color: var(--color-danger);">${escapeHtml(window.BpoMoney.formatBRL(doc.retentions))}</td>
                     <td style="font-weight: 700; color: #fff;">${escapeHtml(window.BpoMoney.formatBRL(doc.net_amount))}</td>
                     <td>${statusBadge}</td>
@@ -366,7 +387,7 @@
                                 data-id="${escapeHtml(doc.id)}" 
                                 data-numero="${escapeHtml(doc.document_number)}" 
                                 data-liquido="${escapeHtml(doc.net_amount)}">
-                                Dar Baixa
+                                Baixa
                             </button>
                         ` : ''}
                     </td>
@@ -374,7 +395,6 @@
             `;
         }).join('');
 
-        // Event listener desacoplado sem onclick inline
         listaDocumentosBody.querySelectorAll('.btn-editar-documento').forEach(btn => {
             btn.addEventListener('click', () => {
                 window.editarDocumento(btn.dataset.id);
@@ -393,14 +413,13 @@
             listaContratosBody.innerHTML = `
                 <tr>
                     <td colspan="10" style="text-align: center; color: var(--text-muted); padding: 24px;">
-                        Nenhum contrato cadastrado para ${escapeHtml(empresaAtiva.name)}.
+                        Nenhum contrato cadastrado para a seleção atual.
                     </td>
                 </tr>
             `;
             return;
         }
 
-        // Renderiza contratos com tipo, cliente real e documento
         listaContratosBody.innerHTML = contratos.map(c => {
             const clienteExibicao = c._clientName ? escapeHtml(c._clientName) : '<span style="color:var(--text-muted);font-size:0.85rem;">Não informado</span>';
             const docExibicao = c._clientDoc ? `<span style="font-family: monospace; font-size: 0.85rem;">${escapeHtml(c._clientDoc)}</span>` : '<span style="color:var(--text-muted);font-size:0.85rem;">-</span>';
@@ -412,9 +431,12 @@
                 ? '<span class="badge badge-success">Ativo</span>' 
                 : `<span class="badge badge-warning">${escapeHtml(c.status)}</span>`;
 
+            const emp = companiesMap.get(c.company_id);
+            const empText = emp ? ` <span style="font-size:0.75rem; color:var(--text-muted);">(${escapeHtml(emp.trade_name || emp.name)})</span>` : '';
+
             return `
                 <tr>
-                    <td style="font-weight: 600; color: #fff;">${escapeHtml(c.code)}</td>
+                    <td style="font-weight: 600; color: #fff;">${escapeHtml(c.code)}${empText}</td>
                     <td>${tipoBadge}</td>
                     <td>${escapeHtml(c.name)}</td>
                     <td>${clienteExibicao}</td>
@@ -425,7 +447,6 @@
                     <td>${statusBadge}</td>
                     <td>
                         <button class="btn btn-primary btn-sm btn-editar-contrato" data-id="${escapeHtml(c.id)}">Editar</button>
-                        <button class="btn btn-danger btn-sm btn-excluir-contrato" data-id="${escapeHtml(c.id)}">Excluir</button>
                     </td>
                 </tr>
             `;
@@ -433,9 +454,6 @@
 
         listaContratosBody.querySelectorAll('.btn-editar-contrato').forEach(btn => {
             btn.addEventListener('click', () => window.editarContrato(btn.dataset.id));
-        });
-        listaContratosBody.querySelectorAll('.btn-excluir-contrato').forEach(btn => {
-            btn.addEventListener('click', () => window.deletarContrato(btn.dataset.id));
         });
     }
 
@@ -458,6 +476,233 @@
         return dataStr;
     }
 
+    // =========================================================================
+    // CONFIGURAÇÃO DO FORMULÁRIO E PRÉVIA DE IMPOSTOS EM TEMPO REAL
+    // =========================================================================
+    function configurarPainelPreviaImpostos() {
+        const inpBruto = document.getElementById('docValorBruto');
+        const selEmpresa = document.getElementById('docEmpresaId');
+        const selContrato = document.getElementById('docContrato');
+        const selItemTipo = document.getElementById('docItemTipo');
+        const chkIrrf = document.getElementById('chkIrrf');
+        const aliqIrrf = document.getElementById('aliqIrrf');
+        const boxIrrf = document.getElementById('boxIrrfConfig');
+        const chkInss = document.getElementById('chkInss');
+        const aliqInss = document.getElementById('aliqInss');
+        const boxInss = document.getElementById('boxInssConfig');
+        const aliqIss = document.getElementById('aliqIss');
+        const chkIssRetido = document.getElementById('chkIssRetido');
+
+        // Toggles visuais
+        chkIrrf.addEventListener('change', () => {
+            boxIrrf.style.display = chkIrrf.checked ? 'block' : 'none';
+            dispararPreviaImpostos();
+        });
+
+        chkInss.addEventListener('change', () => {
+            boxInss.style.display = chkInss.checked ? 'block' : 'none';
+            dispararPreviaImpostos();
+        });
+
+        // Eventos que recalculam a prévia
+        [inpBruto, aliqIrrf, aliqInss, aliqIss].forEach(el => {
+            if (el) el.addEventListener('input', dispararPreviaImpostos);
+        });
+
+        [selEmpresa, selContrato, selItemTipo, chkIssRetido].forEach(el => {
+            if (el) el.addEventListener('change', dispararPreviaImpostos);
+        });
+
+        // Filtra contratos do modal quando seleciona empresa emitente
+        selEmpresa.addEventListener('change', () => {
+            const empId = selEmpresa.value;
+            atualizarContratosModal(empId);
+            atualizarBadgeRegimeModal(empId);
+        });
+    }
+
+    function atualizarContratosModal(companyId) {
+        const selContrato = document.getElementById('docContrato');
+        selContrato.innerHTML = '<option value="">— Sem vínculo de contrato —</option>';
+        const contratosFiltrados = companyId 
+            ? contratos.filter(c => c.company_id === companyId) 
+            : contratos;
+
+        contratosFiltrados.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.id;
+            opt.textContent = `${c.code} — ${c.name}`;
+            selContrato.appendChild(opt);
+        });
+    }
+
+    function atualizarBadgeRegimeModal(companyId) {
+        const badge = document.getElementById('badgeRegimePrevia');
+        const emp = companiesMap.get(companyId);
+        if (!emp) {
+            badge.textContent = 'Regime Fiscal';
+            badge.style.color = '#94a3b8';
+            return;
+        }
+
+        const isPresumido = emp.tax_regime === 'lucro_presumido';
+        badge.textContent = isPresumido ? 'Lucro Presumido (Provisão Trimestral)' : 'Simples Nacional (DAS Estimado)';
+        badge.style.color = isPresumido ? '#60a5fa' : '#34d399';
+    }
+
+    function dispararPreviaImpostos() {
+        if (debounceTimerPrevia) clearTimeout(debounceTimerPrevia);
+        debounceTimerPrevia = setTimeout(executarPreviaImpostos, 80);
+    }
+
+    function executarPreviaImpostos() {
+        requestIdPrevia++;
+        const currentReq = requestIdPrevia;
+
+        const companyId = document.getElementById('docEmpresaId').value;
+        const brutoStr = document.getElementById('docValorBruto').value;
+        const brutoCents = window.BpoMoney.toCents(brutoStr);
+
+        const chkIrrf = document.getElementById('chkIrrf').checked;
+        const aliqIrrfVal = parseFloat(document.getElementById('aliqIrrf').value) || 0;
+
+        const chkInss = document.getElementById('chkInss').checked;
+        const aliqInssVal = parseFloat(document.getElementById('aliqInss').value) || 0;
+
+        const aliqIssVal = parseFloat(document.getElementById('aliqIss').value) || 0;
+        const chkIssRetido = document.getElementById('chkIssRetido').checked;
+        const itemTipo = document.getElementById('docItemTipo').value || 'servico';
+
+        const emp = companiesMap.get(companyId);
+
+        // Invoca o motor tributário puro unificado BpoTaxEngine (sem persistência)
+        const params = {
+            grossAmountCents: brutoCents,
+            regime: emp ? emp.tax_regime : 'lucro_presumido',
+            competence: competenciaAtiva,
+            itemType: itemTipo,
+            hasIrrf: chkIrrf,
+            irrfAliq: aliqIrrfVal,
+            hasInss: chkInss,
+            inssAliq: aliqInssVal,
+            issAliq: aliqIssVal,
+            isIssRetained: chkIssRetido,
+            rbt12Cents: 36000000n, // R$ 360k referência se simples
+            simplesAnnex: 'anexo_iii'
+        };
+
+        const previa = window.BpoTaxEngine ? window.BpoTaxEngine.calcularPreviaNota(params) : null;
+
+        // Proteção contra resposta concorrente antiga sobrescrevendo a nova
+        if (currentReq !== requestIdPrevia) return;
+
+        if (!previa) return;
+
+        // Atualiza campos de saída na tela
+        document.getElementById('valIrrfPreview').textContent = window.BpoMoney.toDecimalString(previa.retentions.irrf);
+        document.getElementById('valInssPreview').textContent = window.BpoMoney.toDecimalString(previa.retentions.inss);
+
+        document.getElementById('docRetencoes').value = window.BpoMoney.toDecimalString(previa.totalRetentions);
+        document.getElementById('docValorLiquido').value = window.BpoMoney.toDecimalString(previa.netReceivable);
+
+        document.getElementById('previaTotalImpostos').textContent = window.BpoMoney.formatBRL(previa.totalTaxes);
+        document.getElementById('previaTotalRetencoes').textContent = window.BpoMoney.formatBRL(previa.totalRetentions);
+        document.getElementById('previaLiquidoEconomico').textContent = window.BpoMoney.formatBRL(previa.netEconomic);
+
+        const pendenciasBox = document.getElementById('previaPendenciasTexto');
+        if (previa.pendingIssues && previa.pendingIssues.length > 0) {
+            pendenciasBox.textContent = `Pendências fiscais: ${previa.pendingIssues.join(', ')}`;
+            pendenciasBox.style.display = 'block';
+        } else {
+            pendenciasBox.style.display = 'none';
+        }
+    }
+
+    function prepararModalNovoDocumento() {
+        document.getElementById('docId').value = '';
+        document.getElementById('modalDocumentoTitulo').textContent = 'Criar Lançamento';
+        document.getElementById('btnExcluirDocumentoModal').style.display = 'none';
+
+        // Popula dropdown de empresas no modal
+        const selEmpresa = document.getElementById('docEmpresaId');
+        selEmpresa.innerHTML = '<option value="">Selecione a empresa...</option>';
+        empresas.forEach(emp => {
+            const opt = document.createElement('option');
+            opt.value = emp.id;
+            opt.textContent = `${emp.name} (${emp.trade_name || ''})`;
+            selEmpresa.appendChild(opt);
+        });
+
+        if (empresaAtivaId !== 'all') {
+            selEmpresa.value = empresaAtivaId;
+        } else if (empresas.length > 0) {
+            selEmpresa.value = empresas[0].id;
+        }
+
+        atualizarContratosModal(selEmpresa.value);
+        atualizarBadgeRegimeModal(selEmpresa.value);
+
+        document.getElementById('formNovoDocumento').reset();
+        document.getElementById('docNumero').value = '';
+        document.getElementById('docRecebimento').value = '';
+        document.getElementById('docValorBruto').value = '0,00';
+        document.getElementById('chkIrrf').checked = false;
+        document.getElementById('boxIrrfConfig').style.display = 'none';
+        document.getElementById('aliqIrrf').value = '4.8';
+        document.getElementById('chkInss').checked = false;
+        document.getElementById('boxInssConfig').style.display = 'none';
+        document.getElementById('aliqInss').value = '11';
+        document.getElementById('aliqIss').value = '5.0';
+        document.getElementById('chkIssRetido').checked = false;
+
+        executarPreviaImpostos();
+        abrirModal(modalDocumento);
+    }
+
+    // Editar documento existente
+    window.editarDocumento = function(docId) {
+        const d = documentos.find(x => x.id === docId);
+        if (!d) return;
+
+        prepararModalNovoDocumento();
+
+        document.getElementById('docId').value = d.id;
+        document.getElementById('modalDocumentoTitulo').textContent = 'Editar Lançamento';
+        document.getElementById('docEmpresaId').value = d.company_id || '';
+        atualizarContratosModal(d.company_id);
+        atualizarBadgeRegimeModal(d.company_id);
+
+        document.getElementById('docContrato').value = d.contract_id || '';
+        document.getElementById('docTipo').value = d.document_type || 'nfse';
+        document.getElementById('docNumero').value = d.document_number || '';
+        document.getElementById('docEmissao').value = d.issue_date || '';
+        document.getElementById('docVencimento').value = d.due_date || '';
+        document.getElementById('docRecebimento').value = d.payment_date || '';
+        document.getElementById('docValorBruto').value = window.BpoMoney.toDecimalString(window.BpoMoney.toCents(d.gross_amount));
+        document.getElementById('docDescricao').value = d.description || '';
+
+        // Carrega dados de retenção se existirem em tax_details
+        if (d.tax_details) {
+            if (d.tax_details.has_irrf) {
+                document.getElementById('chkIrrf').checked = true;
+                document.getElementById('boxIrrfConfig').style.display = 'block';
+                if (d.tax_details.irrf_aliq) document.getElementById('aliqIrrf').value = d.tax_details.irrf_aliq;
+            }
+            if (d.tax_details.has_inss) {
+                document.getElementById('chkInss').checked = true;
+                document.getElementById('boxInssConfig').style.display = 'block';
+                if (d.tax_details.inss_aliq) document.getElementById('aliqInss').value = d.tax_details.inss_aliq;
+            }
+            if (d.tax_details.iss_aliq) document.getElementById('aliqIss').value = d.tax_details.iss_aliq;
+            if (d.tax_details.iss_retained) document.getElementById('chkIssRetido').checked = true;
+            if (d.tax_details.item_type) document.getElementById('docItemTipo').value = d.tax_details.item_type;
+        }
+
+        document.getElementById('btnExcluirDocumentoModal').style.display = 'inline-flex';
+        executarPreviaImpostos();
+        abrirModal(modalDocumento);
+    };
+
     // Modal de Recebimento
     window.abrirModalRecebimento = function(id, numero, valorLiquido) {
         document.getElementById('recDocId').value = id;
@@ -470,109 +715,19 @@
         abrirModal(modalRecebimento);
     };
 
-    async function salvarNovaEmpresa(e) {
-        e.preventDefault();
-        const idExistente = document.getElementById('empresaId').value;
-        const nome = document.getElementById('empresaNome').value.trim();
-        const fantasia = document.getElementById('empresaFantasia').value.trim();
-        const cnpj = document.getElementById('empresaCnpj').value.trim();
-        const regime = document.getElementById('empresaRegime').value;
-
-        try {
-            if (idExistente) {
-                // Atualização / Edição da Empresa existente
-                const updatePayload = {
-                    name: nome,
-                    trade_name: fantasia,
-                    document: cnpj,
-                    tax_regime: regime,
-                    updated_at: new Date().toISOString()
-                };
-
-                await window.BpoSupabase.request(`companies?id=eq.${idExistente}`, {
-                    method: 'PATCH',
-                    body: JSON.stringify(updatePayload)
-                });
-
-                fecharModais();
-                await carregarEmpresas();
-                alert('Empresa atualizada com sucesso!');
-                return;
-            }
-
-            // Inserção de Nova Empresa
-            const grupos = await window.BpoSupabase.request('groups?limit=1', { method: 'GET' });
-            let groupId = grupos.length > 0 ? grupos[0].id : null;
-
-            if (!groupId) {
-                const novoGrupo = await window.BpoSupabase.request('groups', {
-                    method: 'POST',
-                    body: JSON.stringify({ name: 'Grupo Principal' })
-                });
-                groupId = novoGrupo[0].id;
-            }
-
-            const payload = {
-                group_id: groupId,
-                name: nome,
-                trade_name: fantasia,
-                document: cnpj,
-                tax_regime: regime,
-                active: true
-            };
-
-            await window.BpoSupabase.request('companies', {
-                method: 'POST',
-                body: JSON.stringify(payload)
-            });
-
-            fecharModais();
-            await carregarEmpresas();
-            alert('Empresa cadastrada com sucesso!');
-
-        } catch (err) {
-            alert('Erro ao salvar empresa: ' + err.message);
-        }
-    }
-
-    // Editar documento — abre modal preenchido
-    window.editarDocumento = function(docId) {
-        const d = documentos.find(x => x.id === docId);
-        if (!d) return;
-
-        // Popula dropdown de contratos
-        const selContrato = document.getElementById('docContrato');
-        selContrato.innerHTML = '<option value="">— Sem vínculo de contrato —</option>';
-        contratos.forEach(c => {
-            const opt = document.createElement('option');
-            opt.value = c.id;
-            opt.textContent = `${c.code} — ${c.name}`;
-            selContrato.appendChild(opt);
-        });
-
-        document.getElementById('docId').value = d.id;
-        document.getElementById('modalDocumentoTitulo').textContent = 'Editar Lançamento';
-        document.getElementById('docContrato').value = d.contract_id || '';
-        document.getElementById('docTipo').value = d.document_type || 'nfse';
-        document.getElementById('docNumero').value = d.document_number || '';
-        document.getElementById('docEmissao').value = d.issue_date || '';
-        document.getElementById('docVencimento').value = d.due_date || '';
-        document.getElementById('docRecebimento').value = d.payment_date || '';
-        document.getElementById('docValorBruto').value = window.BpoMoney.toDecimalString(window.BpoMoney.toCents(d.gross_amount));
-        document.getElementById('docRetencoes').value = window.BpoMoney.toDecimalString(window.BpoMoney.toCents(d.retentions));
-        document.getElementById('docValorLiquido').value = window.BpoMoney.toDecimalString(window.BpoMoney.toCents(d.net_amount));
-        document.getElementById('docDescricao').value = d.description || '';
-        document.getElementById('btnExcluirDocumentoModal').style.display = 'inline-flex';
-        abrirModal(modalDocumento);
-    };
-
+    // Submissão pelo operador (preserva regras normais de autorização quando acionado)
     async function salvarNovoDocumento(e) {
         e.preventDefault();
-        if (!empresaAtiva) return;
-
         const docId = document.getElementById('docId').value;
+        const companyId = document.getElementById('docEmpresaId').value;
+        if (!companyId) {
+            alert('Selecione a empresa emitente.');
+            return;
+        }
+
         const tipo = document.getElementById('docTipo').value;
-        const serie = '1'; // Série padrão
+        const itemTipo = document.getElementById('docItemTipo').value;
+        const serie = '1';
         const numero = document.getElementById('docNumero').value.trim();
         const emissao = document.getElementById('docEmissao').value;
         const vencimento = document.getElementById('docVencimento').value;
@@ -589,8 +744,18 @@
             return;
         }
 
+        const taxDetailsPayload = {
+            item_type: itemTipo,
+            has_irrf: document.getElementById('chkIrrf').checked,
+            irrf_aliq: parseFloat(document.getElementById('aliqIrrf').value) || 0,
+            has_inss: document.getElementById('chkInss').checked,
+            inss_aliq: parseFloat(document.getElementById('aliqInss').value) || 0,
+            iss_aliq: parseFloat(document.getElementById('aliqIss').value) || 0,
+            iss_retained: document.getElementById('chkIssRetido').checked
+        };
+
         const payload = {
-            company_id: empresaAtiva.id,
+            company_id: companyId,
             competence_month: competenciaAtiva,
             document_type: tipo,
             series: serie,
@@ -602,335 +767,170 @@
             retentions: window.BpoMoney.toDecimalString(retCents),
             net_amount: window.BpoMoney.toDecimalString(liqCents),
             description: descricao,
-            contract_id: contratoId
+            contract_id: contratoId,
+            status: dataRecebimento ? 'paid' : 'emitted',
+            payment_date: dataRecebimento
         };
-
-        // Se informou data de recebimento, atualiza status para pago
-        if (dataRecebimento) {
-            payload.status = 'paid';
-        }
 
         try {
             if (docId) {
-                // Atualização de documento existente
                 await window.BpoSupabase.request(`billing_documents?id=eq.${docId}`, {
                     method: 'PATCH',
                     body: JSON.stringify(payload)
                 });
-
-                // Se houver data de recebimento informada, grava/atualiza em receipts
-                if (dataRecebimento) {
-                    await registrarOuAtualizarReceipt(docId, dataRecebimento, liqCents);
-                }
-
-                fecharModais();
-                await carregarDadosCompetencia();
-                alert('Lançamento atualizado com sucesso!');
             } else {
-                // Criação de novo documento
-                payload.status = dataRecebimento ? 'paid' : 'emitted';
-                const createdDoc = await window.BpoSupabase.request('billing_documents', {
+                await window.BpoSupabase.request('billing_documents', {
                     method: 'POST',
                     body: JSON.stringify(payload)
                 });
-
-                if (dataRecebimento && createdDoc && createdDoc[0]) {
-                    await registrarOuAtualizarReceipt(createdDoc[0].id, dataRecebimento, liqCents);
-                }
-
-                fecharModais();
-                document.getElementById('formNovoDocumento').reset();
-                await carregarDadosCompetencia();
-                alert('Lançamento registrado com sucesso!');
             }
 
+            fecharModais();
+            await carregarDadosCompetencia();
+            alert('Lançamento gravado com sucesso!');
         } catch (err) {
-            // Mensagem amigável para violação de unicidade (número duplicado)
-            if (err.message && err.message.includes('uq_billing_documents_series_number')) {
-                alert(`Já existe um documento do tipo "${tipo}" com o número "${numero}" cadastrado para esta empresa. Verifique o número do documento.`);
-            } else {
-                alert('Erro ao gravar lançamento: ' + err.message);
-            }
+            alert('Erro ao gravar lançamento: ' + err.message);
         }
     }
 
-    // Auxiliar para registrar recebimento atrelado ao documento
-    async function registrarOuAtualizarReceipt(docId, dataCredito, valorCents) {
+    async function salvarNovaEmpresa(e) {
+        e.preventDefault();
+        const idExistente = document.getElementById('empresaId').value;
+        const nome = document.getElementById('empresaNome').value.trim();
+        const fantasia = document.getElementById('empresaFantasia').value.trim();
+        const cnpj = document.getElementById('empresaCnpj').value.trim();
+        const regime = document.getElementById('empresaRegime').value;
+
         try {
-            const existingReceipts = await window.BpoSupabase.request(
-                `receipts?external_id=eq.${docId}&limit=1`,
-                { method: 'GET' }
-            );
+            if (idExistente) {
+                const updatePayload = {
+                    name: nome,
+                    trade_name: fantasia,
+                    document: cnpj,
+                    tax_regime: regime,
+                    updated_at: new Date().toISOString()
+                };
 
-            const recPayload = {
-                company_id: empresaAtiva.id,
-                receipt_date: dataCredito,
-                gross_amount: window.BpoMoney.toDecimalString(valorCents),
-                account: 'Conta Principal - Banco Itaú',
-                external_id: docId,
-                notes: `Recebimento vinculado ao documento`
-            };
-
-            if (existingReceipts && existingReceipts.length > 0) {
-                await window.BpoSupabase.request(`receipts?id=eq.${existingReceipts[0].id}`, {
+                await window.BpoSupabase.request(`companies?id=eq.${idExistente}`, {
                     method: 'PATCH',
-                    body: JSON.stringify({ receipt_date: dataCredito, gross_amount: recPayload.gross_amount })
+                    body: JSON.stringify(updatePayload)
                 });
             } else {
-                recPayload.idempotency_key = `rec_${docId}_${dataCredito}`;
-                await window.BpoSupabase.request('receipts', {
+                const grupos = await window.BpoSupabase.request('groups?limit=1', { method: 'GET' });
+                let groupId = grupos.length > 0 ? grupos[0].id : null;
+
+                const payload = {
+                    group_id: groupId,
+                    name: nome,
+                    trade_name: fantasia,
+                    document: cnpj,
+                    tax_regime: regime,
+                    active: true
+                };
+
+                await window.BpoSupabase.request('companies', {
                     method: 'POST',
-                    body: JSON.stringify(recPayload)
+                    body: JSON.stringify(payload)
                 });
             }
-        } catch (e) {
-            console.warn('Aviso ao sincronizar recibo:', e);
+
+            fecharModais();
+            await carregarEmpresas();
+            alert('Empresa salva com sucesso!');
+        } catch (err) {
+            alert('Erro ao salvar empresa: ' + err.message);
         }
     }
 
     async function salvarRecebimento(e) {
         e.preventDefault();
         const docId = document.getElementById('recDocId').value;
-        const dataCredito = document.getElementById('recData').value;
-        const valorCents = window.BpoMoney.toCents(document.getElementById('recValor').value);
-        const conta = document.getElementById('recConta').value;
-
-        // (a) Validação de valor
-        if (valorCents <= 0n) {
-            alert('O valor do recebimento deve ser maior que zero.');
-            return;
-        }
-
+        const recData = document.getElementById('recData').value;
+        const recValorCents = window.BpoMoney.toCents(document.getElementById('recValor').value);
         const doc = documentos.find(d => d.id === docId);
-        if (!doc) {
-            alert('Documento de faturamento não encontrado.');
-            return;
-        }
 
-        const docNetCents = window.BpoMoney.toCents(doc.net_amount);
-        if (valorCents > docNetCents) {
-            alert(`O valor informado (${window.BpoMoney.formatBRL(valorCents)}) não pode ser superior ao valor líquido do documento (${window.BpoMoney.formatBRL(docNetCents)}).`);
-            return;
-        }
-
-        // (e) Idempotency key determinística
-        const idempotencyKey = `rec_${docId}_${dataCredito}_${window.BpoMoney.toDecimalString(valorCents)}`;
-
-        let createdReceiptId = null;
-        let createdInstallmentId = null;
-        let createdAllocationId = null;
+        if (!doc) return;
 
         try {
-            // (c) Vincular receipts ao documento via external_id ou notes
-            const recPayload = {
-                company_id: empresaAtiva.id,
-                receipt_date: dataCredito,
-                gross_amount: window.BpoMoney.toDecimalString(valorCents),
-                account: conta,
-                idempotency_key: idempotencyKey,
-                external_id: docId,
-                notes: `Baixa do documento ${doc.document_number}`
-            };
-
-            const recRes = await window.BpoSupabase.request('receipts', {
-                method: 'POST',
-                body: JSON.stringify(recPayload)
-            });
-            if (recRes && recRes[0]) {
-                createdReceiptId = recRes[0].id;
-            }
-
-            // (b) Criar billing_installments
-            const isFullPayment = valorCents === docNetCents;
-            const instPayload = {
-                document_id: docId,
-                installment_number: 1,
-                due_date: doc.due_date,
-                gross_amount: window.BpoMoney.toDecimalString(docNetCents),
-                paid_amount: window.BpoMoney.toDecimalString(valorCents),
-                status: isFullPayment ? 'paid' : 'partially_paid'
-            };
-
-            const instRes = await window.BpoSupabase.request('billing_installments', {
-                method: 'POST',
-                body: JSON.stringify(instPayload)
-            });
-            if (instRes && instRes[0]) {
-                createdInstallmentId = instRes[0].id;
-            }
-
-            // (b) Criar receipt_allocations
-            if (createdReceiptId && createdInstallmentId) {
-                const allocPayload = {
-                    receipt_id: createdReceiptId,
-                    installment_id: createdInstallmentId,
-                    allocated_principal: window.BpoMoney.toDecimalString(valorCents),
-                    allocated_interest: '0.00',
-                    allocated_discount: '0.00',
-                    allocated_retention: '0.00'
-                };
-                const allocRes = await window.BpoSupabase.request('receipt_allocations', {
-                    method: 'POST',
-                    body: JSON.stringify(allocPayload)
-                });
-                if (allocRes && allocRes[0]) {
-                    createdAllocationId = allocRes[0].id;
-                }
-            }
-
-            // (d) Marcar paid ou partially_paid conforme o valor
-            const novoStatus = isFullPayment ? 'paid' : 'partially_paid';
             await window.BpoSupabase.request(`billing_documents?id=eq.${docId}`, {
                 method: 'PATCH',
-                body: JSON.stringify({ status: novoStatus })
+                body: JSON.stringify({
+                    status: 'paid',
+                    payment_date: recData
+                })
             });
 
             fecharModais();
             await carregarDadosCompetencia();
-            alert(`Recebimento liquidado com sucesso! Documento marcado como: ${novoStatus === 'paid' ? 'Liquidado' : 'Parcial'}`);
-
+            alert('Recebimento baixado com sucesso!');
         } catch (err) {
-            // (f) Rollback manual atômico em caso de falha
-            console.error('Falha ao processar baixa financeira, executando rollback manual:', err);
-            if (createdAllocationId) {
-                try { await window.BpoSupabase.request(`receipt_allocations?id=eq.${createdAllocationId}`, { method: 'DELETE' }); } catch(e){}
-            }
-            if (createdInstallmentId) {
-                try { await window.BpoSupabase.request(`billing_installments?id=eq.${createdInstallmentId}`, { method: 'DELETE' }); } catch(e){}
-            }
-            if (createdReceiptId) {
-                try { await window.BpoSupabase.request(`receipts?id=eq.${createdReceiptId}`, { method: 'DELETE' }); } catch(e){}
-            }
-            alert('Erro ao liquidar recebimento: ' + err.message);
+            alert('Erro ao registrar recebimento: ' + err.message);
         }
     }
 
-    // Delete contrato
-    window.deletarContrato = async function(contractId) {
-        if (!confirm('Tem certeza que deseja excluir este contrato?')) return;
-        try {
-            await window.BpoSupabase.request(`contracts?id=eq.${contractId}`, { method: 'DELETE' });
-            alert('Contrato excluído com sucesso.');
-            await carregarDadosCompetencia();
-        } catch (err) {
-            alert('Erro ao excluir contrato: ' + err.message);
-        }
-    };
-
-    // Editar contrato — abre modal preenchido
-    window.editarContrato = function(contractId) {
-        const c = contratos.find(x => x.id === contractId);
-        if (!c) return;
-        document.getElementById('contratoId').value = c.id;
-        document.getElementById('modalContratoTitulo').textContent = 'Editar Contrato';
-        document.getElementById('contratoCodigo').value = c.code || '';
-        document.getElementById('contratoTipo').value = c.contract_type || 'B2B';
-        document.getElementById('contratoNome').value = c.name || '';
-        document.getElementById('contratoValor').value = window.BpoMoney.toDecimalString(window.BpoMoney.toCents(c.reference_value));
-        document.getElementById('contratoPeriodicidade').value = c.billing_frequency || 'monthly';
-        document.getElementById('contratoComissao').checked = c.commission_eligible || false;
-        
-        // Dados do cliente vinculado
-        document.getElementById('contratoCliente').value = c._clientName || '';
-        const tipoCliente = c._clientType || 'PJ';
-        const selTipoCliente = document.getElementById('contratoTipoCliente');
-        const lblDocumento = document.getElementById('lblContratoDocumento');
-        const inpDocumento = document.getElementById('contratoDocumento');
-        
-        if (selTipoCliente) selTipoCliente.value = tipoCliente;
-        if (lblDocumento) lblDocumento.textContent = tipoCliente === 'PF' ? 'CPF do Cliente' : 'CNPJ do Cliente';
-        if (inpDocumento) {
-            inpDocumento.value = c._clientDoc || '';
-            inpDocumento.placeholder = tipoCliente === 'PF' ? '000.000.000-00' : '00.000.000/0000-00';
-        }
-
-        document.getElementById('contratoInicio').value = c.start_date || '';
-        document.getElementById('btnExcluirContratoModal').style.display = 'inline-flex';
-        abrirModal(modalContrato);
-    };
-
     async function salvarContrato(e) {
         e.preventDefault();
-        if (!empresaAtiva) return;
         const idExistente = document.getElementById('contratoId').value;
         const codigo = document.getElementById('contratoCodigo').value.trim();
-        const tipoContrato = document.getElementById('contratoTipo').value || 'B2B';
         const nome = document.getElementById('contratoNome').value.trim();
-        const valorCents = window.BpoMoney.toCents(document.getElementById('contratoValor').value);
-        const periodicidade = document.getElementById('contratoPeriodicidade').value;
-        const comissao = document.getElementById('contratoComissao').checked;
+        const tipo = document.getElementById('contratoTipo').value;
         const clienteNome = document.getElementById('contratoCliente').value.trim();
-        const tipoCliente = document.getElementById('contratoTipoCliente').value || 'PJ';
-        const documentoCliente = document.getElementById('contratoDocumento').value.trim();
-        const startDate = document.getElementById('contratoInicio').value || null;
+        const clienteTipo = document.getElementById('contratoTipoCliente').value;
+        const clienteDoc = document.getElementById('contratoDocumento').value.trim();
+        const valorBaseCents = window.BpoMoney.toCents(document.getElementById('contratoValorBase').value);
+        const periodicidade = document.getElementById('contratoPeriodicidade').value;
+        const elegivelComissao = document.getElementById('contratoComissao').checked;
+
+        const targetEmpresa = empresaAtivaId !== 'all' ? companiesMap.get(empresaAtivaId) : empresas[0];
 
         try {
-            // Resolve client_id: busca ou cria/atualiza pessoa com o nome e documento segregado (PF x PJ)
             let clientId = null;
             if (clienteNome) {
-                const pessoasExistentes = await window.BpoSupabase.request(
-                    `people?name=eq.${encodeURIComponent(clienteNome)}&company_id=eq.${empresaAtiva.id}&limit=1`,
-                    { method: 'GET' }
-                );
-
-                const dadosPessoa = {
-                    company_id: empresaAtiva.id,
+                const payloadPessoa = {
+                    company_id: targetEmpresa.id,
                     name: clienteNome,
-                    person_type: 'client',
-                    client_category: tipoCliente, // 'PF' ou 'PJ'
-                    document_type: tipoCliente === 'PF' ? 'CPF' : 'CNPJ',
-                    document: documentoCliente || null,
-                    ...(tipoCliente === 'PF' ? { cpf: documentoCliente || null, cnpj: null } : { cnpj: documentoCliente || null, cpf: null })
+                    document_type: clienteTipo === 'PF' ? 'CPF' : 'CNPJ',
+                    document: clienteDoc,
+                    cpf: clienteTipo === 'PF' ? clienteDoc : null,
+                    cnpj: clienteTipo === 'PJ' ? clienteDoc : null,
+                    is_client: true,
+                    active: true
                 };
 
-                if (pessoasExistentes.length > 0) {
-                    clientId = pessoasExistentes[0].id;
-                    // Se informou documento novo, atualiza os dados da pessoa
-                    if (documentoCliente) {
-                        await window.BpoSupabase.request(`people?id=eq.${clientId}`, {
-                            method: 'PATCH',
-                            body: JSON.stringify(dadosPessoa)
-                        });
-                    }
-                } else {
-                    const novaPessoa = await window.BpoSupabase.request('people', {
-                        method: 'POST',
-                        body: JSON.stringify(dadosPessoa)
-                    });
-                    clientId = novaPessoa[0].id;
-                }
+                const resPessoa = await window.BpoSupabase.request('people', {
+                    method: 'POST',
+                    body: JSON.stringify(payloadPessoa)
+                });
+                if (resPessoa && resPessoa.length > 0) clientId = resPessoa[0].id;
             }
 
-            const payload = {
-                company_id: empresaAtiva.id,
+            const payloadContrato = {
+                company_id: targetEmpresa.id,
                 code: codigo,
-                contract_type: tipoContrato,
                 name: nome,
-                reference_value: window.BpoMoney.toDecimalString(valorCents),
+                contract_type: tipo,
+                client_id: clientId,
+                reference_value: window.BpoMoney.toDecimalString(valorBaseCents),
                 billing_frequency: periodicidade,
-                commission_eligible: comissao,
-                ...(clientId && { client_id: clientId }),
-                ...(startDate && { start_date: startDate })
+                commission_eligible: elegivelComissao,
+                status: 'active'
             };
 
             if (idExistente) {
-                // Ao editar, NÃO redefine o status (mantém o status atual do contrato)
                 await window.BpoSupabase.request(`contracts?id=eq.${idExistente}`, {
                     method: 'PATCH',
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify(payloadContrato)
                 });
-                fecharModais();
-                await carregarDadosCompetencia();
-                alert('Contrato atualizado com sucesso!');
             } else {
                 await window.BpoSupabase.request('contracts', {
                     method: 'POST',
-                    body: JSON.stringify({ ...payload, status: 'active' })
+                    body: JSON.stringify(payloadContrato)
                 });
-                fecharModais();
-                await carregarDadosCompetencia();
-                alert('Contrato cadastrado com sucesso!');
             }
+
+            fecharModais();
+            await carregarDadosCompetencia();
+            alert('Contrato salvo com sucesso!');
         } catch (err) {
             alert('Erro ao salvar contrato: ' + err.message);
         }

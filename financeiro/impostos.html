@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Módulo 05 — Controle de Impostos & Apuração Tributária</title>
+    <title>Módulo 05 — Controle de Impostos & Apuração Tributária Consolidada</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -17,7 +17,7 @@
                 <div class="brand-logo" style="background: linear-gradient(135deg, #10b981, #059669);">05</div>
                 <div>
                     <h1 class="brand-title">Controle de Impostos</h1>
-                    <div class="brand-subtitle">Apuração Simples Nacional • Fator R • Lucro Presumido</div>
+                    <div class="brand-subtitle">Simples Nacional (DZM/YBOX) • Lucro Presumido Trimestral (Mar Brasil)</div>
                 </div>
             </a>
         </div>
@@ -26,7 +26,7 @@
             <div>
                 <label for="selectEmpresa" style="font-size: 0.75rem; color: var(--text-muted); display: block;">Empresa:</label>
                 <select id="selectEmpresa" class="select-control">
-                    <option value="">Carregando...</option>
+                    <option value="all">Todas as Empresas (Consolidado)</option>
                 </select>
             </div>
 
@@ -40,107 +40,78 @@
     </header>
 
     <main class="layout-container">
-        <!-- Métricas Fiscais -->
+        <!-- Métricas Fiscais Consolidadas -->
         <section class="metrics-grid">
             <div class="metric-card primary">
-                <div class="metric-label">Base de Faturamento (Mês)</div>
+                <div class="metric-label">Faturamento da Competência</div>
                 <div class="metric-value" id="valBaseFaturamento">R$ 0,00</div>
             </div>
-            <div class="metric-card info">
-                <div class="metric-label">RBT12 (Receita Acumulada 12m)</div>
-                <div class="metric-value" id="valRBT12">R$ 0,00</div>
+            <div class="metric-card danger">
+                <div class="metric-label">Impostos Atribuídos</div>
+                <div class="metric-value" id="valImpostoApurado">R$ 0,00</div>
             </div>
             <div class="metric-card warning">
-                <div class="metric-label">Fator R (Folha / RBT12)</div>
-                <div class="metric-value" id="valFatorR">0,00%</div>
+                <div class="metric-label">Retenções Confirmadas / Compensáveis</div>
+                <div class="metric-value" id="valRetencoesCompensaveis">R$ 0,00</div>
             </div>
-            <div class="metric-card danger">
-                <div class="metric-label">Imposto Apurado (DAS / Guias)</div>
-                <div class="metric-value" id="valImpostoApurado">R$ 0,00</div>
+            <div class="metric-card info">
+                <div class="metric-label">Saldo Líquido a Recolher</div>
+                <div class="metric-value" id="valSaldoRecolher">R$ 0,00</div>
             </div>
         </section>
 
-        <!-- Painel de Parâmetros e Memória de Cálculo -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
-            <!-- Parâmetros de Entrada -->
+        <!-- Indicador de Carga Efetiva Gerencial Oficial -->
+        <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px 20px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <span style="font-size: 1.1rem;">📊</span>
+                <div>
+                    <strong style="color: var(--text-main); font-size: 0.95rem;">Carga Efetiva Gerencial Consolidada:</strong>
+                    <span id="labelCargaEfetiva" style="font-size: 1.1rem; font-weight: 700; color: #3b82f6; margin-left: 8px;">0,00%</span>
+                    <span style="font-size: 0.78rem; color: var(--text-muted); margin-left: 8px;">(Fórmula oficial: ∑ Impostos Atribuídos / ∑ Faturamento × 100)</span>
+                </div>
+            </div>
+            <div id="badgeStatusApuracao" class="badge badge-success" style="font-size: 0.8rem; padding: 4px 10px;">
+                Consolidado Multiempreitadas
+            </div>
+        </div>
+
+        <!-- Painel de Apuração Consolidada por Empresa e Regime -->
+        <div style="display: grid; grid-template-columns: 1fr; gap: 24px; margin-bottom: 24px;">
             <section class="finance-card">
                 <div class="card-header">
                     <div>
-                        <h2 class="card-title">Parâmetros da Competência</h2>
-                        <p class="card-subtitle">Informe o histórico acumulado para cálculo exato da alíquota</p>
+                        <h2 class="card-title" id="tituloQuadroFiscal">Quadro Geral de Obrigações Fiscais</h2>
+                        <p class="card-subtitle">Apuração isolada por CNPJ e regime tributário com consolidação gerencial</p>
                     </div>
                 </div>
 
-                <form id="formParametrosFiscais">
-                    <div style="margin-bottom: 16px;">
-                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">
-                            Regime Tributário
-                        </label>
-                        <select id="regimeTributario" class="select-control" style="width: 100%;">
-                            <option value="simples_nacional">Simples Nacional (LC 123/2006)</option>
-                            <option value="lucro_presumido">Lucro Presumido (Base 32%)</option>
-                            <option value="lucro_real">Lucro Real</option>
-                            <option value="mei">MEI (SIMEI)</option>
-                        </select>
-                    </div>
-
-                    <div style="margin-bottom: 16px;" id="boxAnexoSimples">
-                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">
-                            Enquadramento / Anexo do Simples
-                        </label>
-                        <select id="anexoSimples" class="select-control" style="width: 100%;">
-                            <option value="auto">Automático via Fator R (Anexo III vs V)</option>
-                            <option value="anexo_iii">Anexo III — Instalação / Manutenção (6% a 33%)</option>
-                            <option value="anexo_iv">Anexo IV — Obras / Construção Civil (4.5% a 33%)</option>
-                            <option value="anexo_v">Anexo V — Engenharia / Intelectuais (15.5% a 30.5%)</option>
-                        </select>
-                    </div>
-
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
-                        <div>
-                            <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">
-                                RBT12 (R$ últimos 12 meses)
-                            </label>
-                            <input type="text" id="inpRBT12" class="select-control" style="width: 100%;" placeholder="0,00" value="0,00">
-                        </div>
-                        <div>
-                            <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">
-                                Folha 12m (Salários + Pró-labore)
-                            </label>
-                            <input type="text" id="inpFolha12" class="select-control" style="width: 100%;" placeholder="0,00" value="0,00">
-                        </div>
-                    </div>
-
-                    <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px;">
-                        <button type="submit" class="btn btn-primary" id="btnSalvarParametros">
-                            Calcular e Gravar Apuração
-                        </button>
-                    </div>
-                </form>
-            </section>
-
-            <!-- Memória de Cálculo / Detalhamento -->
-            <section class="finance-card">
-                <div class="card-header">
-                    <div>
-                        <h2 class="card-title">Memória de Cálculo Oficial</h2>
-                        <p class="card-subtitle">Demonstrativo da alíquota efetiva e rateio de tributos</p>
-                    </div>
-                    <span class="badge badge-success" id="badgeRegime">Simples Nacional</span>
-                </div>
-
-                <div id="painelMemoriaCalculo" style="color: var(--text-secondary); font-size: 0.9rem;">
-                    Carregando apuração...
+                <div id="painelDetalhamentoEmpresas" style="display: grid; grid-template-columns: 1fr; gap: 20px;">
+                    <!-- Preenchido dinamicamente por impostos.js -->
                 </div>
             </section>
         </div>
 
-        <!-- Histórico de Apurações Fechadas -->
+        <!-- Bloco Trimestral Especial: Mar Brasil (Lucro Presumido) -->
+        <section class="finance-card" id="secaoTrimestralMarBrasil" style="margin-bottom: 24px;">
+            <div class="card-header">
+                <div>
+                    <h2 class="card-title">Apuração Trimestral IRPJ / CSLL — Mar Brasil (Lucro Presumido)</h2>
+                    <p class="card-subtitle">Regra legal de presunção majorada acima do teto de R$ 1.250.000,00 e adicional de 10%</p>
+                </div>
+                <span class="badge badge-primary" id="badgeTrimestreMarBrasil">Trimestre em Andamento</span>
+            </div>
+
+            <div id="painelTrimestralMarBrasil" style="color: var(--text-secondary); font-size: 0.9rem;">
+                <!-- Preenchido dinamicamente pelo motor trimestral -->
+            </div>
+        </section>
+
+        <!-- Histórico de Competências e Guias -->
         <section class="finance-card">
             <div class="card-header">
                 <div>
-                    <h2 class="card-title">Histórico de Competências Apuradas</h2>
-                    <p class="card-subtitle">Registros auditáveis persistidos no Supabase</p>
+                    <h2 class="card-title">Histórico de Obrigações e Apurações por Competência</h2>
+                    <p class="card-subtitle">Consulta de apurações e provisões fiscais da competência</p>
                 </div>
             </div>
 
@@ -148,20 +119,21 @@
                 <table class="table-custom">
                     <thead>
                         <tr>
+                            <th>Empresa</th>
+                            <th>Regime</th>
                             <th>Competência</th>
-                            <th>Regime / Anexo</th>
-                            <th>Faturamento Bruto</th>
-                            <th>RBT12</th>
-                            <th>Fator R</th>
-                            <th>Alíquota Efetiva</th>
-                            <th>Imposto Total</th>
-                            <th>Status</th>
+                            <th>Faturamento</th>
+                            <th>Impostos Atribuídos</th>
+                            <th>Retenções Compensáveis</th>
+                            <th>Saldo a Recolher</th>
+                            <th>Carga Efetiva</th>
+                            <th>Situação</th>
                         </tr>
                     </thead>
                     <tbody id="listaHistoricoBody">
                         <tr>
-                            <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">
-                                Nenhuma apuração confirmada para esta empresa.
+                            <td colspan="9" style="text-align: center; color: var(--text-muted); padding: 24px;">
+                                Carregando apurações...
                             </td>
                         </tr>
                     </tbody>

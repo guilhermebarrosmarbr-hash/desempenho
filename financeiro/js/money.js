@@ -68,5 +68,10 @@
         }
     }
 
-    window.BpoMoney = MoneyUtil;
+    if (typeof window !== 'undefined') {
+        window.BpoMoney = MoneyUtil;
+    }
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = MoneyUtil;
+    }
 })();
