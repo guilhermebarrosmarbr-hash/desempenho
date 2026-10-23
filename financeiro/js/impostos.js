@@ -129,17 +129,22 @@
 
                 if (isLucroPresumido) {
                     // Lucro Presumido: PIS/Cofins mensais + Provisão IRPJ/CSLL trimestrais
-                    const apuracaoLP = window.BpoTaxEngine.apurarLucroPresumidoMensal({
-                        grossAmountCents: fatEmpCents,
-                        pisAliq: 0.65,
-                        cofinsAliq: 3.0,
-                        issAliq: 5.0,
-                        irpjProvisaoAliq: 4.8,
-                        csllProvisaoAliq: 2.88
-                    });
+                    // API real: apurarLucroPresumidoMensal(faturamentoServico, faturamentoProduto, options)
+                    const fatServicoNum = Number(servicosCents) / 100;
+                    const fatProdutoNum = Number(produtosCents) / 100;
+                    const apuracaoLP = window.BpoTaxEngine.apurarLucroPresumidoMensal(
+                        fatServicoNum, fatProdutoNum, { aliquotaIss: 5.0 }
+                    );
 
-                    impostoApuradoEmpCents = apuracaoLP.totalTaxCents;
-                    // Retenções abatem das obrigações (ex: IRRF compensável de IRPJ)
+                    // Monta componentes em centavos para exibição
+                    const pisCents = BigInt(Math.round(apuracaoLP.impostosMensais.pis.value * 100));
+                    const cofinsCents = BigInt(Math.round(apuracaoLP.impostosMensais.cofins.value * 100));
+                    const issCents = BigInt(Math.round(apuracaoLP.impostosMensais.iss.value * 100));
+                    // Provisão trimestral estimada (32% presunção × 15% IRPJ + 9% CSLL)
+                    const irpjProvCents = BigInt(Math.round(Number(fatEmpCents) / 100 * 0.32 * 0.15 * 100));
+                    const csllProvCents = BigInt(Math.round(Number(fatEmpCents) / 100 * 0.32 * 0.09 * 100));
+
+                    impostoApuradoEmpCents = pisCents + cofinsCents + issCents + irpjProvCents + csllProvCents;
                     saldoRecolherEmpCents = impostoApuradoEmpCents > retEmpCents ? impostoApuradoEmpCents - retEmpCents : 0n;
 
                     detalheCardHtml = `
@@ -149,11 +154,11 @@
                                 <span class="badge badge-primary">Lucro Presumido</span>
                             </div>
                             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; font-size:0.85rem;">
-                                <div><span style="color:var(--text-muted);">PIS (0,65%):</span> <strong>${window.BpoMoney.formatBRL(apuracaoLP.components.pisCents)}</strong></div>
-                                <div><span style="color:var(--text-muted);">COFINS (3,00%):</span> <strong>${window.BpoMoney.formatBRL(apuracaoLP.components.cofinsCents)}</strong></div>
-                                <div><span style="color:var(--text-muted);">ISS Municipal (5,00%):</span> <strong>${window.BpoMoney.formatBRL(apuracaoLP.components.issCents)}</strong></div>
-                                <div><span style="color:var(--text-muted);">Provisão IRPJ Trimestral:</span> <strong>${window.BpoMoney.formatBRL(apuracaoLP.components.irpjProvisaoCents)}</strong></div>
-                                <div><span style="color:var(--text-muted);">Provisão CSLL Trimestral:</span> <strong>${window.BpoMoney.formatBRL(apuracaoLP.components.csllProvisaoCents)}</strong></div>
+                                <div><span style="color:var(--text-muted);">PIS (0,65%):</span> <strong>${window.BpoMoney.formatBRL(pisCents)}</strong></div>
+                                <div><span style="color:var(--text-muted);">COFINS (3,00%):</span> <strong>${window.BpoMoney.formatBRL(cofinsCents)}</strong></div>
+                                <div><span style="color:var(--text-muted);">ISS Municipal (5,00%):</span> <strong>${window.BpoMoney.formatBRL(issCents)}</strong></div>
+                                <div><span style="color:var(--text-muted);">Provisão IRPJ Trimestral:</span> <strong>${window.BpoMoney.formatBRL(irpjProvCents)}</strong></div>
+                                <div><span style="color:var(--text-muted);">Provisão CSLL Trimestral:</span> <strong>${window.BpoMoney.formatBRL(csllProvCents)}</strong></div>
                                 <div><span style="color:var(--text-muted);">Retenções a Compensar:</span> <strong style="color:var(--color-danger);">${window.BpoMoney.formatBRL(retEmpCents)}</strong></div>
                             </div>
                             <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between;">
@@ -163,16 +168,22 @@
                         </div>
                     `;
                 } else {
-                    // Simples Nacional: DZM ou Ybox via DAS estimado (RBT12 e Folha isoladas)
-                    const apuracaoSN = window.BpoTaxEngine.apurarSimplesNacional({
-                        faturamentoMesCents: fatEmpCents,
-                        rbt12Cents: 36000000n, // Base estimada de referência isolada
-                        folha12mCents: 0n,
-                        anexo: 'anexo_iii'
-                    });
+                    // Simples Nacional: DZM ou Ybox via DAS estimado
+                    // API real: apurarSimplesNacional(rbt12, faturamentoMes, anexoKey, options)
+                    const rbt12Num = 360000; // R$ 360.000 referência anual
+                    const fatMesNum = Number(fatEmpCents) / 100;
+                    const apuracaoSN = window.BpoTaxEngine.apurarSimplesNacional(rbt12Num, fatMesNum, 'anexo_iii');
 
-                    impostoApuradoEmpCents = apuracaoSN.dasTotalCents;
-                    saldoRecolherEmpCents = impostoApuradoEmpCents;
+                    const dasCents = BigInt(Math.round(apuracaoSN.valorDas * 100));
+                    impostoApuradoEmpCents = dasCents;
+                    saldoRecolherEmpCents = dasCents;
+
+                    const comp = apuracaoSN.componentes;
+                    const cppCents = BigInt(Math.round(comp.inss * 100));
+                    const issSNCents = BigInt(Math.round(comp.iss * 100));
+                    const pisSNCents = BigInt(Math.round(comp.pis * 100));
+                    const cofinsSNCents = BigInt(Math.round(comp.cofins * 100));
+                    const irpjCsllSNCents = BigInt(Math.round((comp.irpj + comp.csll) * 100));
 
                     detalheCardHtml = `
                         <div style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 16px; border: 1px solid rgba(255,255,255,0.05);">
@@ -181,12 +192,12 @@
                                 <span class="badge badge-success">Simples Nacional (Anexo III)</span>
                             </div>
                             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; font-size:0.85rem;">
-                                <div><span style="color:var(--text-muted);">Alíquota Efetiva DAS:</span> <strong>${(apuracaoSN.aliquotaEfetivaPercent * 100).toFixed(2)}%</strong></div>
-                                <div><span style="color:var(--text-muted);">Parcela CPP (43,4%):</span> <strong>${window.BpoMoney.formatBRL(apuracaoSN.reparticao.cppCents)}</strong></div>
-                                <div><span style="color:var(--text-muted);">Parcela ISS (33,5%):</span> <strong>${window.BpoMoney.formatBRL(apuracaoSN.reparticao.issCents)}</strong></div>
-                                <div><span style="color:var(--text-muted);">Parcela PIS (2,76%):</span> <strong>${window.BpoMoney.formatBRL(apuracaoSN.reparticao.pisCents)}</strong></div>
-                                <div><span style="color:var(--text-muted);">Parcela COFINS (12,74%):</span> <strong>${window.BpoMoney.formatBRL(apuracaoSN.reparticao.cofinsCents)}</strong></div>
-                                <div><span style="color:var(--text-muted);">Parcela IRPJ/CSLL (7,6%):</span> <strong>${window.BpoMoney.formatBRL(apuracaoSN.reparticao.irpjCents + apuracaoSN.reparticao.csllCents)}</strong></div>
+                                <div><span style="color:var(--text-muted);">Alíquota Efetiva DAS:</span> <strong>${apuracaoSN.aliquotaEfetivaDas}</strong></div>
+                                <div><span style="color:var(--text-muted);">Parcela CPP (INSS):</span> <strong>${window.BpoMoney.formatBRL(cppCents)}</strong></div>
+                                <div><span style="color:var(--text-muted);">Parcela ISS:</span> <strong>${window.BpoMoney.formatBRL(issSNCents)}</strong></div>
+                                <div><span style="color:var(--text-muted);">Parcela PIS:</span> <strong>${window.BpoMoney.formatBRL(pisSNCents)}</strong></div>
+                                <div><span style="color:var(--text-muted);">Parcela COFINS:</span> <strong>${window.BpoMoney.formatBRL(cofinsSNCents)}</strong></div>
+                                <div><span style="color:var(--text-muted);">Parcela IRPJ/CSLL:</span> <strong>${window.BpoMoney.formatBRL(irpjCsllSNCents)}</strong></div>
                             </div>
                             <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between;">
                                 <span style="font-size:0.82rem; color:var(--text-muted);">* Tributos federais já integrados na guia única DAS (sem cobrança adicional)</span>
@@ -293,16 +304,19 @@
             } catch (e) {}
         }
 
-        const apuracaoTrimestral = window.BpoTaxEngine.apurarLucroPresumidoTrimestral({
-            servicesGrossCents: servicosTrimicosCents = servicosTrimestreCents,
-            productsGrossCents: produtosTrimestreCents,
-            year: ano,
-            quarter: trimestre
-        });
+        // API real: apurarLucroPresumidoTrimestral(receitaServico, receitaProduto, options)
+        const apuracaoTrimestral = window.BpoTaxEngine.apurarLucroPresumidoTrimestral(
+            Number(servicosTrimestreCents) / 100,
+            Number(produtosTrimestreCents) / 100,
+            { ano: ano, trimestre: trimestre }
+        );
 
         const isCompleto = mesesComDados === 3;
         badgeTrimestreMarBrasil.textContent = isCompleto ? `${trimestre}º Trimestre Fechado` : `Provisão — ${trimestre}º Trimestre em andamento (${mesesComDados}/3 meses)`;
         badgeTrimestreMarBrasil.className = isCompleto ? 'badge badge-success' : 'badge badge-warning';
+
+        // Converte resultados numéricos do motor para centavos BigInt para formatação
+        const fmtBRL = (num) => window.BpoMoney.formatBRL(BigInt(Math.round(num * 100)));
 
         painelTrimestralMarBrasil.innerHTML = `
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 16px;">
@@ -316,12 +330,12 @@
                 </div>
                 <div style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 6px;">
                     <div style="font-size: 0.78rem; color: var(--text-muted);">Receita Total Sujeita a Limite</div>
-                    <div style="font-size: 1.1rem; font-weight: 600; color: #fff;">${window.BpoMoney.formatBRL(apuracaoTrimestral.receitaTotalCents)}</div>
-                    <div style="font-size: 0.75rem; color: #94a3b8;">Teto Presunção: ${window.BpoMoney.formatBRL(apuracaoTrimestral.limiteTrimestralCents)}</div>
+                    <div style="font-size: 1.1rem; font-weight: 600; color: #fff;">${fmtBRL(apuracaoTrimestral.receitaTotalTrimestre)}</div>
+                    <div style="font-size: 0.75rem; color: #94a3b8;">Teto Presunção: ${fmtBRL(apuracaoTrimestral.limitePresuncao)}</div>
                 </div>
                 <div style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 6px;">
                     <div style="font-size: 0.78rem; color: var(--text-muted);">Parcela Excedente Majorada</div>
-                    <div style="font-size: 1.1rem; font-weight: 600; color: #f59e0b;">${window.BpoMoney.formatBRL(apuracaoTrimestral.excedenteTotalCents)}</div>
+                    <div style="font-size: 1.1rem; font-weight: 600; color: #f59e0b;">${fmtBRL(apuracaoTrimestral.excedenteTotal)}</div>
                     <div style="font-size: 0.75rem; color: #94a3b8;">Srv: 35,2% | Prod: 8,8% / 13,2%</div>
                 </div>
             </div>
@@ -331,17 +345,17 @@
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 20px; font-size: 0.85rem;">
                     <div>
                         <strong style="color: #60a5fa; display: block; margin-bottom: 6px;">IRPJ Trimestral (Devido):</strong>
-                        <div>• Base de Cálculo IRPJ: <strong>${window.BpoMoney.formatBRL(apuracaoTrimestral.baseIrpjCents)}</strong></div>
-                        <div>• IRPJ Regular (15%): <strong>${window.BpoMoney.formatBRL(apuracaoTrimestral.irpjRegularCents)}</strong></div>
-                        <div>• Adicional IRPJ (10% sobre base > R$ 60k): <strong style="color: #f59e0b;">${window.BpoMoney.formatBRL(apuracaoTrimestral.irpjAdicionalCents)}</strong></div>
+                        <div>• Base de Cálculo IRPJ: <strong>${fmtBRL(apuracaoTrimestral.base_IRPJ)}</strong></div>
+                        <div>• IRPJ Regular (15%): <strong>${fmtBRL(apuracaoTrimestral.IRPJ_regular)}</strong></div>
+                        <div>• Adicional IRPJ (10% sobre base > R$ 60k): <strong style="color: #f59e0b;">${fmtBRL(apuracaoTrimestral.IRPJ_adicional)}</strong></div>
                         <div style="margin-top: 4px; padding-top: 4px; border-top: 1px dashed rgba(255,255,255,0.1);">
-                            Total IRPJ Devido no Trimestre: <strong style="color: #60a5fa;">${window.BpoMoney.formatBRL(apuracaoTrimestral.irpjDevidoCents)}</strong>
+                            Total IRPJ Devido no Trimestre: <strong style="color: #60a5fa;">${fmtBRL(apuracaoTrimestral.IRPJ_devido)}</strong>
                         </div>
                     </div>
                     <div>
                         <strong style="color: #34d399; display: block; margin-bottom: 6px;">CSLL Trimestral (Devida):</strong>
-                        <div>• Base de Cálculo CSLL: <strong>${window.BpoMoney.formatBRL(apuracaoTrimestral.baseCsllCents)}</strong></div>
-                        <div>• CSLL Devida (9%): <strong style="color: #34d399;">${window.BpoMoney.formatBRL(apuracaoTrimestral.csllDevidaCents)}</strong></div>
+                        <div>• Base de Cálculo CSLL: <strong>${fmtBRL(apuracaoTrimestral.base_CSLL)}</strong></div>
+                        <div>• CSLL Devida (9%): <strong style="color: #34d399;">${fmtBRL(apuracaoTrimestral.CSLL_devida)}</strong></div>
                         <div style="margin-top: 16px; font-size: 0.78rem; color: var(--text-muted);">
                             * Não duplica em visões mensais: rateio exato em centavos por nota/competência com reconciliação determinística.
                         </div>

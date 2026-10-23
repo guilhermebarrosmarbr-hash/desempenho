@@ -56,6 +56,8 @@
         // Eventos dos Filtros Principais
         selectEmpresa.addEventListener('change', async (e) => {
             empresaAtivaId = e.target.value || 'all';
+            const btnEditar = document.getElementById('btnEditarEmpresa');
+            if (btnEditar) btnEditar.style.display = empresaAtivaId !== 'all' ? 'inline-flex' : 'none';
             atualizarDropdownFiltroContratos();
             await carregarDadosCompetencia();
         });
@@ -326,6 +328,9 @@
     function renderizarDocumentos() {
         const docsExibicao = getDocumentosFiltrados();
 
+        const contador = document.getElementById('resumoContagemDocs');
+        if (contador) contador.textContent = `Exibindo ${docsExibicao.length} lançamento${docsExibicao.length !== 1 ? 's' : ''}`;
+
         if (docsExibicao.length === 0) {
             listaDocumentosBody.innerHTML = `
                 <tr>
@@ -576,19 +581,20 @@
         const emp = companiesMap.get(companyId);
 
         // Invoca o motor tributário puro unificado BpoTaxEngine (sem persistência)
+        // API real: calcularPreviaNota({ company_tax_regime, gross_amount, item_type, temIrrf, aliquotaIrrf, temInss, aliquotaInss, issRetido, aliquotaIss, rbt12, anexo, discounts })
         const params = {
-            grossAmountCents: brutoCents,
-            regime: emp ? emp.tax_regime : 'lucro_presumido',
+            gross_amount: window.BpoMoney.toDecimalString(brutoCents),
+            company_tax_regime: emp ? emp.tax_regime : 'lucro_presumido',
             competence: competenciaAtiva,
-            itemType: itemTipo,
-            hasIrrf: chkIrrf,
-            irrfAliq: aliqIrrfVal,
-            hasInss: chkInss,
-            inssAliq: aliqInssVal,
-            issAliq: aliqIssVal,
-            isIssRetained: chkIssRetido,
-            rbt12Cents: 36000000n, // R$ 360k referência se simples
-            simplesAnnex: 'anexo_iii'
+            item_type: itemTipo,
+            temIrrf: chkIrrf,
+            aliquotaIrrf: aliqIrrfVal,
+            temInss: chkInss,
+            aliquotaInss: aliqInssVal,
+            aliquotaIss: aliqIssVal,
+            issRetido: chkIssRetido,
+            rbt12: 360000, // R$ 360k referência se simples
+            anexo: 'anexo_iii'
         };
 
         const previa = window.BpoTaxEngine ? window.BpoTaxEngine.calcularPreviaNota(params) : null;
@@ -598,20 +604,40 @@
 
         if (!previa) return;
 
+        // Extrai valores do retorno real da API
+        const irrfValor = previa.retencoes ? (previa.retencoes.irrf ? previa.retencoes.irrf.valor : 0) : 0;
+        const inssValor = previa.retencoes ? (previa.retencoes.inss ? previa.retencoes.inss.valor : 0) : 0;
+        const retTotalNum = previa.retencoes ? (previa.retencoes.total || 0) : 0;
+        const retTotalCents = BigInt(Math.round(retTotalNum * 100));
+
+        const totalImpostosNum = previa.impostosMensais 
+            ? ((previa.impostosMensais.pis ? previa.impostosMensais.pis.valor : 0) + 
+               (previa.impostosMensais.cofins ? previa.impostosMensais.cofins.valor : 0) + 
+               (previa.impostosMensais.iss ? previa.impostosMensais.iss.valor : 0))
+            : (previa.impostosEconomicos ? previa.impostosEconomicos.valorTotal : 0);
+        
+        const provisaoNum = previa.provisaoTrimestral 
+            ? ((previa.provisaoTrimestral.irpjProvisao || 0) + (previa.provisaoTrimestral.csllProvisao || 0)) 
+            : 0;
+
+        const totalImpostosCents = BigInt(Math.round((totalImpostosNum + provisaoNum) * 100));
+        const liquidoRecebCents = BigInt(Math.round((previa.liquidoAReceber || 0) * 100));
+        const liquidoEcoCents = BigInt(Math.round((previa.liquidoEconomico || 0) * 100));
+
         // Atualiza campos de saída na tela
-        document.getElementById('valIrrfPreview').textContent = window.BpoMoney.toDecimalString(previa.retentions.irrf);
-        document.getElementById('valInssPreview').textContent = window.BpoMoney.toDecimalString(previa.retentions.inss);
+        document.getElementById('valIrrfPreview').textContent = window.BpoMoney.toDecimalString(BigInt(Math.round(irrfValor * 100)));
+        document.getElementById('valInssPreview').textContent = window.BpoMoney.toDecimalString(BigInt(Math.round(inssValor * 100)));
 
-        document.getElementById('docRetencoes').value = window.BpoMoney.toDecimalString(previa.totalRetentions);
-        document.getElementById('docValorLiquido').value = window.BpoMoney.toDecimalString(previa.netReceivable);
+        document.getElementById('docRetencoes').value = window.BpoMoney.toDecimalString(retTotalCents);
+        document.getElementById('docValorLiquido').value = window.BpoMoney.toDecimalString(liquidoRecebCents);
 
-        document.getElementById('previaTotalImpostos').textContent = window.BpoMoney.formatBRL(previa.totalTaxes);
-        document.getElementById('previaTotalRetencoes').textContent = window.BpoMoney.formatBRL(previa.totalRetentions);
-        document.getElementById('previaLiquidoEconomico').textContent = window.BpoMoney.formatBRL(previa.netEconomic);
+        document.getElementById('previaTotalImpostos').textContent = window.BpoMoney.formatBRL(totalImpostosCents);
+        document.getElementById('previaTotalRetencoes').textContent = window.BpoMoney.formatBRL(retTotalCents);
+        document.getElementById('previaLiquidoEconomico').textContent = window.BpoMoney.formatBRL(liquidoEcoCents);
 
         const pendenciasBox = document.getElementById('previaPendenciasTexto');
-        if (previa.pendingIssues && previa.pendingIssues.length > 0) {
-            pendenciasBox.textContent = `Pendências fiscais: ${previa.pendingIssues.join(', ')}`;
+        if (previa.pendencia) {
+            pendenciasBox.textContent = `Pendência fiscal: ${previa.pendencia}`;
             pendenciasBox.style.display = 'block';
         } else {
             pendenciasBox.style.display = 'none';
@@ -713,6 +739,34 @@
         document.getElementById('recData').value = hoje;
 
         abrirModal(modalRecebimento);
+    };
+
+    // Editar contrato existente
+    window.editarContrato = function(contratoId) {
+        const c = contratos.find(x => x.id === contratoId);
+        if (!c) return;
+
+        const lblDocumento = document.getElementById('lblContratoDocumento');
+        const inpDocumento = document.getElementById('contratoDocumento');
+        const targetEmpresa = companiesMap.get(c.company_id) || empresas[0];
+
+        document.getElementById('contratoId').value = c.id;
+        document.getElementById('modalContratoTitulo').textContent = `Editar Contrato (${targetEmpresa ? targetEmpresa.name : ''})`;
+        document.getElementById('formContrato').reset();
+
+        document.getElementById('contratoCodigo').value = c.code || '';
+        document.getElementById('contratoNome').value = c.name || '';
+        document.getElementById('contratoTipo').value = c.contract_type || 'B2B';
+        document.getElementById('contratoTipoCliente').value = c._clientType || 'PJ';
+        document.getElementById('contratoCliente').value = c._clientName || '';
+        if (inpDocumento) inpDocumento.value = c._clientDoc || '';
+        if (lblDocumento) lblDocumento.textContent = (c._clientType === 'PF') ? 'CPF do Cliente' : 'CNPJ do Cliente';
+        document.getElementById('contratoValorBase').value = window.BpoMoney.toDecimalString(window.BpoMoney.toCents(c.reference_value));
+        document.getElementById('contratoPeriodicidade').value = c.billing_frequency || 'mensal';
+        document.getElementById('contratoComissao').checked = !!c.commission_eligible;
+
+        document.getElementById('btnExcluirContratoModal').style.display = 'inline-flex';
+        abrirModal(modalContrato);
     };
 
     // Submissão pelo operador (preserva regras normais de autorização quando acionado)
