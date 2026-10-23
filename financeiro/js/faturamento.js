@@ -81,6 +81,10 @@
                 alert('Selecione ou cadastre uma empresa primeiro.');
                 return;
             }
+            document.getElementById('docId').value = '';
+            document.getElementById('modalDocumentoTitulo').textContent = 'Criar Lançamento';
+            document.getElementById('btnExcluirDocumentoModal').style.display = 'none';
+
             // Popula dropdown de contratos
             const selContrato = document.getElementById('docContrato');
             selContrato.innerHTML = '<option value="">— Sem vínculo de contrato —</option>';
@@ -92,7 +96,23 @@
             });
             document.getElementById('formNovoDocumento').reset();
             selContrato.value = '';
+            document.getElementById('docRecebimento').value = '';
             abrirModal(modalDocumento);
+        });
+
+        // Excluir Lançamento (dentro do modal)
+        document.getElementById('btnExcluirDocumentoModal').addEventListener('click', async () => {
+            const id = document.getElementById('docId').value;
+            if (!id) return;
+            if (!confirm('Tem certeza que deseja excluir este lançamento?')) return;
+            try {
+                await window.BpoSupabase.request(`billing_documents?id=eq.${id}`, { method: 'DELETE' });
+                fecharModais();
+                await carregarDadosCompetencia();
+                alert('Lançamento excluído com sucesso.');
+            } catch (err) {
+                alert('Erro ao excluir lançamento: ' + err.message);
+            }
         });
 
         // Alternância PF / PJ no formulário de Contrato
@@ -224,7 +244,23 @@
         try {
             // Busca documentos de faturamento da empresa na competência
             const queryDocs = `billing_documents?company_id=eq.${empresaAtiva.id}&competence_month=eq.${competenciaAtiva}&order=issue_date.desc`;
-            documentos = await window.BpoSupabase.request(queryDocs, { method: 'GET' });
+            const docsDb = await window.BpoSupabase.request(queryDocs, { method: 'GET' });
+
+            // Busca recebimentos da empresa para mapear a data de recebimento do documento
+            let receiptsMap = new Map();
+            try {
+                const recs = await window.BpoSupabase.request(`receipts?company_id=eq.${empresaAtiva.id}&order=receipt_date.desc`, { method: 'GET' });
+                recs.forEach(r => {
+                    if (r.external_id && !receiptsMap.has(r.external_id)) {
+                        receiptsMap.set(r.external_id, r.receipt_date);
+                    }
+                });
+            } catch (e) {}
+
+            documentos = docsDb.map(d => ({
+                ...d,
+                payment_date: d.payment_date || receiptsMap.get(d.id) || null
+            }));
 
             // Busca clientes cadastrados para join real
             let clientesMap = new Map();
@@ -287,7 +323,7 @@
         if (documentos.length === 0) {
             listaDocumentosBody.innerHTML = `
                 <tr>
-                    <td colspan="9" style="text-align: center; color: var(--text-muted); padding: 32px;">
+                    <td colspan="10" style="text-align: center; color: var(--text-muted); padding: 32px;">
                         Nenhum documento de faturamento emitido na competência ${escapeHtml(competenciaAtiva)}.
                     </td>
                 </tr>
@@ -303,6 +339,10 @@
                 ? escapeHtml(contrato._clientName)
                 : (contrato ? escapeHtml(contrato.name) : '<span style="color:var(--text-muted);font-size:0.8rem;">Sem cliente vinculado</span>');
 
+            const recebimentoLabel = doc.payment_date 
+                ? `<span style="color: var(--color-success); font-weight: 500;">${escapeHtml(formatarData(doc.payment_date))}</span>`
+                : '<span style="color: var(--text-muted); font-size: 0.8rem;">Pendente</span>';
+
             return `
                 <tr>
                     <td style="font-weight: 600; color: #fff;">
@@ -312,11 +352,15 @@
                     <td>${clientLabel}</td>
                     <td>${escapeHtml(formatarData(doc.issue_date))}</td>
                     <td>${escapeHtml(formatarData(doc.due_date))}</td>
+                    <td>${recebimentoLabel}</td>
                     <td>${escapeHtml(window.BpoMoney.formatBRL(doc.gross_amount))}</td>
                     <td style="color: var(--color-danger);">${escapeHtml(window.BpoMoney.formatBRL(doc.retentions))}</td>
                     <td style="font-weight: 700; color: #fff;">${escapeHtml(window.BpoMoney.formatBRL(doc.net_amount))}</td>
                     <td>${statusBadge}</td>
-                    <td>
+                    <td style="white-space: nowrap;">
+                        <button class="btn btn-primary btn-sm btn-editar-documento" data-id="${escapeHtml(doc.id)}">
+                            Editar
+                        </button>
                         ${podeReceber ? `
                             <button class="btn btn-secondary btn-sm btn-dar-baixa" 
                                 data-id="${escapeHtml(doc.id)}" 
@@ -324,13 +368,19 @@
                                 data-liquido="${escapeHtml(doc.net_amount)}">
                                 Dar Baixa
                             </button>
-                        ` : '<span style="color: var(--text-muted); font-size: 0.8rem;">Concluído</span>'}
+                        ` : ''}
                     </td>
                 </tr>
             `;
         }).join('');
 
         // Event listener desacoplado sem onclick inline
+        listaDocumentosBody.querySelectorAll('.btn-editar-documento').forEach(btn => {
+            btn.addEventListener('click', () => {
+                window.editarDocumento(btn.dataset.id);
+            });
+        });
+
         listaDocumentosBody.querySelectorAll('.btn-dar-baixa').forEach(btn => {
             btn.addEventListener('click', () => {
                 window.abrirModalRecebimento(btn.dataset.id, btn.dataset.numero, btn.dataset.liquido);
@@ -485,18 +535,50 @@
         }
     }
 
+    // Editar documento — abre modal preenchido
+    window.editarDocumento = function(docId) {
+        const d = documentos.find(x => x.id === docId);
+        if (!d) return;
+
+        // Popula dropdown de contratos
+        const selContrato = document.getElementById('docContrato');
+        selContrato.innerHTML = '<option value="">— Sem vínculo de contrato —</option>';
+        contratos.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.id;
+            opt.textContent = `${c.code} — ${c.name}`;
+            selContrato.appendChild(opt);
+        });
+
+        document.getElementById('docId').value = d.id;
+        document.getElementById('modalDocumentoTitulo').textContent = 'Editar Lançamento';
+        document.getElementById('docContrato').value = d.contract_id || '';
+        document.getElementById('docTipo').value = d.document_type || 'nfse';
+        document.getElementById('docNumero').value = d.document_number || '';
+        document.getElementById('docEmissao').value = d.issue_date || '';
+        document.getElementById('docVencimento').value = d.due_date || '';
+        document.getElementById('docRecebimento').value = d.payment_date || '';
+        document.getElementById('docValorBruto').value = window.BpoMoney.toDecimalString(window.BpoMoney.toCents(d.gross_amount));
+        document.getElementById('docRetencoes').value = window.BpoMoney.toDecimalString(window.BpoMoney.toCents(d.retentions));
+        document.getElementById('docValorLiquido').value = window.BpoMoney.toDecimalString(window.BpoMoney.toCents(d.net_amount));
+        document.getElementById('docDescricao').value = d.description || '';
+        document.getElementById('btnExcluirDocumentoModal').style.display = 'inline-flex';
+        abrirModal(modalDocumento);
+    };
+
     async function salvarNovoDocumento(e) {
         e.preventDefault();
         if (!empresaAtiva) return;
 
+        const docId = document.getElementById('docId').value;
         const tipo = document.getElementById('docTipo').value;
-        const serie = '1'; // Série padrão; futuramente pode ser configurável por empresa
+        const serie = '1'; // Série padrão
         const numero = document.getElementById('docNumero').value.trim();
         const emissao = document.getElementById('docEmissao').value;
         const vencimento = document.getElementById('docVencimento').value;
+        const dataRecebimento = document.getElementById('docRecebimento').value || null;
         const brutoCents = window.BpoMoney.toCents(document.getElementById('docValorBruto').value);
         const retCents = window.BpoMoney.toCents(document.getElementById('docRetencoes').value);
-        // discounts deve ser 0 pois a constraint do banco exige: net = gross - discounts - retentions
         const discountsCents = 0n;
         const liqCents = brutoCents - discountsCents - retCents;
         const descricao = document.getElementById('docDescricao').value.trim();
@@ -520,20 +602,47 @@
             retentions: window.BpoMoney.toDecimalString(retCents),
             net_amount: window.BpoMoney.toDecimalString(liqCents),
             description: descricao,
-            status: 'emitted',
             contract_id: contratoId
         };
 
-        try {
-            await window.BpoSupabase.request('billing_documents', {
-                method: 'POST',
-                body: JSON.stringify(payload)
-            });
+        // Se informou data de recebimento, atualiza status para pago
+        if (dataRecebimento) {
+            payload.status = 'paid';
+        }
 
-            fecharModais();
-            document.getElementById('formNovoDocumento').reset();
-            await carregarDadosCompetencia();
-            alert('Lançamento registrado com sucesso!');
+        try {
+            if (docId) {
+                // Atualização de documento existente
+                await window.BpoSupabase.request(`billing_documents?id=eq.${docId}`, {
+                    method: 'PATCH',
+                    body: JSON.stringify(payload)
+                });
+
+                // Se houver data de recebimento informada, grava/atualiza em receipts
+                if (dataRecebimento) {
+                    await registrarOuAtualizarReceipt(docId, dataRecebimento, liqCents);
+                }
+
+                fecharModais();
+                await carregarDadosCompetencia();
+                alert('Lançamento atualizado com sucesso!');
+            } else {
+                // Criação de novo documento
+                payload.status = dataRecebimento ? 'paid' : 'emitted';
+                const createdDoc = await window.BpoSupabase.request('billing_documents', {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                });
+
+                if (dataRecebimento && createdDoc && createdDoc[0]) {
+                    await registrarOuAtualizarReceipt(createdDoc[0].id, dataRecebimento, liqCents);
+                }
+
+                fecharModais();
+                document.getElementById('formNovoDocumento').reset();
+                await carregarDadosCompetencia();
+                alert('Lançamento registrado com sucesso!');
+            }
 
         } catch (err) {
             // Mensagem amigável para violação de unicidade (número duplicado)
@@ -542,6 +651,40 @@
             } else {
                 alert('Erro ao gravar lançamento: ' + err.message);
             }
+        }
+    }
+
+    // Auxiliar para registrar recebimento atrelado ao documento
+    async function registrarOuAtualizarReceipt(docId, dataCredito, valorCents) {
+        try {
+            const existingReceipts = await window.BpoSupabase.request(
+                `receipts?external_id=eq.${docId}&limit=1`,
+                { method: 'GET' }
+            );
+
+            const recPayload = {
+                company_id: empresaAtiva.id,
+                receipt_date: dataCredito,
+                gross_amount: window.BpoMoney.toDecimalString(valorCents),
+                account: 'Conta Principal - Banco Itaú',
+                external_id: docId,
+                notes: `Recebimento vinculado ao documento`
+            };
+
+            if (existingReceipts && existingReceipts.length > 0) {
+                await window.BpoSupabase.request(`receipts?id=eq.${existingReceipts[0].id}`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({ receipt_date: dataCredito, gross_amount: recPayload.gross_amount })
+                });
+            } else {
+                recPayload.idempotency_key = `rec_${docId}_${dataCredito}`;
+                await window.BpoSupabase.request('receipts', {
+                    method: 'POST',
+                    body: JSON.stringify(recPayload)
+                });
+            }
+        } catch (e) {
+            console.warn('Aviso ao sincronizar recibo:', e);
         }
     }
 

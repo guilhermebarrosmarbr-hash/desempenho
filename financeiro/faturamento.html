@@ -93,6 +93,7 @@
                             <th>Cliente</th>
                             <th>Emissão</th>
                             <th>Vencimento</th>
+                            <th>Recebimento</th>
                             <th>Valor Bruto</th>
                             <th>Retenções</th>
                             <th>Valor Líquido</th>
@@ -102,7 +103,7 @@
                     </thead>
                     <tbody id="listaDocumentosBody">
                         <tr>
-                            <td colspan="9" style="text-align: center; color: var(--text-muted); padding: 32px;">
+                            <td colspan="10" style="text-align: center; color: var(--text-muted); padding: 32px;">
                                 Selecione uma empresa para carregar os documentos.
                             </td>
                         </tr>
@@ -194,10 +195,12 @@
     <!-- MODAL: Criar Lançamento de Faturamento -->
     <div class="modal-overlay" id="modalDocumento">
         <div class="modal-card" style="max-width: 680px;">
-            <h2 class="card-title" style="margin-bottom: 8px;">Criar Lançamento</h2>
-            <p class="card-subtitle" style="margin-bottom: 20px;">Registre um lançamento de NFS-e, fatura de medição ou recibo vinculado a um contrato.</p>
+            <h2 class="card-title" id="modalDocumentoTitulo" style="margin-bottom: 8px;">Criar Lançamento</h2>
+            <p class="card-subtitle" style="margin-bottom: 20px;">Registre ou edite um lançamento de NFS-e, fatura de medição ou recibo vinculado a um contrato.</p>
             
             <form id="formNovoDocumento">
+                <input type="hidden" id="docId" value="">
+
                 <div style="margin-bottom: 16px;">
                     <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Contrato Vinculado</label>
                     <select id="docContrato" class="select-control" style="width: 100%;">
@@ -221,7 +224,7 @@
                     </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px;">
                     <div>
                         <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Data de Emissão *</label>
                         <input type="date" id="docEmissao" required class="select-control" style="width: 100%; color-scheme: dark;">
@@ -229,6 +232,10 @@
                     <div>
                         <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Data de Vencimento *</label>
                         <input type="date" id="docVencimento" required class="select-control" style="width: 100%; color-scheme: dark;">
+                    </div>
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Data de Recebimento</label>
+                        <input type="date" id="docRecebimento" class="select-control" style="width: 100%; color-scheme: dark;">
                     </div>
                 </div>
 
@@ -252,9 +259,12 @@
                     <textarea id="docDescricao" class="select-control" style="width: 100%; height: 60px;" placeholder="Serviços de manutenção preventiva PMOC..."></textarea>
                 </div>
 
-                <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
-                    <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">Gravar Lançamento</button>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px;">
+                    <button type="button" class="btn btn-danger btn-sm" id="btnExcluirDocumentoModal" style="display: none;">🗑️ Excluir Lançamento</button>
+                    <div style="display: flex; gap: 12px; margin-left: auto;">
+                        <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">Gravar Lançamento</button>
+                    </div>
                 </div>
             </form>
         </div>
