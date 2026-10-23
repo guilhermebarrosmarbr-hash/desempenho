@@ -95,12 +95,32 @@
             abrirModal(modalDocumento);
         });
 
+        // Alternância PF / PJ no formulário de Contrato
+        const selTipoCliente = document.getElementById('contratoTipoCliente');
+        const lblDocumento = document.getElementById('lblContratoDocumento');
+        const inpDocumento = document.getElementById('contratoDocumento');
+        if (selTipoCliente && lblDocumento && inpDocumento) {
+            selTipoCliente.addEventListener('change', () => {
+                if (selTipoCliente.value === 'PF') {
+                    lblDocumento.textContent = 'CPF do Cliente';
+                    inpDocumento.placeholder = '000.000.000-00';
+                } else {
+                    lblDocumento.textContent = 'CNPJ do Cliente';
+                    inpDocumento.placeholder = '00.000.000/0000-00';
+                }
+            });
+        }
+
         // Novo Contrato
         document.getElementById('btnNovoContrato').addEventListener('click', () => {
             if (!empresaAtiva) { alert('Selecione uma empresa primeiro.'); return; }
             document.getElementById('contratoId').value = '';
             document.getElementById('modalContratoTitulo').textContent = 'Cadastrar Novo Contrato';
             document.getElementById('formContrato').reset();
+            document.getElementById('contratoTipo').value = 'B2B';
+            document.getElementById('contratoTipoCliente').value = 'PJ';
+            if (lblDocumento) lblDocumento.textContent = 'CNPJ do Cliente';
+            if (inpDocumento) inpDocumento.placeholder = '00.000.000/0000-00';
             document.getElementById('btnExcluirContratoModal').style.display = 'none';
             abrirModal(modalContrato);
         });
@@ -209,16 +229,21 @@
             let clientesMap = new Map();
             try {
                 const clientes = await window.BpoSupabase.request(`people?company_id=eq.${empresaAtiva.id}`, { method: 'GET' });
-                clientes.forEach(p => clientesMap.set(p.id, p.name));
+                clientes.forEach(p => clientesMap.set(p.id, p));
             } catch (e) {}
 
-            // Busca contratos da empresa e anexa o nome real do cliente
+            // Busca contratos da empresa e anexa dados reais do cliente
             const queryContratos = `contracts?company_id=eq.${empresaAtiva.id}&order=name.asc`;
             const contratosDb = await window.BpoSupabase.request(queryContratos, { method: 'GET' });
-            contratos = contratosDb.map(c => ({
-                ...c,
-                _clientName: (c.client_id && clientesMap.get(c.client_id)) || ''
-            }));
+            contratos = contratosDb.map(c => {
+                const cli = c.client_id ? clientesMap.get(c.client_id) : null;
+                return {
+                    ...c,
+                    _clientName: cli ? cli.name : '',
+                    _clientDoc: cli ? (cli.cpf || cli.cnpj || cli.document || '') : '',
+                    _clientType: cli ? (cli.client_category || (cli.document_type === 'CPF' ? 'PF' : 'PJ')) : 'PJ'
+                };
+            });
 
             renderizarMetricas();
             renderizarDocumentos();
@@ -316,7 +341,7 @@
         if (contratos.length === 0) {
             listaContratosBody.innerHTML = `
                 <tr>
-                    <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">
+                    <td colspan="10" style="text-align: center; color: var(--text-muted); padding: 24px;">
                         Nenhum contrato cadastrado para ${escapeHtml(empresaAtiva.name)}.
                     </td>
                 </tr>
@@ -324,9 +349,14 @@
             return;
         }
 
-        // Renderiza contratos com cliente real via join e 8 colunas exatas
+        // Renderiza contratos com tipo, cliente real e documento
         listaContratosBody.innerHTML = contratos.map(c => {
             const clienteExibicao = c._clientName ? escapeHtml(c._clientName) : '<span style="color:var(--text-muted);font-size:0.85rem;">Não informado</span>';
+            const docExibicao = c._clientDoc ? `<span style="font-family: monospace; font-size: 0.85rem;">${escapeHtml(c._clientDoc)}</span>` : '<span style="color:var(--text-muted);font-size:0.85rem;">-</span>';
+            const tipoContrato = c.contract_type || 'B2B';
+            const tipoBadgeClass = tipoContrato === 'B2G' ? 'badge-info' : (tipoContrato === 'B2C' ? 'badge-warning' : 'badge-primary');
+            const tipoBadge = `<span class="badge ${tipoBadgeClass}">${escapeHtml(tipoContrato)}</span>`;
+
             const statusBadge = c.status === 'active' 
                 ? '<span class="badge badge-success">Ativo</span>' 
                 : `<span class="badge badge-warning">${escapeHtml(c.status)}</span>`;
@@ -334,8 +364,10 @@
             return `
                 <tr>
                     <td style="font-weight: 600; color: #fff;">${escapeHtml(c.code)}</td>
+                    <td>${tipoBadge}</td>
                     <td>${escapeHtml(c.name)}</td>
                     <td>${clienteExibicao}</td>
+                    <td>${docExibicao}</td>
                     <td>${escapeHtml(window.BpoMoney.formatBRL(c.reference_value))}</td>
                     <td>${escapeHtml(c.billing_frequency)}</td>
                     <td>${c.commission_eligible ? 'Sim' : 'Não'}</td>
@@ -648,12 +680,26 @@
         document.getElementById('contratoId').value = c.id;
         document.getElementById('modalContratoTitulo').textContent = 'Editar Contrato';
         document.getElementById('contratoCodigo').value = c.code || '';
+        document.getElementById('contratoTipo').value = c.contract_type || 'B2B';
         document.getElementById('contratoNome').value = c.name || '';
         document.getElementById('contratoValor').value = window.BpoMoney.toDecimalString(window.BpoMoney.toCents(c.reference_value));
         document.getElementById('contratoPeriodicidade').value = c.billing_frequency || 'monthly';
         document.getElementById('contratoComissao').checked = c.commission_eligible || false;
-        // Usa o nome do cliente real (join via people) ou fallback vazio
-        document.getElementById('contratoCliente').value = c._clientName || c.name || '';
+        
+        // Dados do cliente vinculado
+        document.getElementById('contratoCliente').value = c._clientName || '';
+        const tipoCliente = c._clientType || 'PJ';
+        const selTipoCliente = document.getElementById('contratoTipoCliente');
+        const lblDocumento = document.getElementById('lblContratoDocumento');
+        const inpDocumento = document.getElementById('contratoDocumento');
+        
+        if (selTipoCliente) selTipoCliente.value = tipoCliente;
+        if (lblDocumento) lblDocumento.textContent = tipoCliente === 'PF' ? 'CPF do Cliente' : 'CNPJ do Cliente';
+        if (inpDocumento) {
+            inpDocumento.value = c._clientDoc || '';
+            inpDocumento.placeholder = tipoCliente === 'PF' ? '000.000.000-00' : '00.000.000/0000-00';
+        }
+
         document.getElementById('contratoInicio').value = c.start_date || '';
         document.getElementById('btnExcluirContratoModal').style.display = 'inline-flex';
         abrirModal(modalContrato);
@@ -664,31 +710,48 @@
         if (!empresaAtiva) return;
         const idExistente = document.getElementById('contratoId').value;
         const codigo = document.getElementById('contratoCodigo').value.trim();
+        const tipoContrato = document.getElementById('contratoTipo').value || 'B2B';
         const nome = document.getElementById('contratoNome').value.trim();
         const valorCents = window.BpoMoney.toCents(document.getElementById('contratoValor').value);
         const periodicidade = document.getElementById('contratoPeriodicidade').value;
         const comissao = document.getElementById('contratoComissao').checked;
         const clienteNome = document.getElementById('contratoCliente').value.trim();
+        const tipoCliente = document.getElementById('contratoTipoCliente').value || 'PJ';
+        const documentoCliente = document.getElementById('contratoDocumento').value.trim();
         const startDate = document.getElementById('contratoInicio').value || null;
 
         try {
-            // Resolve client_id: busca ou cria pessoa com o nome informado
+            // Resolve client_id: busca ou cria/atualiza pessoa com o nome e documento segregado (PF x PJ)
             let clientId = null;
             if (clienteNome) {
                 const pessoasExistentes = await window.BpoSupabase.request(
                     `people?name=eq.${encodeURIComponent(clienteNome)}&company_id=eq.${empresaAtiva.id}&limit=1`,
                     { method: 'GET' }
                 );
+
+                const dadosPessoa = {
+                    company_id: empresaAtiva.id,
+                    name: clienteNome,
+                    person_type: 'client',
+                    client_category: tipoCliente, // 'PF' ou 'PJ'
+                    document_type: tipoCliente === 'PF' ? 'CPF' : 'CNPJ',
+                    document: documentoCliente || null,
+                    ...(tipoCliente === 'PF' ? { cpf: documentoCliente || null, cnpj: null } : { cnpj: documentoCliente || null, cpf: null })
+                };
+
                 if (pessoasExistentes.length > 0) {
                     clientId = pessoasExistentes[0].id;
+                    // Se informou documento novo, atualiza os dados da pessoa
+                    if (documentoCliente) {
+                        await window.BpoSupabase.request(`people?id=eq.${clientId}`, {
+                            method: 'PATCH',
+                            body: JSON.stringify(dadosPessoa)
+                        });
+                    }
                 } else {
                     const novaPessoa = await window.BpoSupabase.request('people', {
                         method: 'POST',
-                        body: JSON.stringify({
-                            company_id: empresaAtiva.id,
-                            name: clienteNome,
-                            person_type: 'client'
-                        })
+                        body: JSON.stringify(dadosPessoa)
                     });
                     clientId = novaPessoa[0].id;
                 }
@@ -697,6 +760,7 @@
             const payload = {
                 company_id: empresaAtiva.id,
                 code: codigo,
+                contract_type: tipoContrato,
                 name: nome,
                 reference_value: window.BpoMoney.toDecimalString(valorCents),
                 billing_frequency: periodicidade,

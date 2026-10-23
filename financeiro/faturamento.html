@@ -125,8 +125,10 @@
                     <thead>
                         <tr>
                             <th>Código</th>
+                            <th>Tipo</th>
                             <th>Contrato / Objeto</th>
                             <th>Cliente</th>
+                            <th>Documento</th>
                             <th>Valor Base</th>
                             <th>Periodicidade</th>
                             <th>Comissão</th>
@@ -136,7 +138,7 @@
                     </thead>
                     <tbody id="listaContratosBody">
                         <tr>
-                            <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">
+                            <td colspan="10" style="text-align: center; color: var(--text-muted); padding: 24px;">
                                 Nenhum contrato cadastrado para esta empresa.
                             </td>
                         </tr>
@@ -308,10 +310,18 @@
 
             <form id="formContrato">
                 <input type="hidden" id="contratoId" value="">
-                <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 16px; margin-bottom: 16px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr 2fr; gap: 16px; margin-bottom: 16px;">
                     <div>
                         <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Código *</label>
                         <input type="text" id="contratoCodigo" required class="select-control" style="width: 100%;" placeholder="CTR-001">
+                    </div>
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Tipo de Contrato *</label>
+                        <select id="contratoTipo" class="select-control" style="width: 100%;">
+                            <option value="B2B">B2B (Empresas)</option>
+                            <option value="B2G">B2G (Governo / Público)</option>
+                            <option value="B2C">B2C (Consumidor Final)</option>
+                        </select>
                     </div>
                     <div>
                         <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Nome / Objeto *</label>
@@ -335,11 +345,25 @@
                     </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                <div style="display: grid; grid-template-columns: 2fr 1fr 1.5fr; gap: 16px; margin-bottom: 16px;">
                     <div>
-                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Cliente / Contratante</label>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Nome do Cliente / Contratante</label>
                         <input type="text" id="contratoCliente" class="select-control" style="width: 100%;" placeholder="Ex: Prefeitura de Santos">
                     </div>
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Tipo de Cliente</label>
+                        <select id="contratoTipoCliente" class="select-control" style="width: 100%;">
+                            <option value="PJ">Pessoa Jurídica (PJ)</option>
+                            <option value="PF">Pessoa Física (PF)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label id="lblContratoDocumento" style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">CNPJ do Cliente</label>
+                        <input type="text" id="contratoDocumento" class="select-control" style="width: 100%;" placeholder="00.000.000/0000-00">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr; gap: 16px; margin-bottom: 16px;">
                     <div>
                         <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Data de Início</label>
                         <input type="date" id="contratoInicio" class="select-control" style="width: 100%; color-scheme: dark;">
