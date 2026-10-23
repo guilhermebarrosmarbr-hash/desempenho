@@ -9,24 +9,42 @@
     const DEFAULT_URL = 'https://rdjdieirkjlyoooxtdfw.supabase.co';
     const DEFAULT_ANON = 'sb_publishable_OSLZXYjeAk8dVmwAt5-QIQ_kkFxC-V_';
 
+    function getValidKey() {
+        const stored = (localStorage.getItem(STORAGE_KEY_ANON) || '').trim();
+        // Se a chave no localStorage for a string invalida ("sua_chave_anon", vazia ou menor que 20 chars), descarta
+        if (!stored || stored.includes('sua_chave') || stored.length < 20) {
+            localStorage.setItem(STORAGE_KEY_ANON, DEFAULT_ANON);
+            return DEFAULT_ANON;
+        }
+        return stored;
+    }
+
+    function getValidUrl() {
+        const stored = (localStorage.getItem(STORAGE_KEY_URL) || '').trim();
+        if (!stored || !stored.startsWith('https://')) {
+            localStorage.setItem(STORAGE_KEY_URL, DEFAULT_URL);
+            return DEFAULT_URL;
+        }
+        return stored;
+    }
+
     class SupabaseClientAdapter {
         constructor() {
-            this.url = localStorage.getItem(STORAGE_KEY_URL) || DEFAULT_URL;
-            this.anonKey = localStorage.getItem(STORAGE_KEY_ANON) || DEFAULT_ANON;
+            this.url = getValidUrl();
+            this.anonKey = getValidKey();
             this._initPromise = this._fetchRemoteConfig();
         }
 
         async _fetchRemoteConfig() {
             try {
-                // Tenta buscar as variáveis de ambiente fornecidas pela Vercel via Serverless API
                 const res = await fetch('/api/config');
                 if (res.ok) {
                     const data = await res.json();
-                    if (data.supabaseUrl && data.supabaseAnonKey) {
-                        if (!localStorage.getItem(STORAGE_KEY_URL)) {
-                            this.url = data.supabaseUrl;
-                            this.anonKey = data.supabaseAnonKey;
-                        }
+                    if (data.supabaseUrl && data.supabaseAnonKey && data.supabaseAnonKey.length > 20 && !data.supabaseAnonKey.includes('sua_chave')) {
+                        this.url = data.supabaseUrl;
+                        this.anonKey = data.supabaseAnonKey;
+                        localStorage.setItem(STORAGE_KEY_URL, this.url);
+                        localStorage.setItem(STORAGE_KEY_ANON, this.anonKey);
                     }
                 }
             } catch (_) {}
