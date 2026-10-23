@@ -822,21 +822,41 @@
             net_amount: window.BpoMoney.toDecimalString(liqCents),
             description: descricao,
             contract_id: contratoId,
-            status: dataRecebimento ? 'paid' : 'emitted',
-            payment_date: dataRecebimento
+            status: dataRecebimento ? 'paid' : 'emitted'
+            // payment_date não existe em billing_documents — recebimentos ficam na tabela receipts
         };
 
         try {
+            let savedDoc;
             if (docId) {
-                await window.BpoSupabase.request(`billing_documents?id=eq.${docId}`, {
+                const res = await window.BpoSupabase.request(`billing_documents?id=eq.${docId}`, {
                     method: 'PATCH',
                     body: JSON.stringify(payload)
                 });
+                savedDoc = Array.isArray(res) ? res[0] : { id: docId };
             } else {
-                await window.BpoSupabase.request('billing_documents', {
+                const res = await window.BpoSupabase.request('billing_documents', {
                     method: 'POST',
                     body: JSON.stringify(payload)
                 });
+                savedDoc = Array.isArray(res) ? res[0] : null;
+            }
+
+            // Se houver data de recebimento, grava na tabela receipts
+            if (dataRecebimento && savedDoc && savedDoc.id) {
+                try {
+                    await window.BpoSupabase.request('receipts', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            company_id: companyId,
+                            external_id: savedDoc.id,
+                            receipt_date: dataRecebimento,
+                            amount: window.BpoMoney.toDecimalString(liqCents)
+                        })
+                    });
+                } catch (recErr) {
+                    console.warn('Aviso: não foi possível gravar recebimento na tabela receipts:', recErr.message);
+                }
             }
 
             fecharModais();
@@ -906,11 +926,20 @@
         if (!doc) return;
 
         try {
+            // 1. Atualiza status do documento (sem payment_date — coluna inexistente)
             await window.BpoSupabase.request(`billing_documents?id=eq.${docId}`, {
                 method: 'PATCH',
+                body: JSON.stringify({ status: 'paid' })
+            });
+
+            // 2. Grava o recebimento na tabela receipts
+            await window.BpoSupabase.request('receipts', {
+                method: 'POST',
                 body: JSON.stringify({
-                    status: 'paid',
-                    payment_date: recData
+                    company_id: doc.company_id,
+                    external_id: docId,
+                    receipt_date: recData,
+                    amount: window.BpoMoney.toDecimalString(recValorCents)
                 })
             });
 
