@@ -6,10 +6,30 @@
     const STORAGE_KEY_URL = 'bpo_supabase_url';
     const STORAGE_KEY_ANON = 'bpo_supabase_anon_key';
 
+    const DEFAULT_URL = 'https://rdjdieirkjlyoooxtdfw.supabase.co';
+    const DEFAULT_ANON = 'sb_publishable_OSLZXYjeAk8dVmwAt5-QIQ_kkFxC-V_';
+
     class SupabaseClientAdapter {
         constructor() {
-            this.url = localStorage.getItem(STORAGE_KEY_URL) || '';
-            this.anonKey = localStorage.getItem(STORAGE_KEY_ANON) || '';
+            this.url = localStorage.getItem(STORAGE_KEY_URL) || DEFAULT_URL;
+            this.anonKey = localStorage.getItem(STORAGE_KEY_ANON) || DEFAULT_ANON;
+            this._initPromise = this._fetchRemoteConfig();
+        }
+
+        async _fetchRemoteConfig() {
+            try {
+                // Tenta buscar as variáveis de ambiente fornecidas pela Vercel via Serverless API
+                const res = await fetch('/api/config');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.supabaseUrl && data.supabaseAnonKey) {
+                        if (!localStorage.getItem(STORAGE_KEY_URL)) {
+                            this.url = data.supabaseUrl;
+                            this.anonKey = data.supabaseAnonKey;
+                        }
+                    }
+                }
+            } catch (_) {}
         }
 
         isConfigured() {
@@ -31,6 +51,9 @@
         }
 
         async request(endpoint, options = {}) {
+            if (this._initPromise) {
+                await this._initPromise;
+            }
             if (!this.isConfigured()) {
                 throw new Error("SUPABASE_NOT_CONFIGURED: As credenciais do Supabase não foram informadas. Acesse a tela de configurações.");
             }
