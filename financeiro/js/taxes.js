@@ -328,6 +328,15 @@
             const IRPJ_devido = IRPJ_regular + IRPJ_adicional;
             const CSLL_devida = base_CSLL * 0.09;
 
+            // Dedução legal de IRRF retido na fonte pelos tomadores no trimestre
+            const irrfRetidoTrimestre = parseToNumber(options.irrfRetidoTrimestre || 0);
+            const IRPJ_a_recolher = Math.max(roundCents(IRPJ_devido - irrfRetidoTrimestre), 0);
+            const creditoIRRFExcedente = Math.max(roundCents(irrfRetidoTrimestre - IRPJ_devido), 0);
+
+            // Alíquotas efetivas globais do trimestre
+            const aliqEfetivaIRPJ = R > 0 ? (IRPJ_devido / R) : 0.048;
+            const aliqEfetivaCSLL = R > 0 ? (CSLL_devida / R) : 0.0288;
+
             return {
                 trimestre: `${ano}-T${trimestre}`,
                 ano: ano,
@@ -348,7 +357,12 @@
                 IRPJ_regular: roundCents(IRPJ_regular),
                 IRPJ_adicional: roundCents(IRPJ_adicional),
                 IRPJ_devido: roundCents(IRPJ_devido),
-                CSLL_devida: roundCents(CSLL_devida)
+                irrfRetidoTrimestre: roundCents(irrfRetidoTrimestre),
+                IRPJ_a_recolher: roundCents(IRPJ_a_recolher),
+                creditoIRRFExcedente: roundCents(creditoIRRFExcedente),
+                CSLL_devida: roundCents(CSLL_devida),
+                aliqEfetivaIRPJ: aliqEfetivaIRPJ,
+                aliqEfetivaCSLL: aliqEfetivaCSLL
             };
         }
 

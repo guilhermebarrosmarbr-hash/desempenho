@@ -331,31 +331,37 @@
                         <!-- IRPJ -->
                         <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 10px;">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                                <label style="font-size: 0.78rem; font-weight: 600; color: #f59e0b; margin: 0;">IRPJ Est.</label>
+                                <div style="display:flex; align-items:center; gap:4px;">
+                                    <label style="font-size: 0.78rem; font-weight: 600; color: #f59e0b; margin: 0;">IRPJ Est.</label>
+                                    <span style="font-size:0.65rem; color:#f59e0b; background:rgba(245,158,11,0.15); padding:1px 4px; border-radius:3px;">Variável</span>
+                                </div>
                                 <div style="display: flex; align-items: center; gap: 3px;">
                                     <input type="number" id="inpAliqIrpj" value="4.80" step="0.01" min="0" max="100" class="select-control" style="width: 60px; padding: 2px 4px; font-size: 0.75rem; font-weight: 600; text-align: right;" title="Alíquota efetiva estimada de IRPJ (%)">
                                     <span style="font-size: 0.75rem; color: #f59e0b;">%</span>
                                 </div>
                             </div>
-                            <input type="text" id="inpValorIrpj" class="select-control" style="width: 100%; font-size: 0.95rem; font-weight: 700; color: #f59e0b; background: rgba(0,0,0,0.3);" placeholder="0,00" value="0,00" title="Provisão calculada de IRPJ (editável)">
+                            <input type="text" id="inpValorIrpj" class="select-control" style="width: 100%; font-size: 0.95rem; font-weight: 700; color: #f59e0b; background: rgba(0,0,0,0.3);" placeholder="0,00" value="0,00" title="Provisão calculada de IRPJ (estimada)">
                         </div>
 
                         <!-- CSLL -->
                         <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 10px;">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                                <label style="font-size: 0.78rem; font-weight: 600; color: #f59e0b; margin: 0;">CSLL Est.</label>
+                                <div style="display:flex; align-items:center; gap:4px;">
+                                    <label style="font-size: 0.78rem; font-weight: 600; color: #f59e0b; margin: 0;">CSLL Est.</label>
+                                    <span style="font-size:0.65rem; color:#f59e0b; background:rgba(245,158,11,0.15); padding:1px 4px; border-radius:3px;">Variável</span>
+                                </div>
                                 <div style="display: flex; align-items: center; gap: 3px;">
                                     <input type="number" id="inpAliqCsll" value="2.88" step="0.01" min="0" max="100" class="select-control" style="width: 60px; padding: 2px 4px; font-size: 0.75rem; font-weight: 600; text-align: right;" title="Alíquota efetiva estimada de CSLL (%)">
                                     <span style="font-size: 0.75rem; color: #f59e0b;">%</span>
                                 </div>
                             </div>
-                            <input type="text" id="inpValorCsll" class="select-control" style="width: 100%; font-size: 0.95rem; font-weight: 700; color: #f59e0b; background: rgba(0,0,0,0.3);" placeholder="0,00" value="0,00" title="Provisão calculada de CSLL (editável)">
+                            <input type="text" id="inpValorCsll" class="select-control" style="width: 100%; font-size: 0.95rem; font-weight: 700; color: #f59e0b; background: rgba(0,0,0,0.3);" placeholder="0,00" value="0,00" title="Provisão calculada de CSLL (estimada)">
                         </div>
                     </div>
 
                     <!-- Nota explicativa sobre a variabilidade do IRPJ/CSLL -->
                     <div id="notaIrpjTrimestral" style="font-size: 0.73rem; color: var(--text-muted); line-height: 1.4; padding-top: 4px;">
-                        ℹ️ <strong>IRPJ / CSLL:</strong> Calculados com a presunção padrão de 32% (alíquotas de 4,80% e 2,88% para serviços). O valor definitivo é variável e apurado trimestralmente pelo motor de cálculo (podendo incidir adicional de 10% no IRPJ sobre a parcela trimestral que exceder R$ 60.000,00 e presunção majorada acima de R$ 1.250.000,00).
+                        ℹ️ <strong>IRPJ / CSLL (Variáveis Trimestrais):</strong> Calculados de modo variável considerando todo o faturamento da empresa no trimestre civil. Conforme novos lançamentos são incluídos ou alterados no trimestre, o adicional de 10% (acima de R$ 60.000 de lucro presumido) e os limites de presunção são recalculados automaticamente em todos os lançamentos do trimestre. Além disso, as retenções de IRRF são integralmente deduzidas do IRPJ trimestral a recolher.
                     </div>
                 </div>
 

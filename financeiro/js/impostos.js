@@ -133,6 +133,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
 
             const cardsHtml = [];
             const rowsHistorico = [];
+            const apuracoesTrimestraisPorEmpresa = new Map();
 
             // Processa empresa por empresa (sem jamais misturar RBT12 ou bases de CNPJs distintos)
             for (const emp of empresasProcessar) {
@@ -161,24 +162,93 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 let detalheCardHtml = '';
 
                 if (isLucroPresumido) {
-                    // Lucro Presumido: PIS/Cofins mensais + Provisão IRPJ/CSLL trimestrais
-                    // API real: apurarLucroPresumidoMensal(faturamentoServico, faturamentoProduto, options)
+                    // Lucro Presumido: PIS/COFINS mensais + IRPJ/CSLL trimestrais variáveis
+                    const [anoStr, mesStr] = competenciaAtiva.split('-');
+                    const ano = parseInt(anoStr, 10);
+                    const mes = parseInt(mesStr, 10);
+                    const numTrimestre = Math.ceil(mes / 3);
+                    const mesesTrimestre = [
+                        `${ano}-${String((numTrimestre - 1) * 3 + 1).padStart(2, '0')}`,
+                        `${ano}-${String((numTrimestre - 1) * 3 + 2).padStart(2, '0')}`,
+                        `${ano}-${String((numTrimestre - 1) * 3 + 3).padStart(2, '0')}`
+                    ];
+
+                    let docsTrimestreEmp = [];
+                    for (const m of mesesTrimestre) {
+                        if (m === competenciaAtiva) {
+                            docsTrimestreEmp.push(...docsEmp);
+                        } else {
+                            try {
+                                const docsOutros = await window.BpoSupabase.request(
+                                    `billing_documents?company_id=eq.${emp.id}&competence_month=eq.${m}&status=neq.cancelled`,
+                                    { method: 'GET' }
+                                );
+                                if (docsOutros && docsOutros.length > 0) {
+                                    docsTrimestreEmp.push(...docsOutros);
+                                }
+                            } catch (e) {}
+                        }
+                    }
+
+                    let servicosTrimCents = 0n;
+                    let produtosTrimCents = 0n;
+                    let irrfRetidoTrimCents = 0n;
+
+                    docsTrimestreEmp.forEach(d => {
+                        const val = window.BpoMoney.toCents(d.gross_amount);
+                        const td = d.tax_details || window.BpoFiscalUtils.extrairTaxDetails(d);
+                        const tipo = (td && td.item_type) || 'servico';
+                        if (tipo === 'produto') produtosTrimestreCents += val;
+                        else servicosTrimCents += val;
+
+                        if (td && td.has_irrf) {
+                            const aliq = (td.irrf_aliq !== undefined && td.irrf_aliq !== null) ? td.irrf_aliq : 4.8;
+                            irrfRetidoTrimCents += BigInt(Math.round((Number(val) / 100) * (aliq / 100) * 100));
+                        }
+                    });
+
+                    const apuracaoTrimestral = window.BpoTaxEngine.apurarLucroPresumidoTrimestral(
+                        Number(servicosTrimCents) / 100,
+                        Number(produtosTrimCents) / 100,
+                        { 
+                            ano: ano, 
+                            trimestre: numTrimestre, 
+                            irrfRetidoTrimestre: Number(irrfRetidoTrimCents) / 100 
+                        }
+                    );
+
+                    apuracoesTrimestraisPorEmpresa.set(emp.id, {
+                        ...apuracaoTrimestral,
+                        servicosTrimCents,
+                        produtosTrimCents,
+                        irrfRetidoTrimCents,
+                        numTrimestre,
+                        ano,
+                        mesesTrimestre,
+                        docsTrimestreEmp
+                    });
+
+                    // PIS/COFINS mensais
                     const fatServicoNum = Number(servicosCents) / 100;
                     const fatProdutoNum = Number(produtosCents) / 100;
                     const apuracaoLP = window.BpoTaxEngine.apurarLucroPresumidoMensal(
                         fatServicoNum, fatProdutoNum, { aliquotaIss: 5.0 }
                     );
 
-                    // Monta componentes em centavos para exibição
                     const pisCents = BigInt(Math.round(apuracaoLP.impostosMensais.pis.value * 100));
                     const cofinsCents = BigInt(Math.round(apuracaoLP.impostosMensais.cofins.value * 100));
                     const issCents = BigInt(Math.round(apuracaoLP.impostosMensais.iss.value * 100));
-                    // Provisão trimestral estimada (32% presunção × 15% IRPJ + 9% CSLL)
-                    const irpjProvCents = BigInt(Math.round(Number(fatEmpCents) / 100 * 0.32 * 0.15 * 100));
-                    const csllProvCents = BigInt(Math.round(Number(fatEmpCents) / 100 * 0.32 * 0.09 * 100));
+
+                    // Provisão IRPJ e CSLL variáveis da competência usando as alíquotas efetivas globais do trimestre
+                    const irpjProvCents = BigInt(Math.round(Number(fatEmpCents) / 100 * apuracaoTrimestral.aliqEfetivaIRPJ * 100));
+                    const csllProvCents = BigInt(Math.round(Number(fatEmpCents) / 100 * apuracaoTrimestral.aliqEfetivaCSLL * 100));
 
                     impostoApuradoEmpCents = pisCents + cofinsCents + issCents + irpjProvCents + csllProvCents;
                     saldoRecolherEmpCents = impostoApuradoEmpCents > retEmpCents ? impostoApuradoEmpCents - retEmpCents : 0n;
+
+                    const aliqIrpjPercent = (apuracaoTrimestral.aliqEfetivaIRPJ * 100).toFixed(2);
+                    const aliqCsllPercent = (apuracaoTrimestral.aliqEfetivaCSLL * 100).toFixed(2);
+                    const temAdicional = apuracaoTrimestral.IRPJ_adicional > 0;
 
                     detalheCardHtml = `
                         <div style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 16px; border: 1px solid rgba(255,255,255,0.05);">
@@ -190,8 +260,8 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                                 <div><span style="color:var(--text-muted);">PIS (0,65%):</span> <strong>${window.BpoMoney.formatBRL(pisCents)}</strong></div>
                                 <div><span style="color:var(--text-muted);">COFINS (3,00%):</span> <strong>${window.BpoMoney.formatBRL(cofinsCents)}</strong></div>
                                 <div><span style="color:var(--text-muted);">ISS Municipal (5,00%):</span> <strong>${window.BpoMoney.formatBRL(issCents)}</strong></div>
-                                <div><span style="color:var(--text-muted);">Provisão IRPJ Trimestral:</span> <strong>${window.BpoMoney.formatBRL(irpjProvCents)}</strong></div>
-                                <div><span style="color:var(--text-muted);">Provisão CSLL Trimestral:</span> <strong>${window.BpoMoney.formatBRL(csllProvCents)}</strong></div>
+                                <div><span style="color:var(--text-muted);">IRPJ Variável (${aliqIrpjPercent}% Tri${temAdicional ? ' com +10%' : ''}):</span> <strong style="color:#f59e0b;">${window.BpoMoney.formatBRL(irpjProvCents)}</strong></div>
+                                <div><span style="color:var(--text-muted);">CSLL Variável (${aliqCsllPercent}% Tri):</span> <strong style="color:#f59e0b;">${window.BpoMoney.formatBRL(csllProvCents)}</strong></div>
                                 <div><span style="color:var(--text-muted);">Retenções a Compensar:</span> <strong style="color:var(--color-danger);">${window.BpoMoney.formatBRL(retEmpCents)}</strong></div>
                             </div>
                             <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between;">
@@ -363,21 +433,17 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
 
                         if (itemType === 'servico') {
                             issCents = BigInt(Math.round(brutoNum * (aliqIss / 100) * 100));
-                            irpjCents = (taxDetails && taxDetails.irpj_valor !== undefined && taxDetails.irpj_valor !== null)
-                                ? window.BpoMoney.toCents(taxDetails.irpj_valor)
-                                : BigInt(Math.round(brutoNum * 0.32 * 0.15 * 100));
-                            csllCents = (taxDetails && taxDetails.csll_valor !== undefined && taxDetails.csll_valor !== null)
-                                ? window.BpoMoney.toCents(taxDetails.csll_valor)
-                                : BigInt(Math.round(brutoNum * 0.32 * 0.09 * 100));
                         } else {
                             issCents = 0n;
-                            irpjCents = (taxDetails && taxDetails.irpj_valor !== undefined && taxDetails.irpj_valor !== null)
-                                ? window.BpoMoney.toCents(taxDetails.irpj_valor)
-                                : BigInt(Math.round(brutoNum * 0.08 * 0.15 * 100));
-                            csllCents = (taxDetails && taxDetails.csll_valor !== undefined && taxDetails.csll_valor !== null)
-                                ? window.BpoMoney.toCents(taxDetails.csll_valor)
-                                : BigInt(Math.round(brutoNum * 0.12 * 0.09 * 100));
                         }
+
+                        // IRPJ e CSLL calculados de modo variável com base em todo o faturamento da empresa no trimestre
+                        const infoTri = apuracoesTrimestraisPorEmpresa.get(doc.company_id);
+                        const aliqIrpjVar = infoTri ? infoTri.aliqEfetivaIRPJ : (itemType === 'servico' ? 0.048 : 0.012);
+                        const aliqCsllVar = infoTri ? infoTri.aliqEfetivaCSLL : (itemType === 'servico' ? 0.0288 : 0.0108);
+
+                        irpjCents = BigInt(Math.round(brutoNum * aliqIrpjVar * 100));
+                        csllCents = BigInt(Math.round(brutoNum * aliqCsllVar * 100));
                         tributosCents = pisCents + cofinsCents + issCents + irpjCents + csllCents;
                         const issRecolher = issRetido ? 0n : issCents;
                         const aRecolherBase = pisCents + cofinsCents + issRecolher + irpjCents + csllCents;
@@ -496,6 +562,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         // Busca documentos de todos os 3 meses do trimestre para a Mar Brasil (sem persistir nada)
         let servicosTrimestreCents = 0n;
         let produtosTrimestreCents = 0n;
+        let irrfTrimestreCents = 0n;
         let mesesComDados = 0;
 
         for (const m of mesesTrimestre) {
@@ -512,6 +579,11 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                         const tipo = (taxDetails && taxDetails.item_type) || 'servico';
                         if (tipo === 'produto') produtosTrimestreCents += val;
                         else servicosTrimestreCents += val;
+
+                        if (taxDetails && taxDetails.has_irrf) {
+                            const aliq = (taxDetails.irrf_aliq !== undefined && taxDetails.irrf_aliq !== null) ? taxDetails.irrf_aliq : 4.8;
+                            irrfTrimestreCents += BigInt(Math.round((Number(val) / 100) * (aliq / 100) * 100));
+                        }
                     });
                 }
             } catch (e) {}
@@ -521,7 +593,11 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         const apuracaoTrimestral = window.BpoTaxEngine.apurarLucroPresumidoTrimestral(
             Number(servicosTrimestreCents) / 100,
             Number(produtosTrimestreCents) / 100,
-            { ano: ano, trimestre: trimestre }
+            { 
+                ano: ano, 
+                trimestre: trimestre,
+                irrfRetidoTrimestre: Number(irrfTrimestreCents) / 100
+            }
         );
 
         const isCompleto = mesesComDados === 3;
@@ -557,20 +633,33 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: 12px; color: var(--text-main);">Memória de Cálculo Trimestral IRPJ & CSLL</h4>
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 20px; font-size: 0.85rem;">
                     <div>
-                        <strong style="color: #60a5fa; display: block; margin-bottom: 6px;">IRPJ Trimestral (Devido):</strong>
+                        <strong style="color: #60a5fa; display: block; margin-bottom: 6px;">IRPJ Trimestral (Devido & Compensação):</strong>
                         <div>• Base de Cálculo IRPJ: <strong>${fmtBRL(apuracaoTrimestral.base_IRPJ)}</strong></div>
                         <div>• IRPJ Regular (15%): <strong>${fmtBRL(apuracaoTrimestral.IRPJ_regular)}</strong></div>
                         <div>• Adicional IRPJ (10% sobre base > R$ 60k): <strong style="color: #f59e0b;">${fmtBRL(apuracaoTrimestral.IRPJ_adicional)}</strong></div>
                         <div style="margin-top: 4px; padding-top: 4px; border-top: 1px dashed rgba(255,255,255,0.1);">
                             Total IRPJ Devido no Trimestre: <strong style="color: #60a5fa;">${fmtBRL(apuracaoTrimestral.IRPJ_devido)}</strong>
                         </div>
+                        <div style="margin-top: 6px; color: var(--color-danger);">
+                            • (-) Dedução de IRRF Retido no Trimestre: <strong>- ${fmtBRL(apuracaoTrimestral.irrfRetidoTrimestre)}</strong>
+                        </div>
+                        <div style="margin-top: 6px; padding: 6px 10px; background: rgba(34,197,94,0.1); border-radius: 4px; border: 1px solid rgba(34,197,94,0.2);">
+                            Saldo IRPJ a Recolher: <strong style="color: var(--color-success); font-size: 1rem;">${fmtBRL(apuracaoTrimestral.IRPJ_a_recolher)}</strong>
+                            ${apuracaoTrimestral.creditoIRRFExcedente > 0 ? `<div style="font-size:0.75rem; color:#93c5fd; margin-top:2px;">Saldo credor de IRRF a compensar: ${fmtBRL(apuracaoTrimestral.creditoIRRFExcedente)}</div>` : ''}
+                        </div>
+                        <div style="margin-top: 6px; font-size: 0.78rem; color: #94a3b8;">
+                            Alíquota Efetiva IRPJ: <strong>${(apuracaoTrimestral.aliqEfetivaIRPJ * 100).toFixed(2)}%</strong> (variável conforme faturamento trimestral)
+                        </div>
                     </div>
                     <div>
                         <strong style="color: #34d399; display: block; margin-bottom: 6px;">CSLL Trimestral (Devida):</strong>
                         <div>• Base de Cálculo CSLL: <strong>${fmtBRL(apuracaoTrimestral.base_CSLL)}</strong></div>
                         <div>• CSLL Devida (9%): <strong style="color: #34d399;">${fmtBRL(apuracaoTrimestral.CSLL_devida)}</strong></div>
-                        <div style="margin-top: 16px; font-size: 0.78rem; color: var(--text-muted);">
-                            * Não duplica em visões mensais: rateio exato em centavos por nota/competência com reconciliação determinística.
+                        <div style="margin-top: 6px; font-size: 0.78rem; color: #94a3b8;">
+                            Alíquota Efetiva CSLL: <strong>${(apuracaoTrimestral.aliqEfetivaCSLL * 100).toFixed(2)}%</strong> (variável)
+                        </div>
+                        <div style="margin-top: 16px; font-size: 0.78rem; color: var(--text-muted); line-height: 1.4;">
+                            * <strong>Dinâmica Trimestral:</strong> Conforme novos faturamentos entram no trimestre, o adicional de 10% e as alíquotas efetivas recalculam automaticamente todos os lançamentos do período.
                         </div>
                     </div>
                 </div>
