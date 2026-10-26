@@ -550,25 +550,49 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         const aliqIss = document.getElementById('aliqIss');
         const chkIssRetido = document.getElementById('chkIssRetido');
 
+        // Inputs editáveis de PIS, COFINS, IRPJ, CSLL
+        const inpAliqPis = document.getElementById('inpAliqPis');
+        const inpValorPis = document.getElementById('inpValorPis');
+        const inpAliqCofins = document.getElementById('inpAliqCofins');
+        const inpValorCofins = document.getElementById('inpValorCofins');
+        const inpAliqIrpj = document.getElementById('inpAliqIrpj');
+        const inpValorIrpj = document.getElementById('inpValorIrpj');
+        const inpAliqCsll = document.getElementById('inpAliqCsll');
+        const inpValorCsll = document.getElementById('inpValorCsll');
+
         // Toggles visuais
         chkIrrf.addEventListener('change', () => {
             boxIrrf.style.display = chkIrrf.checked ? 'block' : 'none';
-            dispararPreviaImpostos();
+            dispararPreviaImpostos('geral');
         });
 
         chkInss.addEventListener('change', () => {
             boxInss.style.display = chkInss.checked ? 'block' : 'none';
-            dispararPreviaImpostos();
+            dispararPreviaImpostos('geral');
         });
 
-        // Eventos que recalculam a prévia
-        [inpBruto, aliqIrrf, aliqInss, aliqIss].forEach(el => {
-            if (el) el.addEventListener('input', dispararPreviaImpostos);
+        // Eventos gerais que recalculam a prévia
+        inpBruto.addEventListener('input', () => dispararPreviaImpostos('bruto'));
+        [aliqIrrf, aliqInss, aliqIss].forEach(el => {
+            if (el) el.addEventListener('input', () => dispararPreviaImpostos('geral'));
         });
 
         [selEmpresa, selContrato, selItemTipo, chkIssRetido].forEach(el => {
-            if (el) el.addEventListener('change', dispararPreviaImpostos);
+            if (el) el.addEventListener('change', () => dispararPreviaImpostos('empresa_ou_tipo'));
         });
+
+        // Interação bidirecional dos campos de PIS/COFINS/IRPJ/CSLL
+        if (inpAliqPis) inpAliqPis.addEventListener('input', () => dispararPreviaImpostos('aliq_pis'));
+        if (inpValorPis) inpValorPis.addEventListener('input', () => dispararPreviaImpostos('valor_pis'));
+
+        if (inpAliqCofins) inpAliqCofins.addEventListener('input', () => dispararPreviaImpostos('aliq_cofins'));
+        if (inpValorCofins) inpValorCofins.addEventListener('input', () => dispararPreviaImpostos('valor_cofins'));
+
+        if (inpAliqIrpj) inpAliqIrpj.addEventListener('input', () => dispararPreviaImpostos('aliq_irpj'));
+        if (inpValorIrpj) inpValorIrpj.addEventListener('input', () => dispararPreviaImpostos('valor_irpj'));
+
+        if (inpAliqCsll) inpAliqCsll.addEventListener('input', () => dispararPreviaImpostos('aliq_csll'));
+        if (inpValorCsll) inpValorCsll.addEventListener('input', () => dispararPreviaImpostos('valor_csll'));
 
         // Filtra contratos do modal quando seleciona empresa emitente
         selEmpresa.addEventListener('change', () => {
@@ -607,18 +631,21 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         badge.style.color = isPresumido ? '#60a5fa' : '#34d399';
     }
 
-    function dispararPreviaImpostos() {
+    let ultimaOrigemDisparo = 'geral';
+    function dispararPreviaImpostos(origem) {
+        ultimaOrigemDisparo = origem || 'geral';
         if (debounceTimerPrevia) clearTimeout(debounceTimerPrevia);
-        debounceTimerPrevia = setTimeout(executarPreviaImpostos, 80);
+        debounceTimerPrevia = setTimeout(() => executarPreviaImpostos(ultimaOrigemDisparo), 80);
     }
 
-    function executarPreviaImpostos() {
+    function executarPreviaImpostos(origem) {
         requestIdPrevia++;
         const currentReq = requestIdPrevia;
 
         const companyId = document.getElementById('docEmpresaId').value;
         const brutoStr = document.getElementById('docValorBruto').value;
         const brutoCents = window.BpoMoney.toCents(brutoStr);
+        const brutoNum = Number(brutoCents) / 100;
 
         const chkIrrf = document.getElementById('chkIrrf').checked;
         const aliqIrrfVal = parseFloat(document.getElementById('aliqIrrf').value) || 0;
@@ -631,120 +658,127 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         const itemTipo = document.getElementById('docItemTipo').value || 'servico';
 
         const emp = companiesMap.get(companyId);
+        const isLucroPresumido = !emp || emp.tax_regime === 'lucro_presumido';
 
-        // Invoca o motor tributário puro unificado BpoTaxEngine (sem persistência)
-        // API real: calcularPreviaNota({ company_tax_regime, gross_amount, item_type, temIrrf, aliquotaIrrf, temInss, aliquotaInss, issRetido, aliquotaIss, rbt12, anexo, discounts })
-        const params = {
-            gross_amount: window.BpoMoney.toDecimalString(brutoCents),
-            company_tax_regime: emp ? emp.tax_regime : 'lucro_presumido',
-            competence: competenciaAtiva,
-            item_type: itemTipo,
-            temIrrf: chkIrrf,
-            aliquotaIrrf: aliqIrrfVal,
-            temInss: chkInss,
-            aliquotaInss: aliqInssVal,
-            aliquotaIss: aliqIssVal,
-            issRetido: chkIssRetido,
-            rbt12: 360000, // R$ 360k referência se simples
-            anexo: 'anexo_iii'
-        };
-
-        const previa = window.BpoTaxEngine ? window.BpoTaxEngine.calcularPreviaNota(params) : null;
-
-        // Proteção contra resposta concorrente antiga sobrescrevendo a nova
-        if (currentReq !== requestIdPrevia) return;
-
-        if (!previa) return;
-
-        // Extrai valores do retorno real da API
-        const irrfValor = previa.retencoes ? (previa.retencoes.irrf ? previa.retencoes.irrf.valor : 0) : 0;
-        const inssValor = previa.retencoes ? (previa.retencoes.inss ? previa.retencoes.inss.valor : 0) : 0;
-        const retTotalNum = previa.retencoes ? (previa.retencoes.total || 0) : 0;
-        const retTotalCents = BigInt(Math.round(retTotalNum * 100));
-
-        const totalImpostosNum = previa.impostosMensais 
-            ? ((previa.impostosMensais.pis ? previa.impostosMensais.pis.valor : 0) + 
-               (previa.impostosMensais.cofins ? previa.impostosMensais.cofins.valor : 0) + 
-               (previa.impostosMensais.iss ? previa.impostosMensais.iss.valor : 0))
-            : (previa.impostosEconomicos ? previa.impostosEconomicos.valorTotal : 0);
-        
-        const provisaoNum = previa.provisaoTrimestral 
-            ? ((previa.provisaoTrimestral.irpjProvisao || 0) + (previa.provisaoTrimestral.csllProvisao || 0)) 
-            : 0;
-
-        const totalImpostosCents = BigInt(Math.round((totalImpostosNum + provisaoNum) * 100));
-        const liquidoRecebCents = BigInt(Math.round((previa.liquidoAReceber || 0) * 100));
-        const liquidoEcoCents = BigInt(Math.round((previa.liquidoEconomico || 0) * 100));
-
-        // Atualiza campos de saída na tela
-        document.getElementById('valIrrfPreview').textContent = window.BpoMoney.toDecimalString(BigInt(Math.round(irrfValor * 100)));
-        document.getElementById('valInssPreview').textContent = window.BpoMoney.toDecimalString(BigInt(Math.round(inssValor * 100)));
-
-        // Atualiza os cards dedicados de PIS, COFINS, IRPJ e CSLL automáticos
-        const elPisVal = document.getElementById('valPreviaPis');
-        const elPisTaxa = document.getElementById('lblPreviaPisTaxa');
-        const elCofinsVal = document.getElementById('valPreviaCofins');
-        const elCofinsTaxa = document.getElementById('lblPreviaCofinsTaxa');
-        const elIrpjVal = document.getElementById('valPreviaIrpj');
-        const elIrpjTaxa = document.getElementById('lblPreviaIrpjTaxa');
-        const elCsllVal = document.getElementById('valPreviaCsll');
-        const elCsllTaxa = document.getElementById('lblPreviaCsllTaxa');
+        // Elementos dos tributos editáveis
+        const elAliqPis = document.getElementById('inpAliqPis');
+        const elValorPis = document.getElementById('inpValorPis');
+        const elAliqCofins = document.getElementById('inpAliqCofins');
+        const elValorCofins = document.getElementById('inpValorCofins');
+        const elAliqIrpj = document.getElementById('inpAliqIrpj');
+        const elValorIrpj = document.getElementById('inpValorIrpj');
+        const elAliqCsll = document.getElementById('inpAliqCsll');
+        const elValorCsll = document.getElementById('inpValorCsll');
         const elBadgeRegime = document.getElementById('badgePreviaRegime');
         const elNotaIrpj = document.getElementById('notaIrpjTrimestral');
 
-        if (previa.regime === 'lucro_presumido') {
-            const pisNum = previa.impostosMensais && previa.impostosMensais.pis ? previa.impostosMensais.pis.valor : 0;
-            const cofinsNum = previa.impostosMensais && previa.impostosMensais.cofins ? previa.impostosMensais.cofins.valor : 0;
-            const irpjNum = previa.provisaoTrimestral ? (previa.provisaoTrimestral.irpjProvisao || 0) : 0;
-            const csllNum = previa.provisaoTrimestral ? (previa.provisaoTrimestral.csllProvisao || 0) : 0;
+        // Se trocou de empresa ou tipo de documento, ajusta defaults de alíquotas se for novo
+        if (origem === 'empresa_ou_tipo') {
+            if (isLucroPresumido) {
+                if (elAliqPis) elAliqPis.value = '0.65';
+                if (elAliqCofins) elAliqCofins.value = '3.00';
+                if (elAliqIrpj) elAliqIrpj.value = itemTipo === 'servico' ? '4.80' : '1.20';
+                if (elAliqCsll) elAliqCsll.value = itemTipo === 'servico' ? '2.88' : '1.08';
+            }
+        }
 
-            const aliqIrpjStr = itemTipo === 'servico' ? '4,80%' : '1,20%';
-            const aliqCsllStr = itemTipo === 'servico' ? '2,88%' : '1,08%';
+        // Lógica de cálculo ou atualização bidirecional:
+        // 1. PIS
+        if (origem === 'valor_pis' && elValorPis && elAliqPis) {
+            const vCents = window.BpoMoney.toCents(elValorPis.value);
+            if (brutoCents > 0n) {
+                elAliqPis.value = (Number(vCents) / Number(brutoCents) * 100).toFixed(2);
+            }
+        } else if (elAliqPis && elValorPis) {
+            const aliq = parseFloat(elAliqPis.value) || 0;
+            const pisCents = BigInt(Math.round(brutoNum * (aliq / 100) * 100));
+            if (origem !== 'valor_pis') {
+                elValorPis.value = window.BpoMoney.toDecimalString(pisCents);
+            }
+        }
 
-            if (elPisVal) elPisVal.textContent = window.BpoMoney.formatBRL(BigInt(Math.round(pisNum * 100)));
-            if (elPisTaxa) elPisTaxa.textContent = '0,65%';
-            if (elCofinsVal) elCofinsVal.textContent = window.BpoMoney.formatBRL(BigInt(Math.round(cofinsNum * 100)));
-            if (elCofinsTaxa) elCofinsTaxa.textContent = '3,00%';
-            if (elIrpjVal) elIrpjVal.textContent = window.BpoMoney.formatBRL(BigInt(Math.round(irpjNum * 100)));
-            if (elIrpjTaxa) elIrpjTaxa.textContent = aliqIrpjStr;
-            if (elCsllVal) elCsllVal.textContent = window.BpoMoney.formatBRL(BigInt(Math.round(csllNum * 100)));
-            if (elCsllTaxa) elCsllTaxa.textContent = aliqCsllStr;
+        // 2. COFINS
+        if (origem === 'valor_cofins' && elValorCofins && elAliqCofins) {
+            const vCents = window.BpoMoney.toCents(elValorCofins.value);
+            if (brutoCents > 0n) {
+                elAliqCofins.value = (Number(vCents) / Number(brutoCents) * 100).toFixed(2);
+            }
+        } else if (elAliqCofins && elValorCofins) {
+            const aliq = parseFloat(elAliqCofins.value) || 0;
+            const cofinsCents = BigInt(Math.round(brutoNum * (aliq / 100) * 100));
+            if (origem !== 'valor_cofins') {
+                elValorCofins.value = window.BpoMoney.toDecimalString(cofinsCents);
+            }
+        }
 
-            if (elBadgeRegime) {
+        // 3. IRPJ
+        if (origem === 'valor_irpj' && elValorIrpj && elAliqIrpj) {
+            const vCents = window.BpoMoney.toCents(elValorIrpj.value);
+            if (brutoCents > 0n) {
+                elAliqIrpj.value = (Number(vCents) / Number(brutoCents) * 100).toFixed(2);
+            }
+        } else if (elAliqIrpj && elValorIrpj) {
+            const aliq = parseFloat(elAliqIrpj.value) || 0;
+            const irpjCents = BigInt(Math.round(brutoNum * (aliq / 100) * 100));
+            if (origem !== 'valor_irpj') {
+                elValorIrpj.value = window.BpoMoney.toDecimalString(irpjCents);
+            }
+        }
+
+        // 4. CSLL
+        if (origem === 'valor_csll' && elValorCsll && elAliqCsll) {
+            const vCents = window.BpoMoney.toCents(elValorCsll.value);
+            if (brutoCents > 0n) {
+                elAliqCsll.value = (Number(vCents) / Number(brutoCents) * 100).toFixed(2);
+            }
+        } else if (elAliqCsll && elValorCsll) {
+            const aliq = parseFloat(elAliqCsll.value) || 0;
+            const csllCents = BigInt(Math.round(brutoNum * (aliq / 100) * 100));
+            if (origem !== 'valor_csll') {
+                elValorCsll.value = window.BpoMoney.toDecimalString(csllCents);
+            }
+        }
+
+        // Atualiza badges de regime
+        if (elBadgeRegime) {
+            if (isLucroPresumido) {
                 elBadgeRegime.textContent = 'Lucro Presumido';
                 elBadgeRegime.style.background = 'rgba(59,130,246,0.15)';
                 elBadgeRegime.style.color = '#60a5fa';
-            }
-            if (elNotaIrpj) {
-                elNotaIrpj.innerHTML = `ℹ️ <strong>IRPJ / CSLL:</strong> Calculados com a presunção padrão de 32% (alíquotas de 4,80% e 2,88% para serviços). O valor definitivo é variável e apurado trimestralmente pelo motor de cálculo (podendo incidir adicional de 10% no IRPJ sobre a parcela trimestral que exceder R$ 60.000,00 e presunção majorada acima de R$ 1.250.000,00).`;
-            }
-        } else {
-            // Simples Nacional
-            const comp = previa.impostosEconomicos ? previa.impostosEconomicos.componentes : {};
-            const pisNum = comp ? (comp.pis || 0) : 0;
-            const cofinsNum = comp ? (comp.cofins || 0) : 0;
-            const irpjNum = comp ? (comp.irpj || 0) : 0;
-            const csllNum = comp ? (comp.csll || 0) : 0;
-            const aliqEfetiva = (previa.impostosEconomicos && previa.impostosEconomicos.aliquotaEfetiva) || 'DAS';
-
-            if (elPisVal) elPisVal.textContent = window.BpoMoney.formatBRL(BigInt(Math.round(pisNum * 100)));
-            if (elPisTaxa) elPisTaxa.textContent = 'no DAS';
-            if (elCofinsVal) elCofinsVal.textContent = window.BpoMoney.formatBRL(BigInt(Math.round(cofinsNum * 100)));
-            if (elCofinsTaxa) elCofinsTaxa.textContent = 'no DAS';
-            if (elIrpjVal) elIrpjVal.textContent = window.BpoMoney.formatBRL(BigInt(Math.round(irpjNum * 100)));
-            if (elIrpjTaxa) elIrpjTaxa.textContent = 'no DAS';
-            if (elCsllVal) elCsllVal.textContent = window.BpoMoney.formatBRL(BigInt(Math.round(csllNum * 100)));
-            if (elCsllTaxa) elCsllTaxa.textContent = 'no DAS';
-
-            if (elBadgeRegime) {
-                elBadgeRegime.textContent = `Simples Nacional (${aliqEfetiva})`;
+            } else {
+                elBadgeRegime.textContent = 'Simples Nacional';
                 elBadgeRegime.style.background = 'rgba(16,185,129,0.15)';
                 elBadgeRegime.style.color = '#34d399';
             }
-            if (elNotaIrpj) {
-                elNotaIrpj.innerHTML = `ℹ️ <strong>Simples Nacional:</strong> Os valores de PIS, COFINS, IRPJ, CSLL e ISS são integrados na guia única do DAS e calculados conforme a alíquota efetiva de ${aliqEfetiva} do Anexo III.`;
-            }
         }
+
+        // Retenções
+        const irrfCents = (itemTipo === 'servico' && chkIrrf) 
+            ? BigInt(Math.round(brutoNum * (aliqIrrfVal / 100) * 100)) 
+            : 0n;
+        const inssCents = (itemTipo === 'servico' && chkInss) 
+            ? BigInt(Math.round(brutoNum * (aliqInssVal / 100) * 100)) 
+            : 0n;
+        const issCalcCents = (itemTipo === 'servico') 
+            ? BigInt(Math.round(brutoNum * (aliqIssVal / 100) * 100)) 
+            : 0n;
+        const issRetidoCents = chkIssRetido ? issCalcCents : 0n;
+
+        const retTotalCents = irrfCents + inssCents + issRetidoCents;
+        const liquidoRecebCents = brutoCents > retTotalCents ? (brutoCents - retTotalCents) : 0n;
+
+        // Soma dos tributos totais atribuídos usando os valores atuais dos inputs
+        const curPisCents = elValorPis ? window.BpoMoney.toCents(elValorPis.value) : 0n;
+        const curCofinsCents = elValorCofins ? window.BpoMoney.toCents(elValorCofins.value) : 0n;
+        const curIrpjCents = elValorIrpj ? window.BpoMoney.toCents(elValorIrpj.value) : 0n;
+        const curCsllCents = elValorCsll ? window.BpoMoney.toCents(elValorCsll.value) : 0n;
+
+        const totalImpostosCents = curPisCents + curCofinsCents + issCalcCents + curIrpjCents + curCsllCents;
+        const liquidoEcoCents = brutoCents > totalImpostosCents ? (brutoCents - totalImpostosCents) : 0n;
+
+        // Atualiza campos de saída na tela
+        document.getElementById('valIrrfPreview').textContent = window.BpoMoney.toDecimalString(irrfCents);
+        document.getElementById('valInssPreview').textContent = window.BpoMoney.toDecimalString(inssCents);
 
         document.getElementById('docRetencoes').value = window.BpoMoney.toDecimalString(retTotalCents);
         document.getElementById('docValorLiquido').value = window.BpoMoney.toDecimalString(liquidoRecebCents);
@@ -754,12 +788,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         document.getElementById('previaLiquidoEconomico').textContent = window.BpoMoney.formatBRL(liquidoEcoCents);
 
         const pendenciasBox = document.getElementById('previaPendenciasTexto');
-        if (previa.pendencia) {
-            pendenciasBox.textContent = `Pendência fiscal: ${previa.pendencia}`;
-            pendenciasBox.style.display = 'block';
-        } else {
-            pendenciasBox.style.display = 'none';
-        }
+        pendenciasBox.style.display = 'none';
     }
 
     function prepararModalNovoDocumento() {
@@ -799,7 +828,16 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         document.getElementById('aliqIss').value = '5.0';
         document.getElementById('chkIssRetido').checked = false;
 
-        executarPreviaImpostos();
+        document.getElementById('inpAliqPis').value = '0.65';
+        document.getElementById('inpValorPis').value = '0,00';
+        document.getElementById('inpAliqCofins').value = '3.00';
+        document.getElementById('inpValorCofins').value = '0,00';
+        document.getElementById('inpAliqIrpj').value = '4.80';
+        document.getElementById('inpValorIrpj').value = '0,00';
+        document.getElementById('inpAliqCsll').value = '2.88';
+        document.getElementById('inpValorCsll').value = '0,00';
+
+        executarPreviaImpostos('novo');
         abrirModal(modalDocumento);
     }
 
@@ -825,7 +863,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         document.getElementById('docValorBruto').value = window.BpoMoney.toDecimalString(window.BpoMoney.toCents(d.gross_amount));
         document.getElementById('docDescricao').value = d._descricaoLimpa !== undefined ? d._descricaoLimpa : window.BpoFiscalUtils.limparDescricao(d.description);
 
-        // Carrega dados de retenção se existirem em tax_details
+        // Carrega dados de retenção e tributos se existirem em tax_details
         const taxDetails = d.tax_details || window.BpoFiscalUtils.extrairTaxDetails(d);
         if (taxDetails) {
             if (taxDetails.has_irrf) {
@@ -851,10 +889,38 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             }
             document.getElementById('chkIssRetido').checked = !!taxDetails.iss_retained;
             if (taxDetails.item_type) document.getElementById('docItemTipo').value = taxDetails.item_type;
+
+            if (taxDetails.pis_aliq !== undefined && taxDetails.pis_aliq !== null) {
+                document.getElementById('inpAliqPis').value = taxDetails.pis_aliq;
+            }
+            if (taxDetails.pis_valor !== undefined && taxDetails.pis_valor !== null) {
+                document.getElementById('inpValorPis').value = taxDetails.pis_valor;
+            }
+
+            if (taxDetails.cofins_aliq !== undefined && taxDetails.cofins_aliq !== null) {
+                document.getElementById('inpAliqCofins').value = taxDetails.cofins_aliq;
+            }
+            if (taxDetails.cofins_valor !== undefined && taxDetails.cofins_valor !== null) {
+                document.getElementById('inpValorCofins').value = taxDetails.cofins_valor;
+            }
+
+            if (taxDetails.irpj_aliq !== undefined && taxDetails.irpj_aliq !== null) {
+                document.getElementById('inpAliqIrpj').value = taxDetails.irpj_aliq;
+            }
+            if (taxDetails.irpj_valor !== undefined && taxDetails.irpj_valor !== null) {
+                document.getElementById('inpValorIrpj').value = taxDetails.irpj_valor;
+            }
+
+            if (taxDetails.csll_aliq !== undefined && taxDetails.csll_aliq !== null) {
+                document.getElementById('inpAliqCsll').value = taxDetails.csll_aliq;
+            }
+            if (taxDetails.csll_valor !== undefined && taxDetails.csll_valor !== null) {
+                document.getElementById('inpValorCsll').value = taxDetails.csll_valor;
+            }
         }
 
         document.getElementById('btnExcluirDocumentoModal').style.display = 'inline-flex';
-        executarPreviaImpostos();
+        executarPreviaImpostos('edicao_carregada');
         abrirModal(modalDocumento);
     };
 
@@ -934,7 +1000,15 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             has_inss: document.getElementById('chkInss').checked,
             inss_aliq: parseFloat(document.getElementById('aliqInss').value) || 0,
             iss_aliq: parseFloat(document.getElementById('aliqIss').value) || 0,
-            iss_retained: document.getElementById('chkIssRetido').checked
+            iss_retained: document.getElementById('chkIssRetido').checked,
+            pis_aliq: parseFloat(document.getElementById('inpAliqPis').value) || 0,
+            pis_valor: document.getElementById('inpValorPis').value,
+            cofins_aliq: parseFloat(document.getElementById('inpAliqCofins').value) || 0,
+            cofins_valor: document.getElementById('inpValorCofins').value,
+            irpj_aliq: parseFloat(document.getElementById('inpAliqIrpj').value) || 0,
+            irpj_valor: document.getElementById('inpValorIrpj').value,
+            csll_aliq: parseFloat(document.getElementById('inpAliqCsll').value) || 0,
+            csll_valor: document.getElementById('inpValorCsll').value
         };
 
         const descricaoComMeta = window.BpoFiscalUtils.anexarTaxDetailsNaDescricao(descricao, taxDetailsPayload);

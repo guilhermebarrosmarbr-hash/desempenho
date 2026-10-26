@@ -353,16 +353,30 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     let saldoCents = 0n;
 
                     if (isLP) {
-                        pisCents = BigInt(Math.round(brutoNum * 0.0065 * 100));
-                        cofinsCents = BigInt(Math.round(brutoNum * 0.03 * 100));
+                        pisCents = (taxDetails && taxDetails.pis_valor !== undefined && taxDetails.pis_valor !== null)
+                            ? window.BpoMoney.toCents(taxDetails.pis_valor)
+                            : BigInt(Math.round(brutoNum * 0.0065 * 100));
+
+                        cofinsCents = (taxDetails && taxDetails.cofins_valor !== undefined && taxDetails.cofins_valor !== null)
+                            ? window.BpoMoney.toCents(taxDetails.cofins_valor)
+                            : BigInt(Math.round(brutoNum * 0.03 * 100));
+
                         if (itemType === 'servico') {
                             issCents = BigInt(Math.round(brutoNum * (aliqIss / 100) * 100));
-                            irpjCents = BigInt(Math.round(brutoNum * 0.32 * 0.15 * 100));
-                            csllCents = BigInt(Math.round(brutoNum * 0.32 * 0.09 * 100));
+                            irpjCents = (taxDetails && taxDetails.irpj_valor !== undefined && taxDetails.irpj_valor !== null)
+                                ? window.BpoMoney.toCents(taxDetails.irpj_valor)
+                                : BigInt(Math.round(brutoNum * 0.32 * 0.15 * 100));
+                            csllCents = (taxDetails && taxDetails.csll_valor !== undefined && taxDetails.csll_valor !== null)
+                                ? window.BpoMoney.toCents(taxDetails.csll_valor)
+                                : BigInt(Math.round(brutoNum * 0.32 * 0.09 * 100));
                         } else {
                             issCents = 0n;
-                            irpjCents = BigInt(Math.round(brutoNum * 0.08 * 0.15 * 100));
-                            csllCents = BigInt(Math.round(brutoNum * 0.12 * 0.09 * 100));
+                            irpjCents = (taxDetails && taxDetails.irpj_valor !== undefined && taxDetails.irpj_valor !== null)
+                                ? window.BpoMoney.toCents(taxDetails.irpj_valor)
+                                : BigInt(Math.round(brutoNum * 0.08 * 0.15 * 100));
+                            csllCents = (taxDetails && taxDetails.csll_valor !== undefined && taxDetails.csll_valor !== null)
+                                ? window.BpoMoney.toCents(taxDetails.csll_valor)
+                                : BigInt(Math.round(brutoNum * 0.12 * 0.09 * 100));
                         }
                         tributosCents = pisCents + cofinsCents + issCents + irpjCents + csllCents;
                         const issRecolher = issRetido ? 0n : issCents;
