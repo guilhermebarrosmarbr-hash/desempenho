@@ -4,6 +4,35 @@
 // Painel de Impostos/Retenções e Prévia em Tempo Real pelo Motor Puro.
 // ==============================================================================
 
+// Utilitários de metadados fiscais (compatibilidade com schemas sem coluna tax_details dedicada)
+window.BpoFiscalUtils = window.BpoFiscalUtils || {
+    extrairTaxDetails: function(doc) {
+        if (!doc) return null;
+        if (doc.tax_details && typeof doc.tax_details === 'object') {
+            return doc.tax_details;
+        }
+        if (doc.description && typeof doc.description === 'string') {
+            const match = doc.description.match(/<!--bpo_tax_details:(.*?)-->/);
+            if (match) {
+                try {
+                    return JSON.parse(match[1]);
+                } catch (e) {}
+            }
+        }
+        return null;
+    },
+    limparDescricao: function(rawDesc) {
+        if (!rawDesc) return '';
+        return rawDesc.replace(/\s*<!--bpo_tax_details:.*?-->/g, '').trim();
+    },
+    anexarTaxDetailsNaDescricao: function(descricaoLimpa, taxDetails) {
+        const limpa = window.BpoFiscalUtils.limparDescricao(descricaoLimpa);
+        if (!taxDetails) return limpa;
+        const serialized = JSON.stringify(taxDetails);
+        return limpa ? `${limpa}\n<!--bpo_tax_details:${serialized}-->` : `<!--bpo_tax_details:${serialized}-->`;
+    }
+};
+
 (function() {
     let empresas = [];
     let empresaAtivaId = 'all'; // Default: "Todas as empresas"
@@ -225,10 +254,15 @@
                 });
             } catch (e) {}
 
-            documentos = docsDb.map(d => ({
-                ...d,
-                payment_date: d.payment_date || receiptsMap.get(d.id) || null
-            }));
+            documentos = docsDb.map(d => {
+                const taxDetails = window.BpoFiscalUtils.extrairTaxDetails(d);
+                return {
+                    ...d,
+                    tax_details: taxDetails,
+                    _descricaoLimpa: window.BpoFiscalUtils.limparDescricao(d.description),
+                    payment_date: d.payment_date || receiptsMap.get(d.id) || null
+                };
+            });
 
             // Busca clientes cadastrados
             let clientesMap = new Map();
@@ -360,9 +394,27 @@
                 : '<span style="color: var(--text-muted); font-size: 0.8rem;">Pendente</span>';
 
             // Impostos atribuídos (campo tax_details ou estimativa gerencial)
-            const impostosAtrib = doc.tax_details && doc.tax_details.total_tax
-                ? window.BpoMoney.formatBRL(doc.tax_details.total_tax)
-                : '<span style="color:var(--text-muted);font-size:0.8rem;">—</span>';
+            let impostosAtrib = '<span style="color:var(--text-muted);font-size:0.8rem;">—</span>';
+            if (doc.tax_details && doc.tax_details.total_tax) {
+                impostosAtrib = window.BpoMoney.formatBRL(doc.tax_details.total_tax);
+            } else if (doc.tax_details && window.BpoTaxEngine && emp) {
+                const bNum = Number(window.BpoMoney.toCents(doc.gross_amount)) / 100;
+                const p = window.BpoTaxEngine.calcularPreviaNota({
+                    gross_amount: bNum,
+                    company_tax_regime: emp.tax_regime,
+                    item_type: doc.tax_details.item_type || 'servico',
+                    temIrrf: !!doc.tax_details.has_irrf,
+                    aliquotaIrrf: doc.tax_details.irrf_aliq,
+                    temInss: !!doc.tax_details.has_inss,
+                    aliquotaInss: doc.tax_details.inss_aliq,
+                    issRetido: !!doc.tax_details.iss_retained,
+                    aliquotaIss: doc.tax_details.iss_aliq || 5.0
+                });
+                if (p) {
+                    const tot = (p.impostosMensais ? ((p.impostosMensais.pis?.valor || 0) + (p.impostosMensais.cofins?.valor || 0) + (p.impostosMensais.iss?.valor || 0)) : (p.impostosEconomicos?.valorTotal || 0)) + (p.provisaoTrimestral ? ((p.provisaoTrimestral.irpjProvisao || 0) + (p.provisaoTrimestral.csllProvisao || 0)) : 0);
+                    impostosAtrib = window.BpoMoney.formatBRL(BigInt(Math.round(tot * 100)));
+                }
+            }
 
             return `
                 <tr>
@@ -705,23 +757,34 @@
         document.getElementById('docVencimento').value = d.due_date || '';
         document.getElementById('docRecebimento').value = d.payment_date || '';
         document.getElementById('docValorBruto').value = window.BpoMoney.toDecimalString(window.BpoMoney.toCents(d.gross_amount));
-        document.getElementById('docDescricao').value = d.description || '';
+        document.getElementById('docDescricao').value = d._descricaoLimpa !== undefined ? d._descricaoLimpa : window.BpoFiscalUtils.limparDescricao(d.description);
 
         // Carrega dados de retenção se existirem em tax_details
-        if (d.tax_details) {
-            if (d.tax_details.has_irrf) {
+        const taxDetails = d.tax_details || window.BpoFiscalUtils.extrairTaxDetails(d);
+        if (taxDetails) {
+            if (taxDetails.has_irrf) {
                 document.getElementById('chkIrrf').checked = true;
                 document.getElementById('boxIrrfConfig').style.display = 'block';
-                if (d.tax_details.irrf_aliq) document.getElementById('aliqIrrf').value = d.tax_details.irrf_aliq;
+                if (taxDetails.irrf_aliq) document.getElementById('aliqIrrf').value = taxDetails.irrf_aliq;
+            } else {
+                document.getElementById('chkIrrf').checked = false;
+                document.getElementById('boxIrrfConfig').style.display = 'none';
             }
-            if (d.tax_details.has_inss) {
+
+            if (taxDetails.has_inss) {
                 document.getElementById('chkInss').checked = true;
                 document.getElementById('boxInssConfig').style.display = 'block';
-                if (d.tax_details.inss_aliq) document.getElementById('aliqInss').value = d.tax_details.inss_aliq;
+                if (taxDetails.inss_aliq) document.getElementById('aliqInss').value = taxDetails.inss_aliq;
+            } else {
+                document.getElementById('chkInss').checked = false;
+                document.getElementById('boxInssConfig').style.display = 'none';
             }
-            if (d.tax_details.iss_aliq) document.getElementById('aliqIss').value = d.tax_details.iss_aliq;
-            if (d.tax_details.iss_retained) document.getElementById('chkIssRetido').checked = true;
-            if (d.tax_details.item_type) document.getElementById('docItemTipo').value = d.tax_details.item_type;
+
+            if (taxDetails.iss_aliq !== undefined && taxDetails.iss_aliq !== null) {
+                document.getElementById('aliqIss').value = taxDetails.iss_aliq;
+            }
+            document.getElementById('chkIssRetido').checked = !!taxDetails.iss_retained;
+            if (taxDetails.item_type) document.getElementById('docItemTipo').value = taxDetails.item_type;
         }
 
         document.getElementById('btnExcluirDocumentoModal').style.display = 'inline-flex';
@@ -808,6 +871,8 @@
             iss_retained: document.getElementById('chkIssRetido').checked
         };
 
+        const descricaoComMeta = window.BpoFiscalUtils.anexarTaxDetailsNaDescricao(descricao, taxDetailsPayload);
+
         const payload = {
             company_id: companyId,
             competence_month: competenciaAtiva,
@@ -820,11 +885,10 @@
             discounts: '0.00',
             retentions: window.BpoMoney.toDecimalString(retCents),
             net_amount: window.BpoMoney.toDecimalString(liqCents),
-            description: descricao,
+            description: descricaoComMeta,
             contract_id: contratoId,
-            status: dataRecebimento ? 'paid' : 'emitted',
-            tax_details: taxDetailsPayload  // IRRF, INSS, ISS alíquota e ISS retido
-            // payment_date não existe em billing_documents — recebimentos ficam na tabela receipts
+            status: dataRecebimento ? 'paid' : 'emitted'
+            // NÃO envia tax_details nem payment_date: não são colunas em billing_documents
         };
 
         try {
@@ -852,7 +916,9 @@
                             company_id: companyId,
                             external_id: savedDoc.id,
                             receipt_date: dataRecebimento,
-                            amount: window.BpoMoney.toDecimalString(liqCents)
+                            gross_amount: window.BpoMoney.toDecimalString(liqCents),
+                            amount: window.BpoMoney.toDecimalString(liqCents),
+                            account: 'conta_padrao'
                         })
                     });
                 } catch (recErr) {
@@ -940,7 +1006,9 @@
                     company_id: doc.company_id,
                     external_id: docId,
                     receipt_date: recData,
-                    amount: window.BpoMoney.toDecimalString(recValorCents)
+                    gross_amount: window.BpoMoney.toDecimalString(recValorCents),
+                    amount: window.BpoMoney.toDecimalString(recValorCents),
+                    account: 'conta_padrao'
                 })
             });
 

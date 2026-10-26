@@ -5,6 +5,35 @@
 // e cálculo trimestral IRPJ/CSLL para Mar Brasil com eliminação de células aproximadas.
 // ==============================================================================
 
+// Utilitários de metadados fiscais (compatibilidade com schemas sem coluna tax_details dedicada)
+window.BpoFiscalUtils = window.BpoFiscalUtils || {
+    extrairTaxDetails: function(doc) {
+        if (!doc) return null;
+        if (doc.tax_details && typeof doc.tax_details === 'object') {
+            return doc.tax_details;
+        }
+        if (doc.description && typeof doc.description === 'string') {
+            const match = doc.description.match(/<!--bpo_tax_details:(.*?)-->/);
+            if (match) {
+                try {
+                    return JSON.parse(match[1]);
+                } catch (e) {}
+            }
+        }
+        return null;
+    },
+    limparDescricao: function(rawDesc) {
+        if (!rawDesc) return '';
+        return rawDesc.replace(/\s*<!--bpo_tax_details:.*?-->/g, '').trim();
+    },
+    anexarTaxDetailsNaDescricao: function(descricaoLimpa, taxDetails) {
+        const limpa = window.BpoFiscalUtils.limparDescricao(descricaoLimpa);
+        if (!taxDetails) return limpa;
+        const serialized = JSON.stringify(taxDetails);
+        return limpa ? `${limpa}\n<!--bpo_tax_details:${serialized}-->` : `<!--bpo_tax_details:${serialized}-->`;
+    }
+};
+
 (function() {
     let empresas = [];
     let empresaAtivaId = 'all'; // Padrão: "Todas as empresas"
@@ -116,7 +145,8 @@
                     fatEmpCents += b;
                     retEmpCents += r;
 
-                    const itemType = (d.tax_details && d.tax_details.item_type) || 'servico';
+                    const taxDetails = d.tax_details || window.BpoFiscalUtils.extrairTaxDetails(d);
+                    const itemType = (taxDetails && taxDetails.item_type) || 'servico';
                     if (itemType === 'produto') produtosCents += b;
                     else servicosCents += b;
                 });
@@ -296,7 +326,8 @@
                     mesesComDados++;
                     docsMes.forEach(d => {
                         const val = window.BpoMoney.toCents(d.gross_amount);
-                        const tipo = (d.tax_details && d.tax_details.item_type) || 'servico';
+                        const taxDetails = d.tax_details || window.BpoFiscalUtils.extrairTaxDetails(d);
+                        const tipo = (taxDetails && taxDetails.item_type) || 'servico';
                         if (tipo === 'produto') produtosTrimestreCents += val;
                         else servicosTrimestreCents += val;
                     });
