@@ -106,12 +106,57 @@
             </div>
         </section>
 
+        <!-- Detalhamento de Tributos por Faturamento (Cada Nota / Documento Emitido) -->
+        <section class="finance-card" style="margin-bottom: 24px;">
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h2 class="card-title">Detalhamento de Tributos por Faturamento</h2>
+                    <p class="card-subtitle">Memória de cálculo individual de cada documento de faturamento emitido na competência (PIS, COFINS, ISS, IRPJ, CSLL e Retenções)</p>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <span id="resumoContagemTributosDocs" class="badge badge-primary" style="font-size: 0.78rem;">0 lançamentos</span>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table-custom">
+                    <thead>
+                        <tr>
+                            <th>Doc / Nº</th>
+                            <th>Empresa Emitente</th>
+                            <th>Emissão</th>
+                            <th>Cliente / Contrato</th>
+                            <th style="text-align: right;">Valor Bruto</th>
+                            <th style="text-align: right;">PIS</th>
+                            <th style="text-align: right;">COFINS</th>
+                            <th style="text-align: right;">ISS</th>
+                            <th style="text-align: right;">IRPJ Estimado</th>
+                            <th style="text-align: right;">CSLL Estimada</th>
+                            <th style="text-align: right;">Total Tributos</th>
+                            <th style="text-align: right;">Retenções</th>
+                            <th style="text-align: right;">Saldo / Guia</th>
+                        </tr>
+                    </thead>
+                    <tbody id="listaDocumentosTributosBody">
+                        <tr>
+                            <td colspan="13" style="text-align: center; color: var(--text-muted); padding: 24px;">
+                                Carregando faturamentos detalhados...
+                            </td>
+                        </tr>
+                    </tbody>
+                    <tfoot id="tfootDocumentosTributos" style="background: rgba(255,255,255,0.03); font-weight: 700; border-top: 2px solid var(--border-color);">
+                        <!-- Totais da tabela de detalhamento preenchidos dinamicamente -->
+                    </tfoot>
+                </table>
+            </div>
+        </section>
+
         <!-- Histórico de Competências e Guias -->
         <section class="finance-card">
             <div class="card-header">
                 <div>
-                    <h2 class="card-title">Histórico de Obrigações e Apurações por Competência</h2>
-                    <p class="card-subtitle">Consulta de apurações e provisões fiscais da competência</p>
+                    <h2 class="card-title">Quadro Sintético de Apurações por Empresa</h2>
+                    <p class="card-subtitle">Resumo consolidado das obrigações e provisões por pessoa jurídica</p>
                 </div>
             </div>
 

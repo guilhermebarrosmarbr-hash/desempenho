@@ -680,6 +680,72 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         document.getElementById('valIrrfPreview').textContent = window.BpoMoney.toDecimalString(BigInt(Math.round(irrfValor * 100)));
         document.getElementById('valInssPreview').textContent = window.BpoMoney.toDecimalString(BigInt(Math.round(inssValor * 100)));
 
+        // Atualiza os cards dedicados de PIS, COFINS, IRPJ e CSLL automáticos
+        const elPisVal = document.getElementById('valPreviaPis');
+        const elPisTaxa = document.getElementById('lblPreviaPisTaxa');
+        const elCofinsVal = document.getElementById('valPreviaCofins');
+        const elCofinsTaxa = document.getElementById('lblPreviaCofinsTaxa');
+        const elIrpjVal = document.getElementById('valPreviaIrpj');
+        const elIrpjTaxa = document.getElementById('lblPreviaIrpjTaxa');
+        const elCsllVal = document.getElementById('valPreviaCsll');
+        const elCsllTaxa = document.getElementById('lblPreviaCsllTaxa');
+        const elBadgeRegime = document.getElementById('badgePreviaRegime');
+        const elNotaIrpj = document.getElementById('notaIrpjTrimestral');
+
+        if (previa.regime === 'lucro_presumido') {
+            const pisNum = previa.impostosMensais && previa.impostosMensais.pis ? previa.impostosMensais.pis.valor : 0;
+            const cofinsNum = previa.impostosMensais && previa.impostosMensais.cofins ? previa.impostosMensais.cofins.valor : 0;
+            const irpjNum = previa.provisaoTrimestral ? (previa.provisaoTrimestral.irpjProvisao || 0) : 0;
+            const csllNum = previa.provisaoTrimestral ? (previa.provisaoTrimestral.csllProvisao || 0) : 0;
+
+            const aliqIrpjStr = itemTipo === 'servico' ? '4,80%' : '1,20%';
+            const aliqCsllStr = itemTipo === 'servico' ? '2,88%' : '1,08%';
+
+            if (elPisVal) elPisVal.textContent = window.BpoMoney.formatBRL(BigInt(Math.round(pisNum * 100)));
+            if (elPisTaxa) elPisTaxa.textContent = '0,65%';
+            if (elCofinsVal) elCofinsVal.textContent = window.BpoMoney.formatBRL(BigInt(Math.round(cofinsNum * 100)));
+            if (elCofinsTaxa) elCofinsTaxa.textContent = '3,00%';
+            if (elIrpjVal) elIrpjVal.textContent = window.BpoMoney.formatBRL(BigInt(Math.round(irpjNum * 100)));
+            if (elIrpjTaxa) elIrpjTaxa.textContent = aliqIrpjStr;
+            if (elCsllVal) elCsllVal.textContent = window.BpoMoney.formatBRL(BigInt(Math.round(csllNum * 100)));
+            if (elCsllTaxa) elCsllTaxa.textContent = aliqCsllStr;
+
+            if (elBadgeRegime) {
+                elBadgeRegime.textContent = 'Lucro Presumido';
+                elBadgeRegime.style.background = 'rgba(59,130,246,0.15)';
+                elBadgeRegime.style.color = '#60a5fa';
+            }
+            if (elNotaIrpj) {
+                elNotaIrpj.innerHTML = `ℹ️ <strong>IRPJ / CSLL:</strong> Calculados com a presunção padrão de 32% (alíquotas de 4,80% e 2,88% para serviços). O valor definitivo é variável e apurado trimestralmente pelo motor de cálculo (podendo incidir adicional de 10% no IRPJ sobre a parcela trimestral que exceder R$ 60.000,00 e presunção majorada acima de R$ 1.250.000,00).`;
+            }
+        } else {
+            // Simples Nacional
+            const comp = previa.impostosEconomicos ? previa.impostosEconomicos.componentes : {};
+            const pisNum = comp ? (comp.pis || 0) : 0;
+            const cofinsNum = comp ? (comp.cofins || 0) : 0;
+            const irpjNum = comp ? (comp.irpj || 0) : 0;
+            const csllNum = comp ? (comp.csll || 0) : 0;
+            const aliqEfetiva = (previa.impostosEconomicos && previa.impostosEconomicos.aliquotaEfetiva) || 'DAS';
+
+            if (elPisVal) elPisVal.textContent = window.BpoMoney.formatBRL(BigInt(Math.round(pisNum * 100)));
+            if (elPisTaxa) elPisTaxa.textContent = 'no DAS';
+            if (elCofinsVal) elCofinsVal.textContent = window.BpoMoney.formatBRL(BigInt(Math.round(cofinsNum * 100)));
+            if (elCofinsTaxa) elCofinsTaxa.textContent = 'no DAS';
+            if (elIrpjVal) elIrpjVal.textContent = window.BpoMoney.formatBRL(BigInt(Math.round(irpjNum * 100)));
+            if (elIrpjTaxa) elIrpjTaxa.textContent = 'no DAS';
+            if (elCsllVal) elCsllVal.textContent = window.BpoMoney.formatBRL(BigInt(Math.round(csllNum * 100)));
+            if (elCsllTaxa) elCsllTaxa.textContent = 'no DAS';
+
+            if (elBadgeRegime) {
+                elBadgeRegime.textContent = `Simples Nacional (${aliqEfetiva})`;
+                elBadgeRegime.style.background = 'rgba(16,185,129,0.15)';
+                elBadgeRegime.style.color = '#34d399';
+            }
+            if (elNotaIrpj) {
+                elNotaIrpj.innerHTML = `ℹ️ <strong>Simples Nacional:</strong> Os valores de PIS, COFINS, IRPJ, CSLL e ISS são integrados na guia única do DAS e calculados conforme a alíquota efetiva de ${aliqEfetiva} do Anexo III.`;
+            }
+        }
+
         document.getElementById('docRetencoes').value = window.BpoMoney.toDecimalString(retTotalCents);
         document.getElementById('docValorLiquido').value = window.BpoMoney.toDecimalString(liquidoRecebCents);
 

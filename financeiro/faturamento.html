@@ -290,10 +290,63 @@
                     </div>
                 </div>
 
+                <!-- Painel de Cálculo Automático de Tributos do Faturamento (PIS, COFINS, IRPJ, CSLL) -->
+                <div id="painelCalculoTributosLancamento" style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 1rem;">⚡</span>
+                            <strong style="font-size: 0.88rem; color: #93c5fd;">Tributos Calculados Automaticamente sobre este Lançamento</strong>
+                        </div>
+                        <span id="badgePreviaRegime" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3);">
+                            Lucro Presumido
+                        </span>
+                    </div>
+
+                    <!-- 4 cards: PIS, COFINS, IRPJ, CSLL -->
+                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 8px;">
+                        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 6px; padding: 10px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                <span style="font-size: 0.75rem; color: var(--text-muted);">PIS</span>
+                                <span id="lblPreviaPisTaxa" style="font-size: 0.72rem; color: #93c5fd; font-weight: 600;">0,65%</span>
+                            </div>
+                            <div id="valPreviaPis" style="font-size: 1.05rem; font-weight: 700; color: #fff;">R$ 0,00</div>
+                        </div>
+
+                        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 6px; padding: 10px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                <span style="font-size: 0.75rem; color: var(--text-muted);">COFINS</span>
+                                <span id="lblPreviaCofinsTaxa" style="font-size: 0.72rem; color: #93c5fd; font-weight: 600;">3,00%</span>
+                            </div>
+                            <div id="valPreviaCofins" style="font-size: 1.05rem; font-weight: 700; color: #fff;">R$ 0,00</div>
+                        </div>
+
+                        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 6px; padding: 10px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                <span style="font-size: 0.75rem; color: var(--text-muted);">IRPJ Estimado</span>
+                                <span id="lblPreviaIrpjTaxa" style="font-size: 0.72rem; color: #f59e0b; font-weight: 600;">4,80%</span>
+                            </div>
+                            <div id="valPreviaIrpj" style="font-size: 1.05rem; font-weight: 700; color: #f59e0b;">R$ 0,00</div>
+                        </div>
+
+                        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 6px; padding: 10px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                <span style="font-size: 0.75rem; color: var(--text-muted);">CSLL Estimada</span>
+                                <span id="lblPreviaCsllTaxa" style="font-size: 0.72rem; color: #f59e0b; font-weight: 600;">2,88%</span>
+                            </div>
+                            <div id="valPreviaCsll" style="font-size: 1.05rem; font-weight: 700; color: #f59e0b;">R$ 0,00</div>
+                        </div>
+                    </div>
+
+                    <!-- Nota explicativa sobre a variabilidade do IRPJ/CSLL -->
+                    <div id="notaIrpjTrimestral" style="font-size: 0.73rem; color: var(--text-muted); line-height: 1.4; padding-top: 4px;">
+                        ℹ️ <strong>IRPJ / CSLL:</strong> Calculados com a presunção padrão de 32% (alíquotas efetivas de 4,80% e 2,88% para serviços). O valor definitivo é variável e apurado trimestralmente pelo motor de cálculo (podendo incidir adicional de 10% no IRPJ sobre a parcela trimestral que exceder R$ 60.000,00 e presunção majorada acima de R$ 1.250.000,00).
+                    </div>
+                </div>
+
                 <!-- Painel Impostos e Retenções com Prévia Dinâmica -->
                 <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                        <h4 style="font-size: 0.9rem; font-weight: 600; margin: 0; color: var(--text-main);">Impostos e Retenções (Prévia em Tempo Real)</h4>
+                        <h4 style="font-size: 0.9rem; font-weight: 600; margin: 0; color: var(--text-main);">Retenções e ISS da Nota (Prévia em Tempo Real)</h4>
                         <span id="badgeRegimePrevia" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3);">Regime Fiscal</span>
                     </div>
 

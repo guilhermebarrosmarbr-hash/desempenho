@@ -48,6 +48,9 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
     const secaoTrimestralMarBrasil = document.getElementById('secaoTrimestralMarBrasil');
     const badgeTrimestreMarBrasil = document.getElementById('badgeTrimestreMarBrasil');
     const listaHistoricoBody = document.getElementById('listaHistoricoBody');
+    const listaDocumentosTributosBody = document.getElementById('listaDocumentosTributosBody');
+    const tfootDocumentosTributos = document.getElementById('tfootDocumentosTributos');
+    const resumoContagemTributosDocs = document.getElementById('resumoContagemTributosDocs');
 
     // Métricas Consolidadas
     const valBaseFaturamento = document.getElementById('valBaseFaturamento');
@@ -282,6 +285,171 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             listaHistoricoBody.innerHTML = rowsHistorico.join('');
 
             // =================================================================
+            // TABELA DE DETALHAMENTO DE TRIBUTOS POR FATURAMENTO INDIVIDUAL
+            // =================================================================
+            let contratosMap = new Map();
+            try {
+                const contratosDb = await window.BpoSupabase.request('contracts', { method: 'GET' });
+                const clientesDb = await window.BpoSupabase.request('people', { method: 'GET' });
+                const clientesMap = new Map();
+                clientesDb.forEach(c => clientesMap.set(c.id, c));
+                contratosDb.forEach(ct => {
+                    const cli = ct.client_id ? clientesMap.get(ct.client_id) : null;
+                    contratosMap.set(ct.id, {
+                        ...ct,
+                        _clientName: cli ? cli.name : ''
+                    });
+                });
+            } catch (e) {}
+
+            const docsParaTabela = empresaAtivaId === 'all'
+                ? docsCompetencia
+                : docsCompetencia.filter(d => d.company_id === empresaAtivaId);
+
+            if (resumoContagemTributosDocs) {
+                resumoContagemTributosDocs.textContent = `${docsParaTabela.length} lançamento${docsParaTabela.length !== 1 ? 's' : ''}`;
+            }
+
+            if (docsParaTabela.length === 0) {
+                if (listaDocumentosTributosBody) {
+                    listaDocumentosTributosBody.innerHTML = `
+                        <tr>
+                            <td colspan="13" style="text-align: center; color: var(--text-muted); padding: 32px;">
+                                Nenhum faturamento emitido nesta competência para a seleção atual.
+                            </td>
+                        </tr>
+                    `;
+                }
+                if (tfootDocumentosTributos) tfootDocumentosTributos.innerHTML = '';
+            } else {
+                let somaBruto = 0n;
+                let somaPis = 0n;
+                let somaCofins = 0n;
+                let somaIss = 0n;
+                let somaIrpj = 0n;
+                let somaCsll = 0n;
+                let somaTributos = 0n;
+                let somaRetencoes = 0n;
+                let somaSaldo = 0n;
+
+                const rowsDocs = docsParaTabela.map(doc => {
+                    const emp = companiesMap.get(doc.company_id);
+                    const isLP = emp && emp.tax_regime === 'lucro_presumido';
+                    const taxDetails = doc.tax_details || window.BpoFiscalUtils.extrairTaxDetails(doc);
+                    const itemType = (taxDetails && taxDetails.item_type) || 'servico';
+                    const aliqIss = (taxDetails && taxDetails.iss_aliq !== undefined && taxDetails.iss_aliq !== null) ? taxDetails.iss_aliq : 5.0;
+                    const issRetido = !!(taxDetails && taxDetails.iss_retained);
+
+                    const brutoCents = window.BpoMoney.toCents(doc.gross_amount);
+                    const retCents = window.BpoMoney.toCents(doc.retentions);
+                    const brutoNum = Number(brutoCents) / 100;
+
+                    let pisCents = 0n;
+                    let cofinsCents = 0n;
+                    let issCents = 0n;
+                    let irpjCents = 0n;
+                    let csllCents = 0n;
+                    let tributosCents = 0n;
+                    let saldoCents = 0n;
+
+                    if (isLP) {
+                        pisCents = BigInt(Math.round(brutoNum * 0.0065 * 100));
+                        cofinsCents = BigInt(Math.round(brutoNum * 0.03 * 100));
+                        if (itemType === 'servico') {
+                            issCents = BigInt(Math.round(brutoNum * (aliqIss / 100) * 100));
+                            irpjCents = BigInt(Math.round(brutoNum * 0.32 * 0.15 * 100));
+                            csllCents = BigInt(Math.round(brutoNum * 0.32 * 0.09 * 100));
+                        } else {
+                            issCents = 0n;
+                            irpjCents = BigInt(Math.round(brutoNum * 0.08 * 0.15 * 100));
+                            csllCents = BigInt(Math.round(brutoNum * 0.12 * 0.09 * 100));
+                        }
+                        tributosCents = pisCents + cofinsCents + issCents + irpjCents + csllCents;
+                        const issRecolher = issRetido ? 0n : issCents;
+                        const aRecolherBase = pisCents + cofinsCents + issRecolher + irpjCents + csllCents;
+                        saldoCents = aRecolherBase > retCents ? (aRecolherBase - retCents) : 0n;
+                    } else {
+                        // Simples Nacional
+                        const previaSN = window.BpoTaxEngine.apurarSimplesNacional(360000, brutoNum, 'anexo_iii', {
+                            issRetidoTomador: issRetido,
+                            aliquotaRetencaoInformada: aliqIss
+                        });
+                        const comp = previaSN.componentes || {};
+                        pisCents = BigInt(Math.round((comp.pis || 0) * 100));
+                        cofinsCents = BigInt(Math.round((comp.cofins || 0) * 100));
+                        issCents = BigInt(Math.round((comp.iss || 0) * 100));
+                        irpjCents = BigInt(Math.round((comp.irpj || 0) * 100));
+                        csllCents = BigInt(Math.round((comp.csll || 0) * 100));
+                        tributosCents = BigInt(Math.round((previaSN.valorDas || 0) * 100));
+                        saldoCents = tributosCents;
+                    }
+
+                    somaBruto += brutoCents;
+                    somaPis += pisCents;
+                    somaCofins += cofinsCents;
+                    somaIss += issCents;
+                    somaIrpj += irpjCents;
+                    somaCsll += csllCents;
+                    somaTributos += tributosCents;
+                    somaRetencoes += retCents;
+                    somaSaldo += saldoCents;
+
+                    const ctr = contratosMap.get(doc.contract_id);
+                    const cliDesc = (ctr && ctr._clientName) 
+                        ? escapeHtml(ctr._clientName)
+                        : (ctr ? escapeHtml(ctr.name) : '<span style="color:var(--text-muted);font-size:0.78rem;">Avulso</span>');
+
+                    const issLabel = issRetido
+                        ? `<span style="color:var(--color-danger); font-size:0.8rem;" title="Retido na Fonte pelo Tomador">${window.BpoMoney.formatBRL(issCents)} <span style="font-size:0.68rem; padding:1px 4px; border-radius:3px; background:rgba(239,68,68,0.15);">Retido</span></span>`
+                        : `<span style="color:#fff;">${window.BpoMoney.formatBRL(issCents)}</span>`;
+
+                    const empBadge = emp 
+                        ? `<span class="badge ${isLP ? 'badge-primary' : 'badge-success'}" style="font-size:0.75rem;">${escapeHtml(emp.trade_name || emp.name)}</span>`
+                        : '-';
+
+                    return `
+                        <tr>
+                            <td style="font-weight:600; color:#fff;">
+                                ${escapeHtml(doc.document_number)}
+                                <span style="font-size:0.72rem; color:var(--text-muted); display:block;">${escapeHtml((doc.document_type || 'nfse').toUpperCase())} • ${escapeHtml(itemType)}</span>
+                            </td>
+                            <td>${empBadge}</td>
+                            <td>${escapeHtml(formatarData(doc.issue_date))}</td>
+                            <td>${cliDesc}</td>
+                            <td style="text-align:right; font-weight:600; color:#fff;">${window.BpoMoney.formatBRL(brutoCents)}</td>
+                            <td style="text-align:right; color:#93c5fd;">${window.BpoMoney.formatBRL(pisCents)}</td>
+                            <td style="text-align:right; color:#93c5fd;">${window.BpoMoney.formatBRL(cofinsCents)}</td>
+                            <td style="text-align:right;">${issLabel}</td>
+                            <td style="text-align:right; color:#f59e0b;">${window.BpoMoney.formatBRL(irpjCents)}</td>
+                            <td style="text-align:right; color:#f59e0b;">${window.BpoMoney.formatBRL(csllCents)}</td>
+                            <td style="text-align:right; font-weight:700; color:#f59e0b;">${window.BpoMoney.formatBRL(tributosCents)}</td>
+                            <td style="text-align:right; color:var(--color-danger);">${window.BpoMoney.formatBRL(retCents)}</td>
+                            <td style="text-align:right; font-weight:700; color:var(--color-success);">${window.BpoMoney.formatBRL(saldoCents)}</td>
+                        </tr>
+                    `;
+                }).join('');
+
+                if (listaDocumentosTributosBody) listaDocumentosTributosBody.innerHTML = rowsDocs;
+
+                if (tfootDocumentosTributos) {
+                    tfootDocumentosTributos.innerHTML = `
+                        <tr>
+                            <td colspan="4" style="text-align:left; color:#fff;">Totais dos Lançamentos da Competência:</td>
+                            <td style="text-align:right; color:#fff;">${window.BpoMoney.formatBRL(somaBruto)}</td>
+                            <td style="text-align:right; color:#93c5fd;">${window.BpoMoney.formatBRL(somaPis)}</td>
+                            <td style="text-align:right; color:#93c5fd;">${window.BpoMoney.formatBRL(somaCofins)}</td>
+                            <td style="text-align:right; color:#fff;">${window.BpoMoney.formatBRL(somaIss)}</td>
+                            <td style="text-align:right; color:#f59e0b;">${window.BpoMoney.formatBRL(somaIrpj)}</td>
+                            <td style="text-align:right; color:#f59e0b;">${window.BpoMoney.formatBRL(somaCsll)}</td>
+                            <td style="text-align:right; color:#f59e0b;">${window.BpoMoney.formatBRL(somaTributos)}</td>
+                            <td style="text-align:right; color:var(--color-danger);">${window.BpoMoney.formatBRL(somaRetencoes)}</td>
+                            <td style="text-align:right; color:var(--color-success);">${window.BpoMoney.formatBRL(somaSaldo)}</td>
+                        </tr>
+                    `;
+                }
+            }
+
+            // =================================================================
             // PAINEL TRIMESTRAL ESPECIAL — MAR BRASIL (LUCRO PRESUMIDO)
             // =================================================================
             await renderizarPainelTrimestralMarBrasil();
@@ -394,5 +562,12 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 </div>
             </div>
         `;
+    }
+
+    function formatarData(dataStr) {
+        if (!dataStr) return '-';
+        const partes = dataStr.split('T')[0].split('-');
+        if (partes.length < 3) return dataStr;
+        return `${partes[2]}/${partes[1]}/${partes[0]}`;
     }
 })();
