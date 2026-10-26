@@ -822,7 +822,8 @@
             net_amount: window.BpoMoney.toDecimalString(liqCents),
             description: descricao,
             contract_id: contratoId,
-            status: dataRecebimento ? 'paid' : 'emitted'
+            status: dataRecebimento ? 'paid' : 'emitted',
+            tax_details: taxDetailsPayload  // IRRF, INSS, ISS alíquota e ISS retido
             // payment_date não existe em billing_documents — recebimentos ficam na tabela receipts
         };
 
