@@ -161,15 +161,32 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
 
         // Novo Contrato
         document.getElementById('btnNovoContrato').addEventListener('click', () => {
-            if (empresaAtivaId === 'all' && empresas.length > 0) {
-                // Se estiver no consolidado, solicita escolher para qual empresa ou usa a primeira
-            }
-            const targetEmpresa = empresaAtivaId !== 'all' ? companiesMap.get(empresaAtivaId) : empresas[0];
-            if (!targetEmpresa) { alert('Cadastre ao menos uma empresa primeiro.'); return; }
+            if (empresas.length === 0) { alert('Cadastre ao menos uma empresa primeiro.'); return; }
 
             document.getElementById('contratoId').value = '';
-            document.getElementById('modalContratoTitulo').textContent = `Cadastrar Contrato (${targetEmpresa.name})`;
+            document.getElementById('modalContratoTitulo').textContent = 'Cadastrar Novo Contrato';
             document.getElementById('formContrato').reset();
+
+            // Popula seletor de empresa do contrato
+            const selContratoEmp = document.getElementById('contratoEmpresaId');
+            if (selContratoEmp) {
+                selContratoEmp.innerHTML = '<option value="">Selecione a empresa...</option>';
+                empresas.forEach(emp => {
+                    const opt = document.createElement('option');
+                    opt.value = emp.id;
+                    opt.textContent = `${emp.name} (${emp.trade_name || ''})`;
+                    selContratoEmp.appendChild(opt);
+                });
+                if (empresaAtivaId !== 'all') {
+                    selContratoEmp.value = empresaAtivaId;
+                } else if (empresas.length > 0) {
+                    selContratoEmp.value = empresas[0].id;
+                }
+            }
+
+            const inpInicio = document.getElementById('contratoInicio');
+            if (inpInicio) inpInicio.value = new Date().toISOString().slice(0, 10);
+
             document.getElementById('contratoTipo').value = 'B2B';
             document.getElementById('contratoTipoCliente').value = 'PJ';
             if (lblDocumento) lblDocumento.textContent = 'CNPJ do Cliente';
@@ -177,6 +194,41 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             document.getElementById('btnExcluirContratoModal').style.display = 'none';
             abrirModal(modalContrato);
         });
+
+        // Botões de exclusão nos modais
+        const btnExcluirDocModal = document.getElementById('btnExcluirDocumentoModal');
+        if (btnExcluirDocModal) {
+            btnExcluirDocModal.addEventListener('click', () => {
+                const docId = document.getElementById('docId').value;
+                if (docId) excluirDocumento(docId);
+            });
+        }
+
+        const btnExcluirCtrModal = document.getElementById('btnExcluirContratoModal');
+        if (btnExcluirCtrModal) {
+            btnExcluirCtrModal.addEventListener('click', () => {
+                const ctrId = document.getElementById('contratoId').value;
+                if (ctrId) excluirContrato(ctrId);
+            });
+        }
+
+        const btnExcluirEmpModal = document.getElementById('btnExcluirEmpresa');
+        if (btnExcluirEmpModal) {
+            btnExcluirEmpModal.addEventListener('click', async () => {
+                const empId = document.getElementById('empresaId').value;
+                if (!empId) return;
+                const emp = companiesMap.get(empId);
+                if (!confirm(`Deseja realmente excluir a empresa "${emp ? emp.name : empId}"?`)) return;
+                try {
+                    await window.BpoSupabase.request(`companies?id=eq.${empId}`, { method: 'DELETE' });
+                    fecharModais();
+                    await carregarEmpresas();
+                    alert('Empresa excluída com sucesso!');
+                } catch (err) {
+                    alert('Erro ao excluir empresa: ' + err.message);
+                }
+            });
+        }
 
         // Form submits (salvamento normal do operador, sem chamadas automáticas)
         document.getElementById('formNovaEmpresa').addEventListener('submit', salvarNovaEmpresa);
@@ -256,11 +308,14 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
 
             documentos = docsDb.map(d => {
                 const taxDetails = window.BpoFiscalUtils.extrairTaxDetails(d);
+                const recDate = receiptsMap.get(d.id) || (taxDetails && taxDetails.payment_date) || d.payment_date || null;
+                const statusEfetivo = d.status === 'cancelled' ? 'cancelled' : (recDate ? 'paid' : d.status);
                 return {
                     ...d,
                     tax_details: taxDetails,
                     _descricaoLimpa: window.BpoFiscalUtils.limparDescricao(d.description),
-                    payment_date: d.payment_date || receiptsMap.get(d.id) || null
+                    payment_date: recDate,
+                    status: statusEfetivo
                 };
             });
 
@@ -345,7 +400,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             brutoTotal += bCents;
             retencoesTotal += rCents;
 
-            if (doc.status === 'paid') {
+            if (doc.status === 'paid' || doc.payment_date) {
                 recebidoTotal += lCents;
             }
         });
@@ -447,6 +502,9 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                                 Baixa
                             </button>
                         ` : ''}
+                        <button class="btn btn-danger btn-sm btn-excluir-documento" data-id="${escapeHtml(doc.id)}" title="Excluir Lançamento" style="padding: 4px 8px; margin-left: 4px;">
+                            🗑️
+                        </button>
                     </td>
                 </tr>
             `;
@@ -461,6 +519,12 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         listaDocumentosBody.querySelectorAll('.btn-dar-baixa').forEach(btn => {
             btn.addEventListener('click', () => {
                 window.abrirModalRecebimento(btn.dataset.id, btn.dataset.numero, btn.dataset.liquido);
+            });
+        });
+
+        listaDocumentosBody.querySelectorAll('.btn-excluir-documento').forEach(btn => {
+            btn.addEventListener('click', () => {
+                excluirDocumento(btn.dataset.id);
             });
         });
     }
@@ -502,8 +566,9 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     <td>${escapeHtml(c.billing_frequency)}</td>
                     <td>${c.commission_eligible ? 'Sim' : 'Não'}</td>
                     <td>${statusBadge}</td>
-                    <td>
+                    <td style="white-space: nowrap;">
                         <button class="btn btn-primary btn-sm btn-editar-contrato" data-id="${escapeHtml(c.id)}">Editar</button>
+                        <button class="btn btn-danger btn-sm btn-excluir-contrato" data-id="${escapeHtml(c.id)}" title="Excluir Contrato" style="padding: 4px 8px; margin-left: 4px;">🗑️</button>
                     </td>
                 </tr>
             `;
@@ -511,6 +576,10 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
 
         listaContratosBody.querySelectorAll('.btn-editar-contrato').forEach(btn => {
             btn.addEventListener('click', () => window.editarContrato(btn.dataset.id));
+        });
+
+        listaContratosBody.querySelectorAll('.btn-excluir-contrato').forEach(btn => {
+            btn.addEventListener('click', () => excluirContrato(btn.dataset.id));
         });
     }
 
@@ -949,6 +1018,21 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         document.getElementById('modalContratoTitulo').textContent = `Editar Contrato (${targetEmpresa ? targetEmpresa.name : ''})`;
         document.getElementById('formContrato').reset();
 
+        const selContratoEmp = document.getElementById('contratoEmpresaId');
+        if (selContratoEmp) {
+            selContratoEmp.innerHTML = '<option value="">Selecione a empresa...</option>';
+            empresas.forEach(emp => {
+                const opt = document.createElement('option');
+                opt.value = emp.id;
+                opt.textContent = `${emp.name} (${emp.trade_name || ''})`;
+                selContratoEmp.appendChild(opt);
+            });
+            selContratoEmp.value = c.company_id || '';
+        }
+
+        const inpInicio = document.getElementById('contratoInicio');
+        if (inpInicio) inpInicio.value = c.start_date || '';
+
         document.getElementById('contratoCodigo').value = c.code || '';
         document.getElementById('contratoNome').value = c.name || '';
         document.getElementById('contratoTipo').value = c.contract_type || 'B2B';
@@ -956,8 +1040,11 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         document.getElementById('contratoCliente').value = c._clientName || '';
         if (inpDocumento) inpDocumento.value = c._clientDoc || '';
         if (lblDocumento) lblDocumento.textContent = (c._clientType === 'PF') ? 'CPF do Cliente' : 'CNPJ do Cliente';
-        document.getElementById('contratoValorBase').value = window.BpoMoney.toDecimalString(window.BpoMoney.toCents(c.reference_value));
-        document.getElementById('contratoPeriodicidade').value = c.billing_frequency || 'mensal';
+        
+        const elVal = document.getElementById('contratoValorBase') || document.getElementById('contratoValor');
+        if (elVal) elVal.value = window.BpoMoney.toDecimalString(window.BpoMoney.toCents(c.reference_value));
+
+        document.getElementById('contratoPeriodicidade').value = c.billing_frequency || 'monthly';
         document.getElementById('contratoComissao').checked = !!c.commission_eligible;
 
         document.getElementById('btnExcluirContratoModal').style.display = 'inline-flex';
@@ -1008,7 +1095,8 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             irpj_aliq: parseFloat(document.getElementById('inpAliqIrpj').value) || 0,
             irpj_valor: document.getElementById('inpValorIrpj').value,
             csll_aliq: parseFloat(document.getElementById('inpAliqCsll').value) || 0,
-            csll_valor: document.getElementById('inpValorCsll').value
+            csll_valor: document.getElementById('inpValorCsll').value,
+            payment_date: dataRecebimento || null
         };
 
         const descricaoComMeta = window.BpoFiscalUtils.anexarTaxDetailsNaDescricao(descricao, taxDetailsPayload);
@@ -1047,23 +1135,36 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 savedDoc = Array.isArray(res) ? res[0] : null;
             }
 
-            // Se houver data de recebimento, grava na tabela receipts
-            if (dataRecebimento && savedDoc && savedDoc.id) {
+            // Sincroniza tabela receipts se houver dataRecebimento (SEM A COLUNA 'amount')
+            const idDocSalvo = (savedDoc && savedDoc.id) ? savedDoc.id : docId;
+            if (dataRecebimento && idDocSalvo) {
                 try {
-                    await window.BpoSupabase.request('receipts', {
-                        method: 'POST',
-                        body: JSON.stringify({
-                            company_id: companyId,
-                            external_id: savedDoc.id,
-                            receipt_date: dataRecebimento,
-                            gross_amount: window.BpoMoney.toDecimalString(liqCents),
-                            amount: window.BpoMoney.toDecimalString(liqCents),
-                            account: 'conta_padrao'
-                        })
-                    });
+                    const existingRecs = await window.BpoSupabase.request(`receipts?external_id=eq.${idDocSalvo}`, { method: 'GET' });
+                    const recPayload = {
+                        company_id: companyId,
+                        external_id: idDocSalvo,
+                        receipt_date: dataRecebimento,
+                        gross_amount: window.BpoMoney.toDecimalString(liqCents),
+                        account: 'conta_padrao'
+                    };
+                    if (existingRecs && existingRecs.length > 0) {
+                        await window.BpoSupabase.request(`receipts?id=eq.${existingRecs[0].id}`, {
+                            method: 'PATCH',
+                            body: JSON.stringify(recPayload)
+                        });
+                    } else {
+                        await window.BpoSupabase.request('receipts', {
+                            method: 'POST',
+                            body: JSON.stringify(recPayload)
+                        });
+                    }
                 } catch (recErr) {
-                    console.warn('Aviso: não foi possível gravar recebimento na tabela receipts:', recErr.message);
+                    console.warn('Aviso: não foi possível sincronizar recebimento na tabela receipts:', recErr.message);
                 }
+            } else if (!dataRecebimento && docId) {
+                try {
+                    await window.BpoSupabase.request(`receipts?external_id=eq.${docId}`, { method: 'DELETE' });
+                } catch (_) {}
             }
 
             fecharModais();
@@ -1133,24 +1234,45 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         if (!doc) return;
 
         try {
-            // 1. Atualiza status do documento (sem payment_date — coluna inexistente)
+            // 1. Atualiza status e anexa payment_date nos metadados fiscais da descrição
+            let novaDescricao = doc.description || '';
+            const taxDetails = doc.tax_details || window.BpoFiscalUtils.extrairTaxDetails(doc) || {};
+            taxDetails.payment_date = recData;
+            novaDescricao = window.BpoFiscalUtils.anexarTaxDetailsNaDescricao(
+                window.BpoFiscalUtils.limparDescricao(novaDescricao),
+                taxDetails
+            );
+
             await window.BpoSupabase.request(`billing_documents?id=eq.${docId}`, {
                 method: 'PATCH',
-                body: JSON.stringify({ status: 'paid' })
-            });
-
-            // 2. Grava o recebimento na tabela receipts
-            await window.BpoSupabase.request('receipts', {
-                method: 'POST',
                 body: JSON.stringify({
-                    company_id: doc.company_id,
-                    external_id: docId,
-                    receipt_date: recData,
-                    gross_amount: window.BpoMoney.toDecimalString(recValorCents),
-                    amount: window.BpoMoney.toDecimalString(recValorCents),
-                    account: 'conta_padrao'
+                    status: 'paid',
+                    description: novaDescricao
                 })
             });
+
+            // 2. Grava ou atualiza na tabela receipts (SEM A COLUNA 'amount')
+            const existingRecs = await window.BpoSupabase.request(`receipts?external_id=eq.${docId}`, { method: 'GET' });
+            const contaBancaria = document.getElementById('recConta')?.value || 'conta_padrao';
+            const recPayload = {
+                company_id: doc.company_id,
+                external_id: docId,
+                receipt_date: recData,
+                gross_amount: window.BpoMoney.toDecimalString(recValorCents),
+                account: contaBancaria
+            };
+
+            if (existingRecs && existingRecs.length > 0) {
+                await window.BpoSupabase.request(`receipts?id=eq.${existingRecs[0].id}`, {
+                    method: 'PATCH',
+                    body: JSON.stringify(recPayload)
+                });
+            } else {
+                await window.BpoSupabase.request('receipts', {
+                    method: 'POST',
+                    body: JSON.stringify(recPayload)
+                });
+            }
 
             fecharModais();
             await carregarDadosCompetencia();
@@ -1169,55 +1291,102 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         const clienteNome = document.getElementById('contratoCliente').value.trim();
         const clienteTipo = document.getElementById('contratoTipoCliente').value;
         const clienteDoc = document.getElementById('contratoDocumento').value.trim();
-        const valorBaseCents = window.BpoMoney.toCents(document.getElementById('contratoValorBase').value);
+        
+        const elValor = document.getElementById('contratoValorBase') || document.getElementById('contratoValor');
+        const valorBaseCents = window.BpoMoney.toCents(elValor ? elValor.value : '0');
+
         const periodicidade = document.getElementById('contratoPeriodicidade').value;
         const elegivelComissao = document.getElementById('contratoComissao').checked;
+        const dataInicio = document.getElementById('contratoInicio')?.value || new Date().toISOString().slice(0, 10);
 
-        const targetEmpresa = empresaAtivaId !== 'all' ? companiesMap.get(empresaAtivaId) : empresas[0];
+        const selContratoEmp = document.getElementById('contratoEmpresaId');
+        let targetEmpresaId = selContratoEmp ? selContratoEmp.value : null;
+        if (!targetEmpresaId) {
+            targetEmpresaId = empresaAtivaId !== 'all' ? empresaAtivaId : (empresas[0] ? empresas[0].id : null);
+        }
+
+        if (!targetEmpresaId) {
+            alert('Selecione uma empresa emitente para o contrato.');
+            return;
+        }
 
         try {
             let clientId = null;
             if (clienteNome) {
-                const payloadPessoa = {
-                    company_id: targetEmpresa.id,
-                    name: clienteNome,
-                    document_type: clienteTipo === 'PF' ? 'CPF' : 'CNPJ',
-                    document: clienteDoc,
-                    cpf: clienteTipo === 'PF' ? clienteDoc : null,
-                    cnpj: clienteTipo === 'PJ' ? clienteDoc : null,
-                    is_client: true,
-                    active: true
-                };
+                // Tenta reaproveitar cliente existente com o mesmo nome na mesma empresa
+                let existingPeople = [];
+                try {
+                    const q = `people?company_id=eq.${targetEmpresaId}&name=eq.${encodeURIComponent(clienteNome)}`;
+                    existingPeople = await window.BpoSupabase.request(q, { method: 'GET' });
+                } catch (_) {}
 
-                const resPessoa = await window.BpoSupabase.request('people', {
-                    method: 'POST',
-                    body: JSON.stringify(payloadPessoa)
-                });
-                if (resPessoa && resPessoa.length > 0) clientId = resPessoa[0].id;
+                if (existingPeople && existingPeople.length > 0) {
+                    clientId = existingPeople[0].id;
+                } else {
+                    const payloadPessoa = {
+                        company_id: targetEmpresaId,
+                        name: clienteNome,
+                        document_type: clienteTipo === 'PF' ? 'CPF' : 'CNPJ',
+                        document: clienteDoc || null,
+                        person_type: 'client',
+                        active: true
+                    };
+
+                    try {
+                        const resPessoa = await window.BpoSupabase.request('people', {
+                            method: 'POST',
+                            body: JSON.stringify(payloadPessoa)
+                        });
+                        if (resPessoa && resPessoa.length > 0) clientId = resPessoa[0].id;
+                    } catch (pErr) {
+                        console.warn('Aviso ao cadastrar cliente em people:', pErr.message);
+                    }
+                }
             }
 
             const payloadContrato = {
-                company_id: targetEmpresa.id,
+                company_id: targetEmpresaId,
                 code: codigo,
                 name: nome,
-                contract_type: tipo,
+                object: nome,
                 client_id: clientId,
+                start_date: dataInicio,
                 reference_value: window.BpoMoney.toDecimalString(valorBaseCents),
                 billing_frequency: periodicidade,
                 commission_eligible: elegivelComissao,
                 status: 'active'
             };
 
-            if (idExistente) {
-                await window.BpoSupabase.request(`contracts?id=eq.${idExistente}`, {
-                    method: 'PATCH',
-                    body: JSON.stringify(payloadContrato)
-                });
-            } else {
-                await window.BpoSupabase.request('contracts', {
-                    method: 'POST',
-                    body: JSON.stringify(payloadContrato)
-                });
+            // Tenta salvar incluindo contract_type com fallback seguro
+            try {
+                const payloadComTipo = { ...payloadContrato, contract_type: tipo };
+                if (idExistente) {
+                    await window.BpoSupabase.request(`contracts?id=eq.${idExistente}`, {
+                        method: 'PATCH',
+                        body: JSON.stringify(payloadComTipo)
+                    });
+                } else {
+                    await window.BpoSupabase.request('contracts', {
+                        method: 'POST',
+                        body: JSON.stringify(payloadComTipo)
+                    });
+                }
+            } catch (errTipo) {
+                if (errTipo.message && errTipo.message.includes('contract_type')) {
+                    if (idExistente) {
+                        await window.BpoSupabase.request(`contracts?id=eq.${idExistente}`, {
+                            method: 'PATCH',
+                            body: JSON.stringify(payloadContrato)
+                        });
+                    } else {
+                        await window.BpoSupabase.request('contracts', {
+                            method: 'POST',
+                            body: JSON.stringify(payloadContrato)
+                        });
+                    }
+                } else {
+                    throw errTipo;
+                }
             }
 
             fecharModais();
@@ -1227,4 +1396,47 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             alert('Erro ao salvar contrato: ' + err.message);
         }
     }
+
+    async function excluirDocumento(docId) {
+        const doc = documentos.find(d => d.id === docId);
+        const numero = doc ? doc.document_number : 'selecionado';
+        if (!confirm(`Deseja realmente excluir o lançamento Nº ${numero}? Esta operação não pode ser desfeita.`)) {
+            return;
+        }
+
+        try {
+            // Remove recibos vinculados se existirem
+            try {
+                await window.BpoSupabase.request(`receipts?external_id=eq.${docId}`, { method: 'DELETE' });
+            } catch (_) {}
+
+            // Remove o documento
+            await window.BpoSupabase.request(`billing_documents?id=eq.${docId}`, { method: 'DELETE' });
+
+            fecharModais();
+            await carregarDadosCompetencia();
+            alert('Lançamento excluído com sucesso!');
+        } catch (err) {
+            alert('Erro ao excluir lançamento: ' + err.message);
+        }
+    }
+    window.excluirDocumento = excluirDocumento;
+
+    async function excluirContrato(contratoId) {
+        const c = contratos.find(x => x.id === contratoId);
+        const nome = c ? c.name : 'selecionado';
+        if (!confirm(`Deseja realmente excluir o contrato "${nome}"?`)) {
+            return;
+        }
+
+        try {
+            await window.BpoSupabase.request(`contracts?id=eq.${contratoId}`, { method: 'DELETE' });
+            fecharModais();
+            await carregarDadosCompetencia();
+            alert('Contrato excluído com sucesso!');
+        } catch (err) {
+            alert('Erro ao excluir contrato: ' + err.message);
+        }
+    }
+    window.excluirContrato = excluirContrato;
 })();

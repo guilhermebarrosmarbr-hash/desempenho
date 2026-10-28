@@ -499,6 +499,16 @@
 
             <form id="formContrato">
                 <input type="hidden" id="contratoId" value="">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Empresa Emitente *</label>
+                        <select id="contratoEmpresaId" required class="select-control" style="width: 100%;"></select>
+                    </div>
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Data de Início</label>
+                        <input type="date" id="contratoInicio" class="select-control" style="width: 100%; color-scheme: dark;">
+                    </div>
+                </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr 2fr; gap: 16px; margin-bottom: 16px;">
                     <div>
                         <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Código *</label>
@@ -521,7 +531,7 @@
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
                     <div>
                         <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Valor Base Mensal (R$) *</label>
-                        <input type="text" id="contratoValor" required class="select-control" style="width: 100%;" placeholder="10.000,00">
+                        <input type="text" id="contratoValorBase" required class="select-control" style="width: 100%;" placeholder="10.000,00">
                     </div>
                     <div>
                         <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Periodicidade</label>
@@ -552,12 +562,7 @@
                     </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1fr; gap: 16px; margin-bottom: 16px;">
-                    <div>
-                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Data de Início</label>
-                        <input type="date" id="contratoInicio" class="select-control" style="width: 100%; color-scheme: dark;">
-                    </div>
-                </div>
+
 
                 <div style="margin-bottom: 16px;">
                     <label style="font-size: 0.85rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px; cursor: pointer;">
