@@ -39,6 +39,8 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
     let competenciaAtiva = '';
     let contratoFiltro = '';
     let situacaoFiltro = '';
+    let ordenacaoColuna = '';
+    let ordenacaoDirecao = 'asc'; // 'asc' ou 'desc'
     let documentos = [];
     let contratos = [];
     let companiesMap = new Map();
@@ -111,6 +113,34 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 renderizarMetricas();
             });
         }
+
+        // Ordenação por colunas da tabela de faturamento (Ponto 02)
+        document.querySelectorAll('#tabelaDocumentos .th-sort').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const col = btn.dataset.col;
+                if (!col) return;
+
+                if (ordenacaoColuna === col) {
+                    ordenacaoDirecao = ordenacaoDirecao === 'asc' ? 'desc' : 'asc';
+                } else {
+                    ordenacaoColuna = col;
+                    ordenacaoDirecao = 'asc';
+                }
+
+                // Atualiza estado visual de todos os botões de cabeçalho
+                document.querySelectorAll('#tabelaDocumentos .th-sort').forEach(b => {
+                    if (b.dataset.col === ordenacaoColuna) {
+                        b.classList.add('ativo');
+                        b.setAttribute('data-dir', ordenacaoDirecao);
+                    } else {
+                        b.classList.remove('ativo');
+                        b.removeAttribute('data-dir');
+                    }
+                });
+
+                renderizarDocumentos();
+            });
+        });
 
         // Botões de Ação
         document.getElementById('btnNovaEmpresa').addEventListener('click', () => {
@@ -344,6 +374,9 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
 
                 const saldoRestanteCents = liqCents > totalRecebidoCents ? (liqCents - totalRecebidoCents) : 0n;
 
+                const extrasCents = (taxDetails && taxDetails.extras) ? window.BpoMoney.toCents(taxDetails.extras) : 0n;
+                const discountsCents = d.discounts ? window.BpoMoney.toCents(d.discounts) : ((taxDetails && taxDetails.desconto) ? window.BpoMoney.toCents(taxDetails.desconto) : 0n);
+
                 return {
                     ...d,
                     tax_details: taxDetails,
@@ -352,7 +385,9 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     status: statusEfetivo,
                     _receipts: docRecs,
                     _totalRecebidoCents: totalRecebidoCents,
-                    _saldoRestanteCents: saldoRestanteCents
+                    _saldoRestanteCents: saldoRestanteCents,
+                    _extrasCents: extrasCents,
+                    _discountsCents: discountsCents
                 };
             });
 
@@ -415,15 +450,87 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
     }
 
     function getDocumentosFiltrados() {
-        return documentos.filter(doc => {
+        let lista = documentos.filter(doc => {
             if (contratoFiltro && doc.contract_id !== contratoFiltro) return false;
             if (situacaoFiltro && doc.status !== situacaoFiltro) return false;
             return true;
         });
+
+        if (ordenacaoColuna) {
+            lista.sort((a, b) => {
+                let valA = '';
+                let valB = '';
+
+                switch (ordenacaoColuna) {
+                    case 'empresa': {
+                        const empA = companiesMap.get(a.company_id);
+                        const empB = companiesMap.get(b.company_id);
+                        valA = (empA?.trade_name || empA?.name || '').toLowerCase();
+                        valB = (empB?.trade_name || empB?.name || '').toLowerCase();
+                        break;
+                    }
+                    case 'numero': {
+                        valA = (a.document_number || '').toLowerCase();
+                        valB = (b.document_number || '').toLowerCase();
+                        break;
+                    }
+                    case 'cliente': {
+                        const cA = contratos.find(c => c.id === a.contract_id);
+                        const cB = contratos.find(c => c.id === b.contract_id);
+                        valA = (cA?._clientName || cA?.name || '').toLowerCase();
+                        valB = (cB?._clientName || cB?.name || '').toLowerCase();
+                        break;
+                    }
+                    case 'emissao': {
+                        valA = a.issue_date || '';
+                        valB = b.issue_date || '';
+                        break;
+                    }
+                    case 'vencimento': {
+                        valA = a.due_date || '';
+                        valB = b.due_date || '';
+                        break;
+                    }
+                    case 'recebimento': {
+                        valA = a.payment_date || '';
+                        valB = b.payment_date || '';
+                        break;
+                    }
+                    case 'bruto': {
+                        const cA = window.BpoMoney.toCents(a.gross_amount);
+                        const cB = window.BpoMoney.toCents(b.gross_amount);
+                        return ordenacaoDirecao === 'asc' ? (cA < cB ? -1 : (cA > cB ? 1 : 0)) : (cA > cB ? -1 : (cA < cB ? 1 : 0));
+                    }
+                    case 'retencoes': {
+                        const cA = window.BpoMoney.toCents(a.retentions);
+                        const cB = window.BpoMoney.toCents(b.retentions);
+                        return ordenacaoDirecao === 'asc' ? (cA < cB ? -1 : (cA > cB ? 1 : 0)) : (cA > cB ? -1 : (cA < cB ? 1 : 0));
+                    }
+                    case 'liquido': {
+                        const cA = window.BpoMoney.toCents(a.net_amount);
+                        const cB = window.BpoMoney.toCents(b.net_amount);
+                        return ordenacaoDirecao === 'asc' ? (cA < cB ? -1 : (cA > cB ? 1 : 0)) : (cA > cB ? -1 : (cA < cB ? 1 : 0));
+                    }
+                    case 'status': {
+                        valA = (a.status || '').toLowerCase();
+                        valB = (b.status || '').toLowerCase();
+                        break;
+                    }
+                    default:
+                        return 0;
+                }
+
+                if (valA < valB) return ordenacaoDirecao === 'asc' ? -1 : 1;
+                if (valA > valB) return ordenacaoDirecao === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+
+        return lista;
     }
 
     function renderizarMetricas() {
-        let brutoTotal = 0n;
+        let faturamentoTotal = 0n;
         let retencoesTotal = 0n;
         let recebidoTotal = 0n;
 
@@ -433,8 +540,12 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             const bCents = window.BpoMoney.toCents(doc.gross_amount);
             const rCents = window.BpoMoney.toCents(doc.retentions);
             const lCents = window.BpoMoney.toCents(doc.net_amount);
+            const dCents = doc._discountsCents !== undefined ? doc._discountsCents : (doc.discounts ? window.BpoMoney.toCents(doc.discounts) : 0n);
+            const eCents = doc._extrasCents !== undefined ? doc._extrasCents : 0n;
 
-            brutoTotal += bCents;
+            // Faturamento Total = Valor Base - Descontos + Extras (não considera multas nem juros)
+            const fatDoc = (bCents + eCents) > dCents ? (bCents + eCents - dCents) : 0n;
+            faturamentoTotal += fatDoc;
             retencoesTotal += rCents;
 
             if (doc._totalRecebidoCents !== undefined && doc._totalRecebidoCents > 0n) {
@@ -444,10 +555,10 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             }
         });
 
-        const liqGeral = brutoTotal - retencoesTotal;
+        const liqGeral = faturamentoTotal > retencoesTotal ? (faturamentoTotal - retencoesTotal) : 0n;
         const aReceber = liqGeral > recebidoTotal ? liqGeral - recebidoTotal : 0n;
 
-        valFaturadoBruto.textContent = window.BpoMoney.formatBRL(brutoTotal);
+        valFaturadoBruto.textContent = window.BpoMoney.formatBRL(faturamentoTotal);
         valRetencoes.textContent = window.BpoMoney.formatBRL(retencoesTotal);
         valTotalRecebido.textContent = window.BpoMoney.formatBRL(recebidoTotal);
         valAReceber.textContent = window.BpoMoney.formatBRL(aReceber);

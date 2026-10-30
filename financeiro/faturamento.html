@@ -8,6 +8,33 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        /* Botões de ordenação nos cabeçalhos da tabela */
+        .th-sort {
+            background: none;
+            border: none;
+            color: inherit;
+            font: inherit;
+            font-size: 0.82rem;
+            font-weight: 600;
+            cursor: pointer;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            white-space: nowrap;
+            user-select: none;
+            opacity: 0.85;
+            transition: opacity 0.15s;
+        }
+        .th-sort:hover { opacity: 1; color: #38bdf8; }
+        .th-sort.ativo { color: #38bdf8; opacity: 1; }
+        .sort-icon { font-size: 0.75rem; color: #64748b; transition: color 0.15s; }
+        .th-sort.ativo .sort-icon { color: #38bdf8; }
+        .th-sort[data-dir="asc"]  .sort-icon::before { content: "▲"; }
+        .th-sort[data-dir="desc"] .sort-icon::before { content: "▼"; }
+        .th-sort:not([data-dir])  .sort-icon::before { content: "⇅"; }
+    </style>
 </head>
 <body>
     <!-- Barra Superior / Seletor de Empresa -->
@@ -63,7 +90,7 @@
         <!-- Métricas Rápidas -->
         <section class="metrics-grid">
             <div class="metric-card primary">
-                <div class="metric-label">Faturamento Emitido (Bruto)</div>
+                <div class="metric-label">Faturamento Total</div>
                 <div class="metric-value" id="valFaturadoBruto">R$ 0,00</div>
             </div>
             <div class="metric-card success">
@@ -107,18 +134,18 @@
             <div class="table-responsive">
                 <table class="table-custom" id="tabelaDocumentos">
                     <thead>
-                        <tr>
-                            <th>Empresa</th>
-                            <th>Número / Série</th>
-                            <th>Contrato / Cliente</th>
-                            <th>Emissão</th>
-                            <th>Vencimento</th>
-                            <th>Recebimento</th>
-                            <th>Valor Bruto</th>
+                        <tr id="theadDocumentos">
+                            <th><button class="th-sort" data-col="empresa">Empresa <span class="sort-icon">⇅</span></button></th>
+                            <th><button class="th-sort" data-col="numero">Número / Série <span class="sort-icon">⇅</span></button></th>
+                            <th><button class="th-sort" data-col="cliente">Contrato / Cliente <span class="sort-icon">⇅</span></button></th>
+                            <th><button class="th-sort" data-col="emissao">Emissão <span class="sort-icon">⇅</span></button></th>
+                            <th><button class="th-sort" data-col="vencimento">Vencimento <span class="sort-icon">⇅</span></button></th>
+                            <th><button class="th-sort" data-col="recebimento">Recebimento <span class="sort-icon">⇅</span></button></th>
+                            <th><button class="th-sort" data-col="bruto">Valor Base <span class="sort-icon">⇅</span></button></th>
                             <th>Impostos Atribuídos</th>
-                            <th>Retenções</th>
-                            <th>Valor Líquido</th>
-                            <th>Situação</th>
+                            <th><button class="th-sort" data-col="retencoes">Retenções <span class="sort-icon">⇅</span></button></th>
+                            <th><button class="th-sort" data-col="liquido">Valor Líquido <span class="sort-icon">⇅</span></button></th>
+                            <th><button class="th-sort" data-col="status">Situação <span class="sort-icon">⇅</span></button></th>
                             <th>Ações</th>
                         </tr>
                     </thead>
@@ -278,7 +305,7 @@
                 <!-- Campos de Valores, Acréscimos e Descontos (Item 01) -->
                 <div style="display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 16px; margin-bottom: 12px;">
                     <div>
-                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Valor Bruto (R$) *</label>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Valor Base (R$) *</label>
                         <input type="text" id="docValorBruto" required class="select-control" style="width: 100%; font-weight: 600;" placeholder="0,00">
                     </div>
                     <div>
