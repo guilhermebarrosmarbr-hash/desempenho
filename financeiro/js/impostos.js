@@ -80,6 +80,27 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         });
     });
 
+    // Repartição padrão aproximada dos 5 anexos do Simples Nacional
+    const REPARTICAO_SIMPLES_PADRAO = {
+        anexo_i:   { irpj: 0.0500, csll: 0.0350, cofins: 0.1274, pis: 0.0276, inss: 0.4150, iss: 0.0000 },
+        anexo_ii:  { irpj: 0.0500, csll: 0.0350, cofins: 0.1274, pis: 0.0276, inss: 0.4150, iss: 0.0000 },
+        anexo_iii: { irpj: 0.0400, csll: 0.0350, cofins: 0.1280, pis: 0.0280, inss: 0.4340, iss: 0.3350 },
+        anexo_iv:  { irpj: 0.1880, csll: 0.1520, cofins: 0.1765, pis: 0.0385, inss: 0.0000, iss: 0.4450 },
+        anexo_v:   { irpj: 0.1500, csll: 0.1500, cofins: 0.1600, pis: 0.0350, inss: 0.2850, iss: 0.2200 }
+    };
+
+    function calcularFaturamentoTotalDoc(doc, taxDetails) {
+        const bCents = window.BpoMoney.toCents(doc.gross_amount);
+        const td = taxDetails || doc.tax_details || window.BpoFiscalUtils.extrairTaxDetails(doc);
+        const dCents = (td && td.desconto) 
+            ? window.BpoMoney.toCents(td.desconto) 
+            : (doc.discounts ? window.BpoMoney.toCents(doc.discounts) : 0n);
+        const eCents = (td && td.extras) 
+            ? window.BpoMoney.toCents(td.extras) 
+            : 0n;
+        return (bCents + eCents) > dCents ? (bCents + eCents - dCents) : 0n;
+    }
+
     async function carregarEmpresas() {
         try {
             empresas = await window.BpoSupabase.request('companies?order=name.asc', { method: 'GET' });
@@ -144,15 +165,15 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 let produtosCents = 0n;
 
                 docsEmp.forEach(d => {
-                    const b = window.BpoMoney.toCents(d.gross_amount);
                     const r = window.BpoMoney.toCents(d.retentions);
-                    fatEmpCents += b;
+                    const taxDetails = d.tax_details || window.BpoFiscalUtils.extrairTaxDetails(d);
+                    const fatDoc = calcularFaturamentoTotalDoc(d, taxDetails);
+                    fatEmpCents += fatDoc;
                     retEmpCents += r;
 
-                    const taxDetails = d.tax_details || window.BpoFiscalUtils.extrairTaxDetails(d);
                     const itemType = (taxDetails && taxDetails.item_type) || 'servico';
-                    if (itemType === 'produto') produtosCents += b;
-                    else servicosCents += b;
+                    if (itemType === 'produto') produtosCents += fatDoc;
+                    else servicosCents += fatDoc;
                 });
 
                 const isLucroPresumido = emp.tax_regime === 'lucro_presumido';
@@ -195,10 +216,10 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     let irrfRetidoTrimCents = 0n;
 
                     docsTrimestreEmp.forEach(d => {
-                        const val = window.BpoMoney.toCents(d.gross_amount);
                         const td = d.tax_details || window.BpoFiscalUtils.extrairTaxDetails(d);
+                        const val = calcularFaturamentoTotalDoc(d, td);
                         const tipo = (td && td.item_type) || 'servico';
-                        if (tipo === 'produto') produtosTrimestreCents += val;
+                        if (tipo === 'produto') produtosTrimCents += val;
                         else servicosTrimCents += val;
 
                         if (td && td.has_irrf) {
@@ -272,38 +293,86 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     `;
                 } else {
                     // Simples Nacional: DZM ou Ybox via DAS estimado
-                    // API real: apurarSimplesNacional(rbt12, faturamentoMes, anexoKey, options)
-                    const rbt12Num = 360000; // R$ 360.000 referência anual
-                    const fatMesNum = Number(fatEmpCents) / 100;
-                    const apuracaoSN = window.BpoTaxEngine.apurarSimplesNacional(rbt12Num, fatMesNum, 'anexo_iii');
+                    // Verifica se os lançamentos possuem tax_details com anexo e isenção de ISS
+                    let anexoEmp = 'anexo_iii';
+                    let rbt12Emp = 360000;
+                    let temIsencaoIssEmp = false;
+                    let somaDasLancamentosCents = 0n;
+                    let temDasGravado = false;
 
-                    const dasCents = BigInt(Math.round(apuracaoSN.valorDas * 100));
+                    docsEmp.forEach(d => {
+                        const td = d.tax_details || window.BpoFiscalUtils.extrairTaxDetails(d);
+                        if (td) {
+                            if (td.das_anexo) anexoEmp = td.das_anexo;
+                            if (td.das_rbt12) rbt12Emp = Number(window.BpoMoney.toCents(td.das_rbt12)) / 100;
+                            if (td.iss_isento_simples) temIsencaoIssEmp = true;
+                            if (td.das_valor) {
+                                somaDasLancamentosCents += window.BpoMoney.toCents(td.das_valor);
+                                temDasGravado = true;
+                            }
+                        }
+                    });
+
+                    const fatMesNum = Number(fatEmpCents) / 100;
+                    let dasCents = 0n;
+                    let aliqEfetivaNum = 0.06;
+
+                    if (temDasGravado && somaDasLancamentosCents > 0n) {
+                        dasCents = somaDasLancamentosCents;
+                        aliqEfetivaNum = fatMesNum > 0 ? (Number(dasCents) / 100 / fatMesNum) : 0.06;
+                    } else {
+                        const apuracaoSN = window.BpoTaxEngine.apurarSimplesNacional(rbt12Emp, fatMesNum, anexoEmp);
+                        aliqEfetivaNum = apuracaoSN.aliquotaEfetivaNumero || 0.06;
+                        dasCents = BigInt(Math.round(apuracaoSN.valorDas * 100));
+                    }
+
                     impostoApuradoEmpCents = dasCents;
                     saldoRecolherEmpCents = dasCents;
 
-                    const comp = apuracaoSN.componentes;
-                    const cppCents = BigInt(Math.round(comp.inss * 100));
-                    const issSNCents = BigInt(Math.round(comp.iss * 100));
-                    const pisSNCents = BigInt(Math.round(comp.pis * 100));
-                    const cofinsSNCents = BigInt(Math.round(comp.cofins * 100));
-                    const irpjCsllSNCents = BigInt(Math.round((comp.irpj + comp.csll) * 100));
+                    // Repartição do Simples respeitando anexo e isenção de ISS
+                    let rep = REPARTICAO_SIMPLES_PADRAO[anexoEmp] || REPARTICAO_SIMPLES_PADRAO.anexo_iii;
+                    if (temIsencaoIssEmp && rep.iss > 0) {
+                        const issShare = rep.iss;
+                        const outrosTotal = 1 - issShare;
+                        const fator = outrosTotal > 0 ? (1 / outrosTotal) : 1;
+                        rep = {
+                            irpj:   rep.irpj   * fator,
+                            csll:   rep.csll   * fator,
+                            cofins: rep.cofins * fator,
+                            pis:    rep.pis    * fator,
+                            inss:   rep.inss   * fator,
+                            iss:    0
+                        };
+                    }
+
+                    const cppCents = BigInt(Math.round(fatMesNum * aliqEfetivaNum * rep.inss * 100));
+                    const issSNCents = temIsencaoIssEmp ? 0n : BigInt(Math.round(fatMesNum * aliqEfetivaNum * rep.iss * 100));
+                    const pisSNCents = BigInt(Math.round(fatMesNum * aliqEfetivaNum * rep.pis * 100));
+                    const cofinsSNCents = BigInt(Math.round(fatMesNum * aliqEfetivaNum * rep.cofins * 100));
+                    const irpjCsllSNCents = BigInt(Math.round(fatMesNum * aliqEfetivaNum * (rep.irpj + rep.csll) * 100));
+
+                    const anexoNome = anexoEmp.replace('_', ' ').toUpperCase();
+                    const tagIsento = temIsencaoIssEmp ? ' <span style="font-size:0.7rem; color:#f59e0b; background:rgba(245,158,11,0.15); padding:2px 6px; border-radius:4px;">ISS Isento</span>' : '';
 
                     detalheCardHtml = `
                         <div style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 16px; border: 1px solid rgba(255,255,255,0.05);">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
                                 <strong style="font-size:1rem; color:#fff;">${escapeHtml(emp.name)}</strong>
-                                <span class="badge badge-success">Simples Nacional (Anexo III)</span>
+                                <div>
+                                    <span class="badge badge-success">Simples Nacional (${anexoNome})</span>
+                                    ${tagIsento}
+                                </div>
                             </div>
                             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; font-size:0.85rem;">
-                                <div><span style="color:var(--text-muted);">Alíquota Efetiva DAS:</span> <strong>${apuracaoSN.aliquotaEfetivaDas}</strong></div>
+                                <div><span style="color:var(--text-muted);">Alíquota Efetiva DAS:</span> <strong>${(aliqEfetivaNum * 100).toFixed(2)}%</strong></div>
                                 <div><span style="color:var(--text-muted);">Parcela CPP (INSS):</span> <strong>${window.BpoMoney.formatBRL(cppCents)}</strong></div>
-                                <div><span style="color:var(--text-muted);">Parcela ISS:</span> <strong>${window.BpoMoney.formatBRL(issSNCents)}</strong></div>
+                                <div><span style="color:var(--text-muted);">Parcela ISS:</span> <strong>${temIsencaoIssEmp ? '<span style="color:#f59e0b;">R$ 0,00 (Isento)</span>' : window.BpoMoney.formatBRL(issSNCents)}</strong></div>
                                 <div><span style="color:var(--text-muted);">Parcela PIS:</span> <strong>${window.BpoMoney.formatBRL(pisSNCents)}</strong></div>
                                 <div><span style="color:var(--text-muted);">Parcela COFINS:</span> <strong>${window.BpoMoney.formatBRL(cofinsSNCents)}</strong></div>
                                 <div><span style="color:var(--text-muted);">Parcela IRPJ/CSLL:</span> <strong>${window.BpoMoney.formatBRL(irpjCsllSNCents)}</strong></div>
                             </div>
                             <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between;">
-                                <span style="font-size:0.82rem; color:var(--text-muted);">* Tributos federais já integrados na guia única DAS (sem cobrança adicional)</span>
+                                <span style="font-size:0.82rem; color:var(--text-muted);">* Tributos integrados na guia única DAS${temIsencaoIssEmp ? ' (com exclusão de ISS por isenção)' : ''}</span>
                                 <span style="color:#f59e0b; font-weight:700;">DAS Estimado a Recolher: ${window.BpoMoney.formatBRL(impostoApuradoEmpCents)}</span>
                             </div>
                         </div>
@@ -410,9 +479,10 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     const aliqIss = (taxDetails && taxDetails.iss_aliq !== undefined && taxDetails.iss_aliq !== null) ? taxDetails.iss_aliq : 5.0;
                     const issRetido = !!(taxDetails && taxDetails.iss_retained);
 
-                    const brutoCents = window.BpoMoney.toCents(doc.gross_amount);
+                    // Faturamento Total = Valor Base - Descontos + Extras
+                    const fatTotalCents = calcularFaturamentoTotalDoc(doc, taxDetails);
                     const retCents = window.BpoMoney.toCents(doc.retentions);
-                    const brutoNum = Number(brutoCents) / 100;
+                    const fatTotalNum = Number(fatTotalCents) / 100;
 
                     let pisCents = 0n;
                     let cofinsCents = 0n;
@@ -421,18 +491,19 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     let csllCents = 0n;
                     let tributosCents = 0n;
                     let saldoCents = 0n;
+                    let issIsento = false;
 
                     if (isLP) {
                         pisCents = (taxDetails && taxDetails.pis_valor !== undefined && taxDetails.pis_valor !== null)
                             ? window.BpoMoney.toCents(taxDetails.pis_valor)
-                            : BigInt(Math.round(brutoNum * 0.0065 * 100));
+                            : BigInt(Math.round(fatTotalNum * 0.0065 * 100));
 
                         cofinsCents = (taxDetails && taxDetails.cofins_valor !== undefined && taxDetails.cofins_valor !== null)
                             ? window.BpoMoney.toCents(taxDetails.cofins_valor)
-                            : BigInt(Math.round(brutoNum * 0.03 * 100));
+                            : BigInt(Math.round(fatTotalNum * 0.03 * 100));
 
                         if (itemType === 'servico') {
-                            issCents = BigInt(Math.round(brutoNum * (aliqIss / 100) * 100));
+                            issCents = BigInt(Math.round(fatTotalNum * (aliqIss / 100) * 100));
                         } else {
                             issCents = 0n;
                         }
@@ -442,29 +513,67 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                         const aliqIrpjVar = infoTri ? infoTri.aliqEfetivaIRPJ : (itemType === 'servico' ? 0.048 : 0.012);
                         const aliqCsllVar = infoTri ? infoTri.aliqEfetivaCSLL : (itemType === 'servico' ? 0.0288 : 0.0108);
 
-                        irpjCents = BigInt(Math.round(brutoNum * aliqIrpjVar * 100));
-                        csllCents = BigInt(Math.round(brutoNum * aliqCsllVar * 100));
+                        irpjCents = BigInt(Math.round(fatTotalNum * aliqIrpjVar * 100));
+                        csllCents = BigInt(Math.round(fatTotalNum * aliqCsllVar * 100));
                         tributosCents = pisCents + cofinsCents + issCents + irpjCents + csllCents;
                         const issRecolher = issRetido ? 0n : issCents;
                         const aRecolherBase = pisCents + cofinsCents + issRecolher + irpjCents + csllCents;
                         saldoCents = aRecolherBase > retCents ? (aRecolherBase - retCents) : 0n;
                     } else {
-                        // Simples Nacional
-                        const previaSN = window.BpoTaxEngine.apurarSimplesNacional(360000, brutoNum, 'anexo_iii', {
-                            issRetidoTomador: issRetido,
-                            aliquotaRetencaoInformada: aliqIss
-                        });
-                        const comp = previaSN.componentes || {};
-                        pisCents = BigInt(Math.round((comp.pis || 0) * 100));
-                        cofinsCents = BigInt(Math.round((comp.cofins || 0) * 100));
-                        issCents = BigInt(Math.round((comp.iss || 0) * 100));
-                        irpjCents = BigInt(Math.round((comp.irpj || 0) * 100));
-                        csllCents = BigInt(Math.round((comp.csll || 0) * 100));
-                        tributosCents = BigInt(Math.round((previaSN.valorDas || 0) * 100));
+                        // Simples Nacional: DZM / Ybox
+                        const anexoKey = (taxDetails && taxDetails.das_anexo) ? taxDetails.das_anexo : 'anexo_iii';
+                        issIsento = !!(taxDetails && taxDetails.iss_isento_simples);
+                        const rbt12Num = (taxDetails && taxDetails.das_rbt12) 
+                            ? Number(window.BpoMoney.toCents(taxDetails.das_rbt12)) / 100 
+                            : 360000;
+
+                        // Se o operador já salvou alíquota/valor do DAS no lançamento, respeita o valor gravado
+                        let valorDasGravadoCents = null;
+                        if (taxDetails && taxDetails.das_valor !== undefined && taxDetails.das_valor !== null) {
+                            valorDasGravadoCents = window.BpoMoney.toCents(taxDetails.das_valor);
+                        }
+
+                        let aliqDasEfetiva = 0.06;
+                        if (taxDetails && taxDetails.das_aliq !== undefined && taxDetails.das_aliq !== null && Number(taxDetails.das_aliq) > 0) {
+                            aliqDasEfetiva = Number(taxDetails.das_aliq) / 100;
+                        } else if (window.BpoTaxEngine) {
+                            const previaSN = window.BpoTaxEngine.apurarSimplesNacional(rbt12Num, fatTotalNum, anexoKey, {
+                                issRetidoTomador: issRetido
+                            });
+                            aliqDasEfetiva = previaSN.aliquotaEfetivaNumero || 0.06;
+                        }
+
+                        // Partilha dos 5 anexos
+                        let rep = REPARTICAO_SIMPLES_PADRAO[anexoKey] || REPARTICAO_SIMPLES_PADRAO.anexo_iii;
+                        if (issIsento && rep.iss > 0) {
+                            const issShare = rep.iss;
+                            const outrosTotal = 1 - issShare;
+                            const fator = outrosTotal > 0 ? (1 / outrosTotal) : 1;
+                            rep = {
+                                irpj:   rep.irpj   * fator,
+                                csll:   rep.csll   * fator,
+                                cofins: rep.cofins * fator,
+                                pis:    rep.pis    * fator,
+                                inss:   rep.inss   * fator,
+                                iss:    0
+                            };
+                        }
+
+                        irpjCents   = BigInt(Math.round(fatTotalNum * aliqDasEfetiva * rep.irpj * 100));
+                        csllCents   = BigInt(Math.round(fatTotalNum * aliqDasEfetiva * rep.csll * 100));
+                        cofinsCents = BigInt(Math.round(fatTotalNum * aliqDasEfetiva * rep.cofins * 100));
+                        pisCents    = BigInt(Math.round(fatTotalNum * aliqDasEfetiva * rep.pis * 100));
+                        issCents    = issIsento ? 0n : BigInt(Math.round(fatTotalNum * aliqDasEfetiva * rep.iss * 100));
+
+                        if (valorDasGravadoCents !== null && valorDasGravadoCents > 0n) {
+                            tributosCents = valorDasGravadoCents;
+                        } else {
+                            tributosCents = BigInt(Math.round(fatTotalNum * aliqDasEfetiva * 100));
+                        }
                         saldoCents = tributosCents;
                     }
 
-                    somaBruto += brutoCents;
+                    somaBruto += fatTotalCents;
                     somaPis += pisCents;
                     somaCofins += cofinsCents;
                     somaIss += issCents;
@@ -479,9 +588,14 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                         ? escapeHtml(ctr._clientName)
                         : (ctr ? escapeHtml(ctr.name) : '<span style="color:var(--text-muted);font-size:0.78rem;">Avulso</span>');
 
-                    const issLabel = issRetido
-                        ? `<span style="color:var(--color-danger); font-size:0.8rem;" title="Retido na Fonte pelo Tomador">${window.BpoMoney.formatBRL(issCents)} <span style="font-size:0.68rem; padding:1px 4px; border-radius:3px; background:rgba(239,68,68,0.15);">Retido</span></span>`
-                        : `<span style="color:#fff;">${window.BpoMoney.formatBRL(issCents)}</span>`;
+                    let issLabel = '';
+                    if (issIsento) {
+                        issLabel = `<span style="color: #f59e0b; font-size: 0.78rem;" title="Isento de ISS">R$ 0,00 <span style="font-size:0.68rem; padding:1px 4px; border-radius:3px; background:rgba(245,158,11,0.15);">Isento</span></span>`;
+                    } else if (issRetido) {
+                        issLabel = `<span style="color:var(--color-danger); font-size:0.8rem;" title="Retido na Fonte pelo Tomador">${window.BpoMoney.formatBRL(issCents)} <span style="font-size:0.68rem; padding:1px 4px; border-radius:3px; background:rgba(239,68,68,0.15);">Retido</span></span>`;
+                    } else {
+                        issLabel = `<span style="color:#fff;">${window.BpoMoney.formatBRL(issCents)}</span>`;
+                    }
 
                     const empBadge = emp 
                         ? `<span class="badge ${isLP ? 'badge-primary' : 'badge-success'}" style="font-size:0.75rem;">${escapeHtml(emp.trade_name || emp.name)}</span>`
@@ -496,7 +610,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                             <td>${empBadge}</td>
                             <td>${escapeHtml(formatarData(doc.issue_date))}</td>
                             <td>${cliDesc}</td>
-                            <td style="text-align:right; font-weight:600; color:#fff;">${window.BpoMoney.formatBRL(brutoCents)}</td>
+                            <td style="text-align:right; font-weight:600; color:#fff;">${window.BpoMoney.formatBRL(fatTotalCents)}</td>
                             <td style="text-align:right; color:#93c5fd;">${window.BpoMoney.formatBRL(pisCents)}</td>
                             <td style="text-align:right; color:#93c5fd;">${window.BpoMoney.formatBRL(cofinsCents)}</td>
                             <td style="text-align:right;">${issLabel}</td>
@@ -574,8 +688,8 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 if (docsMes && docsMes.length > 0) {
                     mesesComDados++;
                     docsMes.forEach(d => {
-                        const val = window.BpoMoney.toCents(d.gross_amount);
                         const taxDetails = d.tax_details || window.BpoFiscalUtils.extrairTaxDetails(d);
+                        const val = calcularFaturamentoTotalDoc(d, taxDetails);
                         const tipo = (taxDetails && taxDetails.item_type) || 'servico';
                         if (tipo === 'produto') produtosTrimestreCents += val;
                         else servicosTrimestreCents += val;
