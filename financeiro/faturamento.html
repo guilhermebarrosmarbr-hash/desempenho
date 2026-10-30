@@ -9,19 +9,47 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+        /* Layout expandido para acomodar todas as colunas sem barra horizontal em telas widescreen */
+        .layout-container {
+            max-width: 98% !important;
+            width: 98% !important;
+            padding: 24px 16px !important;
+        }
+
+        /* Otimização de compactação das células da tabela de documentos */
+        #tabelaDocumentos {
+            width: 100%;
+            table-layout: auto;
+        }
+
+        #tabelaDocumentos th, 
+        #tabelaDocumentos td {
+            padding: 10px 8px !important;
+            font-size: 0.82rem !important;
+            white-space: nowrap;
+        }
+
+        /* Colunas de texto que podem quebrar linha de forma controlada */
+        #tabelaDocumentos td:nth-child(3) {
+            white-space: normal !important;
+            min-width: 130px;
+            max-width: 220px;
+            line-height: 1.25;
+        }
+
         /* Botões de ordenação nos cabeçalhos da tabela */
         .th-sort {
             background: none;
             border: none;
             color: inherit;
             font: inherit;
-            font-size: 0.82rem;
+            font-size: 0.78rem;
             font-weight: 600;
             cursor: pointer;
             padding: 0;
             display: inline-flex;
             align-items: center;
-            gap: 5px;
+            gap: 4px;
             white-space: nowrap;
             user-select: none;
             opacity: 0.85;
@@ -29,7 +57,7 @@
         }
         .th-sort:hover { opacity: 1; color: #38bdf8; }
         .th-sort.ativo { color: #38bdf8; opacity: 1; }
-        .sort-icon { font-size: 0.75rem; color: #64748b; transition: color 0.15s; }
+        .sort-icon { font-size: 0.7rem; color: #64748b; transition: color 0.15s; }
         .th-sort.ativo .sort-icon { color: #38bdf8; }
         .th-sort[data-dir="asc"]  .sort-icon::before { content: "▲"; }
         .th-sort[data-dir="desc"] .sort-icon::before { content: "▼"; }
