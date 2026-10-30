@@ -47,6 +47,9 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
     const painelTrimestralMarBrasil = document.getElementById('painelTrimestralMarBrasil');
     const secaoTrimestralMarBrasil = document.getElementById('secaoTrimestralMarBrasil');
     const badgeTrimestreMarBrasil = document.getElementById('badgeTrimestreMarBrasil');
+    const secaoRbt12Simples = document.getElementById('secaoRbt12Simples');
+    const painelRbt12Simples = document.getElementById('painelRbt12Simples');
+    const tituloRbt12 = document.getElementById('tituloRbt12');
     const listaHistoricoBody = document.getElementById('listaHistoricoBody');
     const listaDocumentosTributosBody = document.getElementById('listaDocumentosTributosBody');
     const tfootDocumentosTributos = document.getElementById('tfootDocumentosTributos');
@@ -708,6 +711,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             // =================================================================
             // PAINEL TRIMESTRAL ESPECIAL — MAR BRASIL (LUCRO PRESUMIDO)
             // =================================================================
+            await renderizarPainelRbt12();
             await renderizarPainelTrimestralMarBrasil();
 
         } catch (err) {
@@ -715,9 +719,145 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         }
     }
 
+    // =================================================================
+    // PAINEL RBT12 — HISTÓRICO 12 MESES (SIMPLES NACIONAL)
+    // Exibido somente quando uma empresa Simples Nacional está selecionada
+    // =================================================================
+    async function renderizarPainelRbt12() {
+        if (!secaoRbt12Simples) return;
+
+        // Só exibe se uma empresa Simples Nacional específica estiver selecionada
+        const empSelecionada = empresaAtivaId !== 'all'
+            ? empresas.find(e => e.id === empresaAtivaId)
+            : null;
+
+        if (!empSelecionada || empSelecionada.tax_regime !== 'simples_nacional') {
+            secaoRbt12Simples.style.display = 'none';
+            return;
+        }
+
+        secaoRbt12Simples.style.display = 'block';
+        if (tituloRbt12) {
+            tituloRbt12.textContent = `IRTB12 — ${empSelecionada.name} (Últimos 12 Meses)`;
+        }
+        if (painelRbt12Simples) {
+            painelRbt12Simples.innerHTML = `<div style="padding:16px; color:var(--text-muted);">Calculando RBT12...</div>`;
+        }
+
+        const meses12 = obterMesesRbt12(competenciaAtiva);
+
+        // Busca todos os docs das 12 competências anteriores de uma vez
+        let docsPorMes = {};
+        meses12.forEach(m => { docsPorMes[m] = []; });
+
+        try {
+            const inQuery = meses12.join(',');
+            const docs12 = await window.BpoSupabase.request(
+                `billing_documents?company_id=eq.${empSelecionada.id}&competence_month=in.(${inQuery})&status=neq.cancelled`,
+                { method: 'GET' }
+            );
+            if (docs12 && docs12.length > 0) {
+                docs12.forEach(d => {
+                    if (docsPorMes[d.competence_month] !== undefined) {
+                        docsPorMes[d.competence_month].push(d);
+                    }
+                });
+            }
+        } catch (e) {
+            console.warn('Erro ao buscar docs para RBT12:', e);
+        }
+
+        let totalRbt12Cents = 0n;
+        const linhasTabela = meses12.map(m => {
+            const docs = docsPorMes[m] || [];
+            let fatMesCents = 0n;
+            docs.forEach(d => {
+                const td = d.tax_details || window.BpoFiscalUtils.extrairTaxDetails(d);
+                fatMesCents += calcularFaturamentoTotalDoc(d, td);
+            });
+            totalRbt12Cents += fatMesCents;
+            const [a, me] = m.split('-');
+            const nomesMes = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+            const mesNome = nomesMes[parseInt(me, 10) - 1] || me;
+            const corValor = fatMesCents > 0n ? '#e2e8f0' : 'var(--text-muted)';
+            return `
+                <tr>
+                    <td style="color:var(--text-muted); font-size:0.82rem;">${mesNome}/${a}</td>
+                    <td style="text-align:right; color:${corValor};">${window.BpoMoney.formatBRL(fatMesCents)}</td>
+                    <td style="text-align:center; color:var(--text-muted); font-size:0.78rem;">${docs.length} doc${docs.length !== 1 ? 's' : ''}</td>
+                </tr>
+            `;
+        });
+
+        const rbt12Num = Number(totalRbt12Cents) / 100;
+        // Calcula a alíquota efetiva com o RBT12 real (pega anexo do primeiro doc da competência atual)
+        let anexoEmp = 'anexo_iii';
+        try {
+            const docsAtuais = await window.BpoSupabase.request(
+                `billing_documents?company_id=eq.${empSelecionada.id}&competence_month=eq.${competenciaAtiva}&status=neq.cancelled&limit=1`,
+                { method: 'GET' }
+            );
+            if (docsAtuais && docsAtuais.length > 0) {
+                const td = docsAtuais[0].tax_details || window.BpoFiscalUtils.extrairTaxDetails(docsAtuais[0]);
+                if (td && td.das_anexo) anexoEmp = td.das_anexo;
+            }
+        } catch (e) {}
+
+        const previa = window.BpoTaxEngine
+            ? window.BpoTaxEngine.apurarSimplesNacional(rbt12Num, rbt12Num / 12, anexoEmp, {})
+            : null;
+        const aliqEfetiva = previa ? (previa.aliquotaEfetivaNumero * 100).toFixed(2) : '—';
+        const faixaDesc = previa ? (previa.faixaDescricao || '') : '';
+
+        if (painelRbt12Simples) {
+            painelRbt12Simples.innerHTML = `
+                <div style="display:grid; grid-template-columns: 1fr auto; gap: 24px; align-items: start;">
+                    <div>
+                        <table style="width:100%; border-collapse:collapse; font-size:0.84rem;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+                                    <th style="text-align:left; padding:6px 8px; color:var(--text-muted); font-weight:500;">Competência</th>
+                                    <th style="text-align:right; padding:6px 8px; color:var(--text-muted); font-weight:500;">Faturamento Total</th>
+                                    <th style="text-align:center; padding:6px 8px; color:var(--text-muted); font-weight:500;">Docs</th>
+                                </tr>
+                            </thead>
+                            <tbody>${linhasTabela.join('')}</tbody>
+                            <tfoot>
+                                <tr style="border-top: 2px solid rgba(255,255,255,0.15);">
+                                    <td style="padding:8px; font-weight:700; color:#fff;">Total RBT12</td>
+                                    <td style="text-align:right; padding:8px; font-weight:700; color:#38bdf8; font-size:1rem;">${window.BpoMoney.formatBRL(totalRbt12Cents)}</td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                    <div style="background:rgba(0,0,0,0.25); border-radius:10px; padding:20px; min-width:220px; border:1px solid rgba(56,189,248,0.2);">
+                        <div style="color:var(--text-muted); font-size:0.78rem; margin-bottom:4px;">Receita Bruta (RBT12)</div>
+                        <div style="font-size:1.4rem; font-weight:700; color:#38bdf8;">${window.BpoMoney.formatBRL(totalRbt12Cents)}</div>
+                        <div style="margin-top:16px; color:var(--text-muted); font-size:0.78rem;">Alíquota Efetiva DAS estimada</div>
+                        <div style="font-size:1.2rem; font-weight:700; color:#f59e0b;">${aliqEfetiva}%</div>
+                        ${faixaDesc ? `<div style="font-size:0.74rem; color:var(--text-muted); margin-top:4px;">${faixaDesc}</div>` : ''}
+                        <div style="margin-top:16px; color:var(--text-muted); font-size:0.78rem;">Anexo do Simples</div>
+                        <div style="font-size:0.9rem; color:#e2e8f0;">${anexoEmp.replace('_',' ').toUpperCase()}</div>
+                        <div style="margin-top:12px; font-size:0.72rem; color:var(--text-muted);">
+                            * Soma das 12 competências anteriores a ${competenciaAtiva}.<br>
+                            Alíquota efetiva calculada com RBT12 real pelo motor tributário.
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+    }
+
     async function renderizarPainelTrimestralMarBrasil() {
         const marBrasil = empresas.find(e => e.tax_regime === 'lucro_presumido');
         if (!marBrasil) {
+            secaoTrimestralMarBrasil.style.display = 'none';
+            return;
+        }
+
+        // Se uma empresa específica está selecionada e não é a Mar Brasil, ocultar o painel
+        if (empresaAtivaId !== 'all' && empresaAtivaId !== marBrasil.id) {
             secaoTrimestralMarBrasil.style.display = 'none';
             return;
         }
