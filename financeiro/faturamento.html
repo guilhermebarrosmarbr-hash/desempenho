@@ -275,22 +275,126 @@
                     </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                <!-- Campos de Valores, Acréscimos e Descontos (Item 01) -->
+                <div style="display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 16px; margin-bottom: 12px;">
                     <div>
                         <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Valor Bruto (R$) *</label>
-                        <input type="text" id="docValorBruto" required class="select-control" style="width: 100%;" placeholder="0,00">
+                        <input type="text" id="docValorBruto" required class="select-control" style="width: 100%; font-weight: 600;" placeholder="0,00">
                     </div>
                     <div>
-                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Retenções Aplicáveis (R$)</label>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Desconto (R$)</label>
+                        <input type="text" id="docDesconto" class="select-control" style="width: 100%; color: #f87171;" placeholder="0,00" value="0,00">
+                    </div>
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Extras / Adicionais (R$)</label>
+                        <input type="text" id="docExtras" class="select-control" style="width: 100%; color: #34d399;" placeholder="0,00" value="0,00">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1.2fr; gap: 16px; margin-bottom: 16px;">
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Multa (R$)</label>
+                        <input type="text" id="docMulta" class="select-control" style="width: 100%;" placeholder="0,00" value="0,00">
+                    </div>
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Juros (R$)</label>
+                        <input type="text" id="docJuros" class="select-control" style="width: 100%;" placeholder="0,00" value="0,00">
+                    </div>
+                    <div id="boxCampoRetencoes">
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Retenções (R$)</label>
                         <input type="text" id="docRetencoes" readonly class="select-control" style="width: 100%; background: rgba(255,255,255,0.03);" placeholder="0,00" value="0,00">
                     </div>
                     <div>
                         <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Líquido a Receber (R$)</label>
-                        <input type="text" id="docValorLiquido" readonly class="select-control" style="width: 100%; background: rgba(255,255,255,0.03); font-weight: 600; color: var(--color-success);" value="0,00">
+                        <input type="text" id="docValorLiquido" readonly class="select-control" style="width: 100%; background: rgba(255,255,255,0.03); font-weight: 700; color: var(--color-success);" value="0,00">
                     </div>
                 </div>
 
-                <!-- Painel de Cálculo Automático de Tributos do Faturamento (PIS, COFINS, IRPJ, CSLL) -->
+                <!-- Painel Exclusivo Simples Nacional: DAS Estimado Unificado (Item 02) -->
+                <div id="painelSimplesNacional" style="display: none; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 1.1rem;">📊</span>
+                            <strong style="font-size: 0.9rem; color: #34d399;">DAS Estimado (Simples Nacional)</strong>
+                        </div>
+                        <span style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.3);">
+                            Guia Única sem Retenções
+                        </span>
+                    </div>
+
+                    <!-- Parâmetros de cálculo do Simples -->
+                    <div style="display: grid; grid-template-columns: 1.5fr 1.5fr 1fr 1.2fr; gap: 10px; margin-bottom: 10px;">
+                        <div>
+                            <label style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 4px;">Anexo do Simples *</label>
+                            <select id="selAnexoSimples" class="select-control" style="width: 100%; font-size: 0.8rem;">
+                                <option value="anexo_i">Anexo I — Comércio / Mercadorias</option>
+                                <option value="anexo_ii">Anexo II — Indústria / Fabricação</option>
+                                <option value="anexo_iii" selected>Anexo III — Serviços (PMOC, Manutenção...)</option>
+                                <option value="anexo_iv">Anexo IV — Construção / Obras / Vigilância</option>
+                                <option value="anexo_v">Anexo V — Serviços c/ Fator R (Profissionais)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 4px;">RBT12 (Faturamento 12 Meses)</label>
+                            <input type="text" id="inpRbt12Simples" class="select-control" style="width: 100%; font-size: 0.82rem;" placeholder="180.000,00" value="180.000,00">
+                        </div>
+                        <div>
+                            <label style="font-size: 0.75rem; color: #34d399; font-weight: 600; display: block; margin-bottom: 4px;">Alíquota DAS (%)</label>
+                            <div style="display: flex; align-items: center; gap: 3px;">
+                                <input type="number" id="inpAliqDas" value="6.00" step="0.01" min="0" max="100" class="select-control" style="width: 100%; font-size: 0.85rem; font-weight: 700; text-align: right; color: #34d399;">
+                                <span style="font-size: 0.75rem; color: #34d399;">%</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label style="font-size: 0.75rem; color: #34d399; font-weight: 600; display: block; margin-bottom: 4px;">Valor Total DAS (R$)</label>
+                            <input type="text" id="inpValorDas" class="select-control" style="width: 100%; font-size: 0.95rem; font-weight: 700; color: #34d399; background: rgba(0,0,0,0.3);" placeholder="0,00" value="0,00">
+                        </div>
+                    </div>
+
+                    <!-- Isenção de ISS -->
+                    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px; padding: 8px 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 6px;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; font-size: 0.82rem; color: var(--text-secondary);">
+                            <input type="checkbox" id="chkIssIsentoSimples" style="width: 15px; height: 15px; accent-color: #34d399;">
+                            <span>Este lançamento é <strong style="color: #f59e0b;">isento de ISS</strong> (ex.: serviço exportado, imunidade municipal, etc.)</span>
+                        </label>
+                        <span id="badgeIssIsentoSimples" style="display: none; font-size: 0.7rem; padding: 2px 8px; border-radius: 4px; background: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.3); white-space: nowrap;">ISS Isento</span>
+                    </div>
+
+                    <!-- Detalhamento de cada imposto que compõe o DAS -->
+                    <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">Detalhamento dos Tributos da Guia DAS:</div>
+                    <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 10px;">
+                        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 4px; padding: 6px 8px; text-align: center;">
+                            <div style="font-size: 0.7rem; color: #94a3b8;">IRPJ (<span id="dasPctIrpj">4.0%</span>)</div>
+                            <div id="dasValIrpj" style="font-size: 0.8rem; font-weight: 700; color: #fff;">R$ 0,00</div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 4px; padding: 6px 8px; text-align: center;">
+                            <div style="font-size: 0.7rem; color: #94a3b8;">CSLL (<span id="dasPctCsll">3.5%</span>)</div>
+                            <div id="dasValCsll" style="font-size: 0.8rem; font-weight: 700; color: #fff;">R$ 0,00</div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 4px; padding: 6px 8px; text-align: center;">
+                            <div style="font-size: 0.7rem; color: #94a3b8;">COFINS (<span id="dasPctCofins">12.8%</span>)</div>
+                            <div id="dasValCofins" style="font-size: 0.8rem; font-weight: 700; color: #fff;">R$ 0,00</div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 4px; padding: 6px 8px; text-align: center;">
+                            <div style="font-size: 0.7rem; color: #94a3b8;">PIS (<span id="dasPctPis">2.8%</span>)</div>
+                            <div id="dasValPis" style="font-size: 0.8rem; font-weight: 700; color: #fff;">R$ 0,00</div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 4px; padding: 6px 8px; text-align: center;">
+                            <div style="font-size: 0.7rem; color: #94a3b8;">CPP/INSS (<span id="dasPctInss">43.4%</span>)</div>
+                            <div id="dasValInss" style="font-size: 0.8rem; font-weight: 700; color: #fff;">R$ 0,00</div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 4px; padding: 6px 8px; text-align: center;">
+                            <div style="font-size: 0.7rem; color: #94a3b8;">ISS (<span id="dasPctIss">33.5%</span>)</div>
+                            <div id="dasValIss" style="font-size: 0.8rem; font-weight: 700; color: #fff;">R$ 0,00</div>
+                        </div>
+                    </div>
+
+                    <div style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.4;">
+                        ℹ️ No Simples Nacional, os tributos são apurados sobre a receita bruta acumulada (RBT12) na guia DAS única. Não há retenção na fonte de IRRF, INSS nem ISS. Marque "Isento de ISS" se o serviço for exportado ou beneficiado por imunidade/isenção municipal — o ISS será excluído da partilha e a alíquota será recalculada.
+                    </div>
+                </div>
+
+                <!-- Painel de Cálculo Automático de Tributos do Faturamento (PIS, COFINS, IRPJ, CSLL) - Lucro Presumido/Real -->
                 <div id="painelCalculoTributosLancamento" style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                         <div style="display: flex; align-items: center; gap: 8px;">
@@ -365,8 +469,8 @@
                     </div>
                 </div>
 
-                <!-- Painel Impostos e Retenções com Prévia Dinâmica -->
-                <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                <!-- Painel Impostos e Retenções com Prévia Dinâmica (Lucro Presumido / Real) -->
+                <div id="painelRetencoesIss" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                         <h4 style="font-size: 0.9rem; font-weight: 600; margin: 0; color: var(--text-main);">Retenções e ISS da Nota (Prévia em Tempo Real)</h4>
                         <span id="badgeRegimePrevia" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3);">Regime Fiscal</span>
@@ -449,17 +553,33 @@
         </div>
     </div>
 
-    <!-- MODAL: Registrar Recebimento / Baixa -->
+    <!-- MODAL: Registrar Recebimento / Baixa (Suporte a Baixas Parciais - Item 03) -->
     <div class="modal-overlay" id="modalRecebimento">
         <div class="modal-card">
             <h2 class="card-title" style="margin-bottom: 8px;">Registrar Baixa de Recebimento</h2>
-            <p class="card-subtitle" style="margin-bottom: 20px;">Confirme o crédito em conta bancária para liquidação do documento.</p>
+            <p class="card-subtitle" style="margin-bottom: 20px;">Confirme o crédito em conta bancária (integral ou parcial) para liquidação do documento.</p>
             
             <form id="formRecebimento">
                 <input type="hidden" id="recDocId">
-                <div style="margin-bottom: 16px;">
+                <div style="margin-bottom: 14px;">
                     <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Documento a Liquidar</label>
                     <input type="text" id="recDocIdentificacao" readonly class="select-control" style="width: 100%; background: rgba(255,255,255,0.03);">
+                </div>
+
+                <!-- Detalhes do Saldo e Baixas Anteriores (Baixa Parcial) -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px; background: rgba(0,0,0,0.25); border-radius: 6px; padding: 12px; border: 1px solid rgba(255,255,255,0.06);">
+                    <div>
+                        <span style="font-size: 0.75rem; color: var(--text-muted); display: block;">Valor Total:</span>
+                        <strong id="recTotalDoc" style="font-size: 0.95rem; color: #fff;">R$ 0,00</strong>
+                    </div>
+                    <div>
+                        <span style="font-size: 0.75rem; color: var(--text-muted); display: block;">Já Recebido:</span>
+                        <strong id="recTotalJaPago" style="font-size: 0.95rem; color: #10b981;">R$ 0,00</strong>
+                    </div>
+                    <div>
+                        <span style="font-size: 0.75rem; color: var(--text-muted); display: block;">Saldo Restante:</span>
+                        <strong id="recSaldoRestante" style="font-size: 0.95rem; color: #f59e0b;">R$ 0,00</strong>
+                    </div>
                 </div>
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
@@ -468,8 +588,9 @@
                         <input type="date" id="recData" required class="select-control" style="width: 100%; color-scheme: dark;">
                     </div>
                     <div>
-                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Valor Recebido (R$) *</label>
-                        <input type="text" id="recValor" required class="select-control" style="width: 100%;">
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Valor Desta Baixa (R$) *</label>
+                        <input type="text" id="recValor" required class="select-control" style="width: 100%; font-weight: 700; color: #34d399;">
+                        <span style="font-size: 0.72rem; color: var(--text-muted);">Para baixa parcial, informe o valor pago nesta data.</span>
                     </div>
                 </div>
 
@@ -481,6 +602,12 @@
                         <option value="Banco Santander">Banco Santander</option>
                         <option value="Caixa / Dinheiro">Caixa / Dinheiro</option>
                     </select>
+                </div>
+
+                <!-- Histórico de Baixas Anteriores -->
+                <div id="recHistoricoBox" style="display: none; margin-bottom: 16px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 10px;">
+                    <label style="font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 6px;">Histórico de Baixas deste Documento:</label>
+                    <div id="recHistoricoLista" style="max-height: 120px; overflow-y: auto; font-size: 0.78rem;"></div>
                 </div>
 
                 <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">

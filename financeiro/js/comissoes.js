@@ -155,6 +155,16 @@
         valComissaoPendente.textContent = window.BpoMoney.formatBRL(pendente);
     }
 
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     function renderizarExtrato() {
         if (comissoes.length === 0) {
             listaComissoesBody.innerHTML = `
@@ -169,14 +179,16 @@
 
         listaComissoesBody.innerHTML = comissoes.map(c => {
             const colab = colaboradores.find(col => col.id === c.collaborator_id) || { name: 'Colaborador' };
+            const contrato = contratos.find(con => con.id === c.contract_id);
+            const contratoNome = contrato ? `${escapeHtml(contrato.code || '')} - ${escapeHtml(contrato.name || '')}` : 'Avulso / NF';
             const statusBadge = c.status === 'paid' 
                 ? '<span class="badge badge-success">Pago</span>' 
                 : '<span class="badge badge-warning">Pendente</span>';
 
             return `
                 <tr>
-                    <td style="font-weight: 600; color: #fff;">${colab.name}</td>
-                    <td>Contrato PMOC</td>
+                    <td style="font-weight: 600; color: #fff;">${escapeHtml(colab.name)}</td>
+                    <td style="font-size: 0.85rem;">${contratoNome}</td>
                     <td>${formatarData(c.event_date)}</td>
                     <td>${window.BpoMoney.formatBRL(c.base_amount)}</td>
                     <td style="color: var(--color-warning);">${c.percentage}%</td>
@@ -184,7 +196,7 @@
                     <td>${statusBadge}</td>
                     <td>
                         ${c.status !== 'paid' ? `
-                            <button class="btn btn-secondary btn-sm btn-quitar-comissao" data-id="${c.id}">
+                            <button class="btn btn-secondary btn-sm btn-quitar-comissao" data-id="${escapeHtml(c.id)}">
                                 Quitar
                             </button>
                         ` : '<span style="color: var(--text-muted); font-size: 0.8rem;">Liquidado</span>'}
@@ -354,60 +366,74 @@
         if (!empresaAtiva) return;
 
         try {
-            // Busca faturamento emitido no mês
+            // 1. Busca todos os recebimentos registrados na empresa
+            let receipts = [];
+            try {
+                receipts = await window.BpoSupabase.request(
+                    `receipts?company_id=eq.${empresaAtiva.id}&order=receipt_date.desc`,
+                    { method: 'GET' }
+                );
+            } catch (rErr) {
+                console.warn('Aviso ao consultar receipts:', rErr.message);
+            }
+
+            // Filtra os recebimentos cuja data está na competência ativa (Regime de Caixa - Item 03)
+            const receiptsCompetencia = receipts.filter(r => {
+                if (!r.receipt_date) return false;
+                return r.receipt_date.startsWith(competenciaAtiva);
+            });
+
+            // 2. Busca documentos para vincular dados de contrato e regras
             const docs = await window.BpoSupabase.request(
-                `billing_documents?company_id=eq.${empresaAtiva.id}&competence_month=eq.${competenciaAtiva}`,
+                `billing_documents?company_id=eq.${empresaAtiva.id}`,
                 { method: 'GET' }
             );
-
-            if (docs.length === 0) {
-                alert('Não há faturamento registrado nesta competência no Módulo 04.');
-                return;
-            }
+            const docsMap = new Map();
+            docs.forEach(d => docsMap.set(d.id, d));
 
             if (colaboradores.length === 0) {
-                alert('Cadastre colaboradores antes de processar.');
+                alert('Cadastre colaboradores antes de processar as comissões.');
                 return;
             }
 
-            // Busca regras de comissão dos contratos
+            // 3. Busca regras de comissão dos contratos
             let regrasComissao = [];
             try {
                 regrasComissao = await window.BpoSupabase.request('contract_commission_rules', { method: 'GET' });
             } catch(e) {}
 
             const lotesComissoes = [];
-            const hoje = new Date().toISOString().split('T')[0];
+            const idsDocsComReceipt = new Set();
 
-            for (const d of docs) {
-                if (d.status === 'cancelled') continue;
+            // 4. Processa cada baixa/recebimento recebido no mês (suporte a baixas parciais - Item 03)
+            for (const r of receiptsCompetencia) {
+                const doc = docsMap.get(r.external_id);
+                if (doc && doc.status === 'cancelled') continue;
+                if (doc) idsDocsComReceipt.add(doc.id);
 
-                // Contrato associado
-                const contrato = contratos.find(c => c.id === d.contract_id);
-                // Se contrato existir mas não for elegível a comissão, pula
+                const contratoId = r.contract_id || (doc ? doc.contract_id : null);
+                const contrato = contratos.find(c => c.id === contratoId);
+
+                // Se o contrato existir e não for elegível a comissão, pula
                 if (contrato && !contrato.commission_eligible) continue;
 
-                // Regras vinculadas ao contrato e vigentes
-                const regrasDoContrato = regrasComissao.filter(r => {
-                    if (r.contract_id !== d.contract_id) return false;
-                    const de = r.valid_from <= hoje;
-                    const ate = !r.valid_until || r.valid_until >= hoje;
+                const baseCents = window.BpoMoney.toCents(r.gross_amount);
+                if (baseCents <= 0n) continue;
+
+                const dataEvento = r.receipt_date;
+
+                // Regras vinculadas ao contrato e vigentes na data do recebimento
+                const regrasDoContrato = contrato ? regrasComissao.filter(reg => {
+                    if (reg.contract_id !== contrato.id) return false;
+                    const de = !reg.valid_from || reg.valid_from <= dataEvento;
+                    const ate = !reg.valid_until || reg.valid_until >= dataEvento;
                     return de && ate;
-                });
+                }) : [];
 
                 if (regrasDoContrato.length > 0) {
                     for (const regra of regrasDoContrato) {
                         const colabId = regra.collaborator_id;
                         const percentual = parseFloat(regra.percentage) || 5.0;
-                        const baseType = regra.basis_override || (contrato ? contrato.commission_basis : 'net_proportional');
-
-                        let baseCents = 0n;
-                        if (baseType === 'gross_invoiced') {
-                            baseCents = window.BpoMoney.toCents(d.gross_amount);
-                        } else {
-                            baseCents = window.BpoMoney.toCents(d.net_amount);
-                        }
-
                         const capType = contrato ? (contrato.commission_cap_type || 'none') : 'none';
                         const capValue = contrato ? (contrato.commission_cap_value || 0) : 0;
 
@@ -418,15 +444,15 @@
                             capValue
                         });
 
-                        const chaveIdempotente = `com_${d.id}_${colabId}`;
+                        const chaveIdempotente = `com_rec_${r.id}_${colabId}`;
 
                         lotesComissoes.push({
                             company_id: empresaAtiva.id,
                             collaborator_id: colabId,
-                            contract_id: d.contract_id || null,
-                            document_id: d.id,
+                            contract_id: contrato ? contrato.id : null,
+                            document_id: doc ? doc.id : (r.external_id || null),
                             competence_month: competenciaAtiva,
-                            event_date: d.issue_date,
+                            event_date: dataEvento,
                             base_amount: window.BpoMoney.toDecimalString(baseCents),
                             percentage: percentual,
                             commission_amount: window.BpoMoney.toDecimalString(res.comissaoCents),
@@ -434,25 +460,103 @@
                             idempotency_key: chaveIdempotente
                         });
                     }
-                } else if (!contrato || contrato.commission_eligible) {
+                } else if (colaboradores.length > 0 && (!contrato || contrato.commission_eligible)) {
                     // Fallback para vendedor padrão caso contrato seja elegível sem regra específica
                     const colabPadrao = colaboradores[0];
                     const percentual = 5.0;
-                    const baseCents = window.BpoMoney.toCents(d.net_amount);
                     const res = window.BpoCommissionEngine.calcularComissao({
                         baseAmount: baseCents,
                         percentage: percentual
                     });
 
-                    const chaveIdempotente = `com_${d.id}_${colabPadrao.id}`;
+                    const chaveIdempotente = `com_rec_${r.id}_${colabPadrao.id}`;
 
                     lotesComissoes.push({
                         company_id: empresaAtiva.id,
                         collaborator_id: colabPadrao.id,
-                        contract_id: d.contract_id || null,
+                        contract_id: contrato ? contrato.id : null,
+                        document_id: doc ? doc.id : (r.external_id || null),
+                        competence_month: competenciaAtiva,
+                        event_date: dataEvento,
+                        base_amount: window.BpoMoney.toDecimalString(baseCents),
+                        percentage: percentual,
+                        commission_amount: window.BpoMoney.toDecimalString(res.comissaoCents),
+                        status: 'pending',
+                        idempotency_key: chaveIdempotente
+                    });
+                }
+            }
+
+            // 5. Fallback para documentos pagos na competência sem linha em receipts (legados)
+            for (const d of docs) {
+                if (d.status === 'cancelled') continue;
+                if (idsDocsComReceipt.has(d.id)) continue;
+
+                const taxDetails = d.tax_details || (window.BpoFiscalUtils ? window.BpoFiscalUtils.extrairTaxDetails(d) : null) || {};
+                const dataPagamento = taxDetails.payment_date || (d.status === 'paid' && d.competence_month === competenciaAtiva ? d.issue_date : null);
+
+                if (!dataPagamento || !dataPagamento.startsWith(competenciaAtiva)) continue;
+
+                const contrato = contratos.find(c => c.id === d.contract_id);
+                if (contrato && !contrato.commission_eligible) continue;
+
+                const baseCents = window.BpoMoney.toCents(d.net_amount || d.gross_amount);
+                if (baseCents <= 0n) continue;
+
+                const regrasDoContrato = contrato ? regrasComissao.filter(reg => {
+                    if (reg.contract_id !== contrato.id) return false;
+                    const de = !reg.valid_from || reg.valid_from <= dataPagamento;
+                    const ate = !reg.valid_until || reg.valid_until >= dataPagamento;
+                    return de && ate;
+                }) : [];
+
+                if (regrasDoContrato.length > 0) {
+                    for (const regra of regrasDoContrato) {
+                        const colabId = regra.collaborator_id;
+                        const percentual = parseFloat(regra.percentage) || 5.0;
+                        const capType = contrato ? (contrato.commission_cap_type || 'none') : 'none';
+                        const capValue = contrato ? (contrato.commission_cap_value || 0) : 0;
+
+                        const res = window.BpoCommissionEngine.calcularComissao({
+                            baseAmount: baseCents,
+                            percentage: percentual,
+                            capType,
+                            capValue
+                        });
+
+                        const chaveIdempotente = `com_doc_${d.id}_${colabId}`;
+
+                        lotesComissoes.push({
+                            company_id: empresaAtiva.id,
+                            collaborator_id: colabId,
+                            contract_id: contrato ? contrato.id : null,
+                            document_id: d.id,
+                            competence_month: competenciaAtiva,
+                            event_date: dataPagamento,
+                            base_amount: window.BpoMoney.toDecimalString(baseCents),
+                            percentage: percentual,
+                            commission_amount: window.BpoMoney.toDecimalString(res.comissaoCents),
+                            status: 'pending',
+                            idempotency_key: chaveIdempotente
+                        });
+                    }
+                } else if (colaboradores.length > 0 && (!contrato || contrato.commission_eligible)) {
+                    const colabPadrao = colaboradores[0];
+                    const percentual = 5.0;
+                    const res = window.BpoCommissionEngine.calcularComissao({
+                        baseAmount: baseCents,
+                        percentage: percentual
+                    });
+
+                    const chaveIdempotente = `com_doc_${d.id}_${colabPadrao.id}`;
+
+                    lotesComissoes.push({
+                        company_id: empresaAtiva.id,
+                        collaborator_id: colabPadrao.id,
+                        contract_id: contrato ? contrato.id : null,
                         document_id: d.id,
                         competence_month: competenciaAtiva,
-                        event_date: d.issue_date,
+                        event_date: dataPagamento,
                         base_amount: window.BpoMoney.toDecimalString(baseCents),
                         percentage: percentual,
                         commission_amount: window.BpoMoney.toDecimalString(res.comissaoCents),
@@ -463,7 +567,7 @@
             }
 
             if (lotesComissoes.length === 0) {
-                alert('Nenhum documento elegível para apuração de comissões nesta competência.');
+                alert(`Nenhum recebimento registrado para a competência ${competenciaAtiva}.\n\nAs comissões são apuradas pelo regime de caixa (data de recebimento). Realize as baixas totais ou parciais no Módulo de Faturamento para apurar as comissões deste mês.`);
                 return;
             }
 
@@ -475,7 +579,7 @@
             });
 
             await carregarDadosComissoes();
-            alert(`Apuração concluída! Comissões avaliadas e registradas.`);
+            alert(`Apuração concluída com sucesso!\n${lotesComissoes.length} parcela(s) de comissão vinculada(s) aos recebimentos de ${competenciaAtiva}.`);
 
         } catch (err) {
             alert('Erro ao processar comissões: ' + err.message);
