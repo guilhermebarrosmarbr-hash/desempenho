@@ -15,8 +15,24 @@
 })(typeof self !== 'undefined' ? self : this, function() {
 
     // Repartição padrão oficial dos tributos dentro do DAS Simples Nacional
-    // Para Anexo III e Anexo V
+    // Para Anexos I, II, III, IV e V
     const REPARTICAO_SIMPLES = {
+        anexo_i: {
+            faixa1: { irpj: 0.0550, csll: 0.0350, cofins: 0.1274, pis: 0.0276, inss: 0.4150, iss: 0.0000 },
+            faixa2: { irpj: 0.0550, csll: 0.0350, cofins: 0.1274, pis: 0.0276, inss: 0.4150, iss: 0.0000 },
+            faixa3: { irpj: 0.0550, csll: 0.0350, cofins: 0.1274, pis: 0.0276, inss: 0.4150, iss: 0.0000 },
+            faixa4: { irpj: 0.0550, csll: 0.0350, cofins: 0.1274, pis: 0.0276, inss: 0.4150, iss: 0.0000 },
+            faixa5: { irpj: 0.0550, csll: 0.0350, cofins: 0.1274, pis: 0.0276, inss: 0.4150, iss: 0.0000 },
+            faixa6: { irpj: 0.1350, csll: 0.1000, cofins: 0.2827, pis: 0.0613, inss: 0.4210, iss: 0.0000 }
+        },
+        anexo_ii: {
+            faixa1: { irpj: 0.0550, csll: 0.0350, cofins: 0.1151, pis: 0.0249, inss: 0.3750, iss: 0.0000 },
+            faixa2: { irpj: 0.0550, csll: 0.0350, cofins: 0.1151, pis: 0.0249, inss: 0.3750, iss: 0.0000 },
+            faixa3: { irpj: 0.0550, csll: 0.0350, cofins: 0.1151, pis: 0.0249, inss: 0.3750, iss: 0.0000 },
+            faixa4: { irpj: 0.0550, csll: 0.0350, cofins: 0.1151, pis: 0.0249, inss: 0.3750, iss: 0.0000 },
+            faixa5: { irpj: 0.0550, csll: 0.0350, cofins: 0.1151, pis: 0.0249, inss: 0.3750, iss: 0.0000 },
+            faixa6: { irpj: 0.0850, csll: 0.0750, cofins: 0.2096, pis: 0.0454, inss: 0.2350, iss: 0.0000 }
+        },
         anexo_iii: {
             faixa1: { irpj: 0.0400, csll: 0.0350, cofins: 0.1282, pis: 0.0278, inss: 0.4340, iss: 0.3350 },
             faixa2: { irpj: 0.0400, csll: 0.0350, cofins: 0.1405, pis: 0.0305, inss: 0.4340, iss: 0.3200 },
@@ -44,6 +60,22 @@
     };
 
     const TABELAS_SIMPLES = {
+        anexo_i: [
+            { max: 180000, rate: 0.040, deduction: 0, faixaIdx: 1 },
+            { max: 360000, rate: 0.073, deduction: 5940, faixaIdx: 2 },
+            { max: 720000, rate: 0.095, deduction: 13860, faixaIdx: 3 },
+            { max: 1800000, rate: 0.107, deduction: 22500, faixaIdx: 4 },
+            { max: 3600000, rate: 0.143, deduction: 87300, faixaIdx: 5 },
+            { max: 4800000, rate: 0.190, deduction: 378000, faixaIdx: 6 }
+        ],
+        anexo_ii: [
+            { max: 180000, rate: 0.045, deduction: 0, faixaIdx: 1 },
+            { max: 360000, rate: 0.078, deduction: 5940, faixaIdx: 2 },
+            { max: 720000, rate: 0.100, deduction: 13860, faixaIdx: 3 },
+            { max: 1800000, rate: 0.112, deduction: 22500, faixaIdx: 4 },
+            { max: 3600000, rate: 0.147, deduction: 85500, faixaIdx: 5 },
+            { max: 4800000, rate: 0.300, deduction: 720000, faixaIdx: 6 }
+        ],
         anexo_iii: [
             { max: 180000, rate: 0.06, deduction: 0, faixaIdx: 1 },
             { max: 360000, rate: 0.1120, deduction: 9360, faixaIdx: 2 },
@@ -129,6 +161,7 @@
             const rbt = parseToNumber(rbt12);
             const fat = parseToNumber(faturamentoMes);
             const issRetidoTomador = Boolean(options.issRetidoTomador);
+            const issIsento = Boolean(options.issIsento);
             const aliquotaRetencaoInformada = options.aliquotaRetencaoInformada !== undefined ? parseToNumber(options.aliquotaRetencaoInformada) : null;
 
             const tabela = TABELAS_SIMPLES[anexoKey] || TABELAS_SIMPLES.anexo_iii;
@@ -154,27 +187,42 @@
 
             // Repartição de tributos do DAS
             const reparticaoFaixas = REPARTICAO_SIMPLES[anexoKey] || REPARTICAO_SIMPLES.anexo_iii;
-            const repFaixa = reparticaoFaixas[`faixa${faixa.faixaIdx}`] || reparticaoFaixas.faixa1;
+            let repFaixa = reparticaoFaixas[`faixa${faixa.faixaIdx}`] || reparticaoFaixas.faixa1;
 
             // Alíquota do componente ISS dentro do DAS
             const aliquotaEfetivaIss = aliquotaEfetiva * repFaixa.iss;
 
-            // Se o ISS foi retido pelo tomador, o componente de ISS é segregado e NÃO cobrado no DAS
-            const aliquotaDasFinal = issRetidoTomador 
+            // Se o ISS foi retido pelo tomador ou é isento, o componente de ISS é segregado e NÃO cobrado no DAS
+            const aliquotaDasFinal = (issRetidoTomador || issIsento)
                 ? Math.max(aliquotaEfetiva - aliquotaEfetivaIss, 0)
                 : aliquotaEfetiva;
 
             const valorDas = roundCents(fat * aliquotaDasFinal);
 
             // Detalhamento dos componentes do DAS
-            const componentes = {
-                irpj: roundCents(fat * aliquotaEfetiva * repFaixa.irpj),
-                csll: roundCents(fat * aliquotaEfetiva * repFaixa.csll),
-                cofins: roundCents(fat * aliquotaEfetiva * repFaixa.cofins),
-                pis: roundCents(fat * aliquotaEfetiva * repFaixa.pis),
-                inss: roundCents(fat * aliquotaEfetiva * repFaixa.inss),
-                iss: issRetidoTomador ? 0 : roundCents(fat * aliquotaEfetivaIss)
-            };
+            // Se isento de ISS, redistribui as proporções dos demais tributos ou zera o ISS
+            let componentes = {};
+            if (issIsento && repFaixa.iss > 0) {
+                const outrosTotal = 1 - repFaixa.iss;
+                const fator = outrosTotal > 0 ? (1 / outrosTotal) : 1;
+                componentes = {
+                    irpj: roundCents(fat * aliquotaDasFinal * repFaixa.irpj * fator),
+                    csll: roundCents(fat * aliquotaDasFinal * repFaixa.csll * fator),
+                    cofins: roundCents(fat * aliquotaDasFinal * repFaixa.cofins * fator),
+                    pis: roundCents(fat * aliquotaDasFinal * repFaixa.pis * fator),
+                    inss: roundCents(fat * aliquotaDasFinal * repFaixa.inss * fator),
+                    iss: 0
+                };
+            } else {
+                componentes = {
+                    irpj: roundCents(fat * aliquotaEfetiva * repFaixa.irpj),
+                    csll: roundCents(fat * aliquotaEfetiva * repFaixa.csll),
+                    cofins: roundCents(fat * aliquotaEfetiva * repFaixa.cofins),
+                    pis: roundCents(fat * aliquotaEfetiva * repFaixa.pis),
+                    inss: roundCents(fat * aliquotaEfetiva * repFaixa.inss),
+                    iss: issRetidoTomador ? 0 : roundCents(fat * aliquotaEfetivaIss)
+                };
+            }
 
             // Cálculo da retenção de ISS no documento
             let valorIssRetido = 0;

@@ -101,6 +101,57 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         return (bCents + eCents) > dCents ? (bCents + eCents - dCents) : 0n;
     }
 
+    /**
+     * Calcula a lista dos 12 meses anteriores à competência informada
+     * Ex: Para '2026-09', retorna ['2025-09', '2025-10', ..., '2026-08']
+     */
+    function obterMesesRbt12(competencia) {
+        if (!competencia || !competencia.includes('-')) return [];
+        const [anoStr, mesStr] = competencia.split('-');
+        let a = parseInt(anoStr, 10);
+        let m = parseInt(mesStr, 10);
+
+        const meses = [];
+        for (let i = 1; i <= 12; i++) {
+            m--;
+            if (m === 0) {
+                m = 12;
+                a--;
+            }
+            meses.unshift(`${a}-${String(m).padStart(2, '0')}`);
+        }
+        return meses;
+    }
+
+    /**
+     * Calcula o RBT12 real de uma empresa somando o faturamento total das 12 competências anteriores
+     */
+    async function calcularRbt12RealEmpresa(companyId, competencia) {
+        const meses12 = obterMesesRbt12(competencia);
+        if (meses12.length === 0) return 0;
+
+        let totalRbt12Cents = 0n;
+        try {
+            // Consulta documentos das 12 competências anteriores
+            const inQuery = meses12.join(',');
+            const docs12 = await window.BpoSupabase.request(
+                `billing_documents?company_id=eq.${companyId}&competence_month=in.(${inQuery})&status=neq.cancelled`,
+                { method: 'GET' }
+            );
+
+            if (docs12 && docs12.length > 0) {
+                docs12.forEach(d => {
+                    const td = d.tax_details || window.BpoFiscalUtils.extrairTaxDetails(d);
+                    totalRbt12Cents += calcularFaturamentoTotalDoc(d, td);
+                });
+            }
+        } catch (e) {
+            console.warn(`Aviso ao calcular RBT12 real da empresa ${companyId}:`, e);
+        }
+
+        return Number(totalRbt12Cents) / 100;
+    }
+
     async function carregarEmpresas() {
         try {
             empresas = await window.BpoSupabase.request('companies?order=name.asc', { method: 'GET' });
@@ -293,9 +344,12 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     `;
                 } else {
                     // Simples Nacional: DZM ou Ybox via DAS estimado
-                    // Verifica se os lançamentos possuem tax_details com anexo e isenção de ISS
+                    // 1. Calcula o RBT12 real das 12 competências anteriores da empresa
+                    const rbt12Calculado = await calcularRbt12RealEmpresa(emp.id, competenciaAtiva);
+
+                    // 2. Verifica se os lançamentos possuem tax_details com anexo e isenção de ISS
                     let anexoEmp = 'anexo_iii';
-                    let rbt12Emp = 360000;
+                    let rbt12Emp = rbt12Calculado > 0 ? rbt12Calculado : 180000;
                     let temIsencaoIssEmp = false;
                     let somaDasLancamentosCents = 0n;
                     let temDasGravado = false;
@@ -304,7 +358,9 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                         const td = d.tax_details || window.BpoFiscalUtils.extrairTaxDetails(d);
                         if (td) {
                             if (td.das_anexo) anexoEmp = td.das_anexo;
-                            if (td.das_rbt12) rbt12Emp = Number(window.BpoMoney.toCents(td.das_rbt12)) / 100;
+                            if (rbt12Calculado <= 0 && td.das_rbt12) {
+                                rbt12Emp = Number(window.BpoMoney.toCents(td.das_rbt12)) / 100;
+                            }
                             if (td.iss_isento_simples) temIsencaoIssEmp = true;
                             if (td.das_valor) {
                                 somaDasLancamentosCents += window.BpoMoney.toCents(td.das_valor);
@@ -317,42 +373,32 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     let dasCents = 0n;
                     let aliqEfetivaNum = 0.06;
 
+                    // Apuração oficial com RBT12 e isenção de ISS
+                    const apuracaoSN = window.BpoTaxEngine.apurarSimplesNacional(rbt12Emp, fatMesNum, anexoEmp, {
+                        issIsento: temIsencaoIssEmp
+                    });
+                    aliqEfetivaNum = apuracaoSN.aliquotaEfetivaNumero || 0.06;
+
                     if (temDasGravado && somaDasLancamentosCents > 0n) {
                         dasCents = somaDasLancamentosCents;
-                        aliqEfetivaNum = fatMesNum > 0 ? (Number(dasCents) / 100 / fatMesNum) : 0.06;
                     } else {
-                        const apuracaoSN = window.BpoTaxEngine.apurarSimplesNacional(rbt12Emp, fatMesNum, anexoEmp);
-                        aliqEfetivaNum = apuracaoSN.aliquotaEfetivaNumero || 0.06;
                         dasCents = BigInt(Math.round(apuracaoSN.valorDas * 100));
                     }
 
                     impostoApuradoEmpCents = dasCents;
                     saldoRecolherEmpCents = dasCents;
 
-                    // Repartição do Simples respeitando anexo e isenção de ISS
-                    let rep = REPARTICAO_SIMPLES_PADRAO[anexoEmp] || REPARTICAO_SIMPLES_PADRAO.anexo_iii;
-                    if (temIsencaoIssEmp && rep.iss > 0) {
-                        const issShare = rep.iss;
-                        const outrosTotal = 1 - issShare;
-                        const fator = outrosTotal > 0 ? (1 / outrosTotal) : 1;
-                        rep = {
-                            irpj:   rep.irpj   * fator,
-                            csll:   rep.csll   * fator,
-                            cofins: rep.cofins * fator,
-                            pis:    rep.pis    * fator,
-                            inss:   rep.inss   * fator,
-                            iss:    0
-                        };
-                    }
-
-                    const cppCents = BigInt(Math.round(fatMesNum * aliqEfetivaNum * rep.inss * 100));
-                    const issSNCents = temIsencaoIssEmp ? 0n : BigInt(Math.round(fatMesNum * aliqEfetivaNum * rep.iss * 100));
-                    const pisSNCents = BigInt(Math.round(fatMesNum * aliqEfetivaNum * rep.pis * 100));
-                    const cofinsSNCents = BigInt(Math.round(fatMesNum * aliqEfetivaNum * rep.cofins * 100));
-                    const irpjCsllSNCents = BigInt(Math.round(fatMesNum * aliqEfetivaNum * (rep.irpj + rep.csll) * 100));
+                    // Componentes oficiais retornados pelo motor
+                    const comp = apuracaoSN.componentes || {};
+                    const cppCents = BigInt(Math.round((comp.inss || 0) * 100));
+                    const issSNCents = temIsencaoIssEmp ? 0n : BigInt(Math.round((comp.iss || 0) * 100));
+                    const pisSNCents = BigInt(Math.round((comp.pis || 0) * 100));
+                    const cofinsSNCents = BigInt(Math.round((comp.cofins || 0) * 100));
+                    const irpjCsllSNCents = BigInt(Math.round(((comp.irpj || 0) + (comp.csll || 0)) * 100));
 
                     const anexoNome = anexoEmp.replace('_', ' ').toUpperCase();
                     const tagIsento = temIsencaoIssEmp ? ' <span style="font-size:0.7rem; color:#f59e0b; background:rgba(245,158,11,0.15); padding:2px 6px; border-radius:4px;">ISS Isento</span>' : '';
+                    const rbt12Formatado = window.BpoMoney.formatBRL(BigInt(Math.round(rbt12Emp * 100)));
 
                     detalheCardHtml = `
                         <div style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 16px; border: 1px solid rgba(255,255,255,0.05);">
@@ -364,6 +410,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                                 </div>
                             </div>
                             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; font-size:0.85rem;">
+                                <div><span style="color:var(--text-muted);">RBT12 (12m Anteriores):</span> <strong style="color:#38bdf8;">${rbt12Formatado}</strong></div>
                                 <div><span style="color:var(--text-muted);">Alíquota Efetiva DAS:</span> <strong>${(aliqEfetivaNum * 100).toFixed(2)}%</strong></div>
                                 <div><span style="color:var(--text-muted);">Parcela CPP (INSS):</span> <strong>${window.BpoMoney.formatBRL(cppCents)}</strong></div>
                                 <div><span style="color:var(--text-muted);">Parcela ISS:</span> <strong>${temIsencaoIssEmp ? '<span style="color:#f59e0b;">R$ 0,00 (Isento)</span>' : window.BpoMoney.formatBRL(issSNCents)}</strong></div>
@@ -372,7 +419,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                                 <div><span style="color:var(--text-muted);">Parcela IRPJ/CSLL:</span> <strong>${window.BpoMoney.formatBRL(irpjCsllSNCents)}</strong></div>
                             </div>
                             <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between;">
-                                <span style="font-size:0.82rem; color:var(--text-muted);">* Tributos integrados na guia única DAS${temIsencaoIssEmp ? ' (com exclusão de ISS por isenção)' : ''}</span>
+                                <span style="font-size:0.82rem; color:var(--text-muted);">* Tributos apurados com RBT12 real das competências de faturamento${temIsencaoIssEmp ? ' (com exclusão de ISS por isenção)' : ''}</span>
                                 <span style="color:#f59e0b; font-weight:700;">DAS Estimado a Recolher: ${window.BpoMoney.formatBRL(impostoApuradoEmpCents)}</span>
                             </div>
                         </div>
@@ -440,6 +487,15 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     });
                 });
             } catch (e) {}
+
+            // Mapeia RBT12 real calculado de cada empresa do Simples Nacional
+            const rbt12PorEmpresaMap = new Map();
+            for (const emp of empresasProcessar) {
+                if (emp.tax_regime === 'simples_nacional') {
+                    const rbt12 = await calcularRbt12RealEmpresa(emp.id, competenciaAtiva);
+                    rbt12PorEmpresaMap.set(emp.id, rbt12);
+                }
+            }
 
             const docsParaTabela = empresaAtivaId === 'all'
                 ? docsCompetencia
@@ -523,9 +579,14 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                         // Simples Nacional: DZM / Ybox
                         const anexoKey = (taxDetails && taxDetails.das_anexo) ? taxDetails.das_anexo : 'anexo_iii';
                         issIsento = !!(taxDetails && taxDetails.iss_isento_simples);
-                        const rbt12Num = (taxDetails && taxDetails.das_rbt12) 
-                            ? Number(window.BpoMoney.toCents(taxDetails.das_rbt12)) / 100 
-                            : 360000;
+                        
+                        // RBT12 real calculado a partir das 12 competências anteriores da empresa
+                        const rbt12Real = rbt12PorEmpresaMap.get(doc.company_id) || 0;
+                        const rbt12Num = rbt12Real > 0 
+                            ? rbt12Real 
+                            : ((taxDetails && taxDetails.das_rbt12) 
+                                ? Number(window.BpoMoney.toCents(taxDetails.das_rbt12)) / 100 
+                                : 180000);
 
                         // Se o operador já salvou alíquota/valor do DAS no lançamento, respeita o valor gravado
                         let valorDasGravadoCents = null;
@@ -538,7 +599,8 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                             aliqDasEfetiva = Number(taxDetails.das_aliq) / 100;
                         } else if (window.BpoTaxEngine) {
                             const previaSN = window.BpoTaxEngine.apurarSimplesNacional(rbt12Num, fatTotalNum, anexoKey, {
-                                issRetidoTomador: issRetido
+                                issRetidoTomador: issRetido,
+                                issIsento: issIsento
                             });
                             aliqDasEfetiva = previaSN.aliquotaEfetivaNumero || 0.06;
                         }
