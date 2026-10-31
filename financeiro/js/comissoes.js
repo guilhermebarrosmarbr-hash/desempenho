@@ -364,6 +364,18 @@
         return s;
     }
 
+    
+    function hashCurto(str) {
+        if (!str) return '00000000';
+        let hash = 0;
+        const s = String(str);
+        for (let i = 0; i < s.length; i++) {
+            hash = ((hash << 5) - hash) + s.charCodeAt(i);
+            hash |= 0;
+        }
+        return Math.abs(hash).toString(36).padStart(6, '0');
+    }
+
     function formatarData(dataStr) {
         if (!dataStr) return '-';
         const parts = dataStr.split('-');
@@ -680,7 +692,7 @@
                         capValue
                     });
 
-                    const chaveIdempotente = `com_${ev.origemId}_${contratoId}_${colabId}`;
+                    const chaveIdempotente = `c_${competenciaAtiva}_${hashCurto(ev.origemId)}_${hashCurto(contratoId)}_${hashCurto(colabId)}`;
 
                     lotesComissoes.push({
                         company_id: empresaAtiva.id,
