@@ -103,6 +103,39 @@
             </div>
         </section>
 
+        <!-- Regras de Comissão Vigentes -->
+        <section class="finance-card" style="margin-bottom: 24px;">
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h2 class="card-title">Regras de Comissão por Contrato</h2>
+                    <p class="card-subtitle">Configurações de percentual e base de cálculo ativas por contrato elegível</p>
+                </div>
+                <button class="btn btn-primary btn-sm" id="btnNovaRegraCard">+ Nova Regra</button>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table-custom">
+                    <thead>
+                        <tr>
+                            <th>Contrato</th>
+                            <th>Colaborador</th>
+                            <th>Percentual (%)</th>
+                            <th>Base de Cálculo</th>
+                            <th>Vigência</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="listaRegrasBody">
+                        <tr>
+                            <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;">
+                                Nenhuma regra de comissão cadastrada.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
         <!-- Colaboradores Ativos -->
         <section class="finance-card">
             <div class="card-header">
@@ -181,6 +214,7 @@
             <p class="card-subtitle" style="margin-bottom: 20px;">Defina o percentual de comissão de um colaborador em um contrato.</p>
 
             <form id="formRegra">
+                <input type="hidden" id="regraId" value="">
                 <div style="margin-bottom: 16px;">
                     <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Contrato *</label>
                     <select id="regraContrato" required class="select-control" style="width: 100%;">
@@ -207,9 +241,12 @@
                     </div>
                 </div>
 
-                <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
-                    <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">Salvar Regra</button>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px;">
+                    <button type="button" class="btn btn-danger btn-sm" id="btnExcluirRegraModal" style="display: none;" onclick="window.deletarRegraModal()">🗑️ Excluir Regra</button>
+                    <div style="display: flex; gap: 12px; margin-left: auto;">
+                        <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">Salvar Regra</button>
+                    </div>
                 </div>
             </form>
         </div>

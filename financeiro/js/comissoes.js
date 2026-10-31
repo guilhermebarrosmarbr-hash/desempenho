@@ -9,12 +9,14 @@
     let colaboradores = [];
     let contratos = [];
     let comissoes = [];
+    let regrasContrato = [];
 
     // DOM
     const selectEmpresa = document.getElementById('selectEmpresa');
     const inputCompetencia = document.getElementById('inputCompetencia');
     const listaComissoesBody = document.getElementById('listaComissoesBody');
     const listaColaboradoresBody = document.getElementById('listaColaboradoresBody');
+    const listaRegrasBody = document.getElementById('listaRegrasBody');
 
     // Métricas
     const valBaseComissao = document.getElementById('valBaseComissao');
@@ -54,7 +56,9 @@
             modalColaborador.style.display = 'flex';
         });
 
-        document.getElementById('btnRegrasContrato').addEventListener('click', abrirModalRegras);
+        document.getElementById('btnRegrasContrato').addEventListener('click', () => abrirModalRegras());
+        const btnNovaRegraCard = document.getElementById('btnNovaRegraCard');
+        if (btnNovaRegraCard) btnNovaRegraCard.addEventListener('click', () => abrirModalRegras());
         document.getElementById('btnCalcularComissoes').addEventListener('click', processarApuracaoComissoes);
 
         // Delegate: quitar comissão
@@ -62,6 +66,16 @@
             const btn = e.target.closest('.btn-quitar-comissao');
             if (btn) window.quitarComissao(btn.dataset.id);
         });
+
+        // Delegate: editar / excluir regra de contrato
+        if (listaRegrasBody) {
+            listaRegrasBody.addEventListener('click', (e) => {
+                const btnEditar = e.target.closest('.btn-editar-regra');
+                if (btnEditar) { window.editarRegra(btnEditar.dataset.id); return; }
+                const btnExcluir = e.target.closest('.btn-excluir-regra');
+                if (btnExcluir) window.deletarRegra(btnExcluir.dataset.id);
+            });
+        }
 
         // Delegate: editar / excluir colaborador
         listaColaboradoresBody.addEventListener('click', (e) => {
@@ -117,14 +131,29 @@
             const todosCtr = await window.BpoSupabase.request(`contracts?company_id=eq.${empresaAtiva.id}&order=name.asc`, { method: 'GET' });
             contratos = (todosCtr || []).filter(c => !!c.commission_eligible);
 
-            // 3. Comissões calculadas na competência
+            // 3. Regras de comissão dos contratos elegíveis desta empresa
+            regrasContrato = [];
+            if (contratos.length > 0) {
+                try {
+                    const idsElegiveis = contratos.map(c => c.id).join(',');
+                    regrasContrato = await window.BpoSupabase.request(
+                        `contract_commission_rules?contract_id=in.(${idsElegiveis})`,
+                        { method: 'GET' }
+                    ) || [];
+                } catch (rErr) {
+                    console.warn('Aviso ao carregar regras:', rErr);
+                }
+            }
+
+            // 4. Comissões calculadas na competência
             comissoes = await window.BpoSupabase.request(
                 `commission_calculations?company_id=eq.${empresaAtiva.id}&competence_month=eq.${competenciaAtiva}&order=event_date.desc`,
                 { method: 'GET' }
-            );
+            ) || [];
 
             renderizarMetricas();
             renderizarExtrato();
+            renderizarRegras();
             renderizarColaboradores();
 
         } catch (err) {
@@ -207,6 +236,46 @@
         }).join('');
     }
 
+    
+    function renderizarRegras() {
+        if (!listaRegrasBody) return;
+        if (!regrasContrato || regrasContrato.length === 0) {
+            listaRegrasBody.innerHTML = `
+                <tr>
+                    <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;">
+                        Nenhuma regra de comissão cadastrada para os contratos elegíveis desta empresa.
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        listaRegrasBody.innerHTML = regrasContrato.map(r => {
+            const ctr = contratos.find(c => c.id === r.contract_id) || { code: 'CTR', name: 'Contrato' };
+            const col = colaboradores.find(c => c.id === r.collaborator_id) || { name: 'Colaborador' };
+            const baseTxt = r.basis_override === 'gross_invoiced' ? 'Faturamento Emitido (Bruto)' : 'Líquido Recebido';
+            const vigencia = r.valid_from ? formatarData(r.valid_from) : 'Desde o início';
+
+            return `
+                <tr>
+                    <td style="font-weight: 600; color: #fff;">${escapeHtml(ctr.code)} - ${escapeHtml(ctr.name)}</td>
+                    <td>${escapeHtml(col.name)}</td>
+                    <td style="color: var(--color-warning); font-weight: 700;">${r.percentage}%</td>
+                    <td style="font-size: 0.85rem; color: var(--text-secondary);">${baseTxt}</td>
+                    <td style="font-size: 0.85rem; color: var(--text-muted);">${vigencia}</td>
+                    <td style="display: flex; gap: 6px;">
+                        <button class="btn btn-secondary btn-sm btn-editar-regra" data-id="${escapeHtml(r.id)}">
+                            ✏️ Editar
+                        </button>
+                        <button class="btn btn-danger btn-sm btn-excluir-regra" data-id="${escapeHtml(r.id)}">
+                            🗑️ Excluir
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
     function renderizarColaboradores() {
         if (colaboradores.length === 0) {
             listaColaboradoresBody.innerHTML = `
@@ -274,15 +343,66 @@
         return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : dataStr;
     }
 
-    function abrirModalRegras() {
+    function abrirModalRegras(regraExistente = null) {
         const selContrato = document.getElementById('regraContrato');
         const selColab = document.getElementById('regraColaborador');
+        const inpRegraId = document.getElementById('regraId');
+        const inpPercentual = document.getElementById('regraPercentual');
+        const selBase = document.getElementById('regraBase');
+        const btnExc = document.getElementById('btnExcluirRegraModal');
+        const titulo = document.getElementById('modalRegraTitulo');
 
-        selContrato.innerHTML = contratos.map(c => `<option value="${c.id}">${c.code} - ${c.name}</option>`).join('') || '<option value="">Sem contratos</option>';
-        selColab.innerHTML = colaboradores.map(c => `<option value="${c.id}">${c.name}</option>`).join('') || '<option value="">Sem colaboradores</option>';
+        selContrato.innerHTML = contratos.map(c => `<option value="${c.id}">${escapeHtml(c.code)} - ${escapeHtml(c.name)}</option>`).join('') || '<option value="">Sem contratos elegíveis</option>';
+        selColab.innerHTML = colaboradores.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('') || '<option value="">Sem colaboradores</option>';
+
+        if (regraExistente) {
+            if (inpRegraId) inpRegraId.value = regraExistente.id;
+            if (titulo) titulo.textContent = 'Editar Regra de Comissão';
+            selContrato.value = regraExistente.contract_id;
+            selColab.value = regraExistente.collaborator_id;
+            if (inpPercentual) inpPercentual.value = regraExistente.percentage;
+            if (selBase) selBase.value = regraExistente.basis_override || 'gross_invoiced';
+            if (btnExc) btnExc.style.display = 'inline-flex';
+        } else {
+            if (inpRegraId) inpRegraId.value = '';
+            if (titulo) titulo.textContent = 'Regra de Comissão por Contrato';
+            document.getElementById('formRegra').reset();
+            if (inpPercentual) inpPercentual.value = '5.0';
+            if (btnExc) btnExc.style.display = 'none';
+        }
 
         modalRegra.style.display = 'flex';
     }
+
+    window.editarRegra = function(id) {
+        const r = regrasContrato.find(reg => reg.id === id);
+        if (r) abrirModalRegras(r);
+    };
+
+    window.deletarRegra = async function(id) {
+        if (!confirm('Deseja excluir esta regra de comissão?')) return;
+        try {
+            await window.BpoSupabase.request(`contract_commission_rules?id=eq.${id}`, { method: 'DELETE' });
+            await carregarDadosComissoes();
+            alert('Regra excluída com sucesso.');
+        } catch (err) {
+            alert('Erro ao excluir regra: ' + err.message);
+        }
+    };
+
+    window.deletarRegraModal = async function() {
+        const id = document.getElementById('regraId')?.value;
+        if (!id) return;
+        if (!confirm('Deseja excluir esta regra de comissão?')) return;
+        try {
+            await window.BpoSupabase.request(`contract_commission_rules?id=eq.${id}`, { method: 'DELETE' });
+            fecharModais();
+            await carregarDadosComissoes();
+            alert('Regra excluída com sucesso.');
+        } catch (err) {
+            alert('Erro ao excluir regra: ' + err.message);
+        }
+    };
 
     async function salvarColaborador(e) {
         e.preventDefault();
@@ -334,6 +454,7 @@
 
     async function salvarRegraContrato(e) {
         e.preventDefault();
+        const idExistente = document.getElementById('regraId')?.value;
         const contratoId = document.getElementById('regraContrato').value;
         const colabId = document.getElementById('regraColaborador').value;
         const percentual = parseFloat(document.getElementById('regraPercentual').value);
@@ -345,6 +466,22 @@
         }
 
         try {
+            if (idExistente) {
+                await window.BpoSupabase.request(`contract_commission_rules?id=eq.${idExistente}`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({
+                        contract_id: contratoId,
+                        collaborator_id: colabId,
+                        percentage: percentual,
+                        basis_override: base
+                    })
+                });
+                fecharModais();
+                await carregarDadosComissoes();
+                alert('Regra atualizada com sucesso!');
+                return;
+            }
+
             await window.BpoSupabase.request('contract_commission_rules', {
                 method: 'POST',
                 body: JSON.stringify({
@@ -357,6 +494,7 @@
             });
 
             fecharModais();
+            await carregarDadosComissoes();
             alert('Regra vinculada ao contrato com sucesso!');
         } catch (err) {
             alert('Erro ao salvar regra: ' + err.message);
@@ -367,18 +505,18 @@
         if (!empresaAtiva) return;
 
         try {
-            // 1. Busca TODOS os contratos da empresa (não só os elegíveis) para resolver IDs
+            // 1. Busca TODOS os contratos da empresa para resolução precisa de dados
             let todosContratos = [];
             try {
                 todosContratos = await window.BpoSupabase.request(
                     `contracts?company_id=eq.${empresaAtiva.id}`,
                     { method: 'GET' }
-                );
+                ) || [];
             } catch(e) {}
             const todosContratosMap = new Map();
             todosContratos.forEach(c => todosContratosMap.set(c.id, c));
 
-            // 2. Busca regras de comissão somente dos contratos elegíveis desta empresa
+            // 2. Busca regras vigentes de comissão dos contratos elegíveis
             let regrasComissao = [];
             try {
                 const elegiveisIds = (contratos || []).map(c => c.id);
@@ -386,11 +524,10 @@
                     regrasComissao = await window.BpoSupabase.request(
                         `contract_commission_rules?contract_id=in.(${elegiveisIds.join(',')})`,
                         { method: 'GET' }
-                    );
+                    ) || [];
                 }
             } catch(e) {}
 
-            // Mapa de regras por contract_id para lookup rápido
             const regrasPorContrato = new Map();
             (regrasComissao || []).forEach(reg => {
                 if (!regrasPorContrato.has(reg.contract_id)) {
@@ -399,30 +536,75 @@
                 regrasPorContrato.get(reg.contract_id).push(reg);
             });
 
-            // 3. Busca recebimentos da empresa e filtra pela competência ativa (Regime de Caixa)
+            // 3. Busca todos os documentos da empresa para vincular baixas e pagamentos
+            const docs = await window.BpoSupabase.request(
+                `billing_documents?company_id=eq.${empresaAtiva.id}&status=neq.cancelled`,
+                { method: 'GET' }
+            ) || [];
+            const docsMapById = new Map();
+            docs.forEach(d => docsMapById.set(d.id, d));
+
+            // 4. Busca recebimentos da tabela receipts
             let receipts = [];
             try {
                 receipts = await window.BpoSupabase.request(
                     `receipts?company_id=eq.${empresaAtiva.id}&order=receipt_date.desc`,
                     { method: 'GET' }
-                );
+                ) || [];
             } catch (rErr) {
                 console.warn('Aviso ao consultar receipts:', rErr.message);
             }
 
-            // Apenas recibos com data de recebimento na competência ativa (dia qualquer do mês)
-            const receiptsCompetencia = (receipts || []).filter(r =>
-                r.receipt_date && r.receipt_date.startsWith(competenciaAtiva)
-            );
+            // Compila lista unificada de eventos de recebimento por Regime de Caixa (competência = mês do recebimento)
+            // Cada item: { id, contract_id, document_id, receipt_date, baseAmountCents }
+            const eventosRecebimento = [];
+            const docsProcessadosViaReceipts = new Set();
 
-            // 4. Busca documentos para vincular contract_id via external_id
-            const docs = await window.BpoSupabase.request(
-                `billing_documents?company_id=eq.${empresaAtiva.id}`,
-                { method: 'GET' }
-            );
-            // Indexa por id E por número (para compatibilidade com external_id como string ou UUID)
-            const docsMapById = new Map();
-            docs.forEach(d => docsMapById.set(d.id, d));
+            (receipts || []).forEach(r => {
+                if (!r.receipt_date || !r.receipt_date.startsWith(competenciaAtiva)) return;
+
+                const doc = docsMapById.get(r.document_id) || docsMapById.get(r.external_id) || null;
+                const contratoId = r.contract_id || (doc ? doc.contract_id : null);
+                if (!contratoId) return;
+
+                const valorCents = window.BpoMoney.toCents(r.gross_amount);
+                if (valorCents <= 0n) return;
+
+                if (doc) docsProcessadosViaReceipts.add(doc.id);
+
+                eventosRecebimento.push({
+                    origemId: `rec_${r.id}`,
+                    contract_id: contratoId,
+                    document_id: doc ? doc.id : null,
+                    receipt_date: r.receipt_date,
+                    baseAmountCents: valorCents
+                });
+            });
+
+            // Resiliência / Fallback: documentos cujo pagamento foi registrado diretamente no doc (ou em tax_details.payment_date)
+            // com data de recebimento na competência ativa, mas que não estejam em receipts
+            docs.forEach(d => {
+                if (docsProcessadosViaReceipts.has(d.id)) return;
+                const td = d.tax_details || (window.BpoFiscalUtils ? window.BpoFiscalUtils.extrairTaxDetails(d) : null) || {};
+                const dataRec = td.payment_date || d.payment_date || null;
+
+                if (!dataRec || !dataRec.startsWith(competenciaAtiva)) return;
+                if (!d.contract_id) return;
+
+                // Se o documento estiver liquidado ou com baixa parcial
+                if (d.status === 'paid' || d.status === 'partially_paid') {
+                    const valorCents = window.BpoMoney.toCents(d.net_amount || d.gross_amount);
+                    if (valorCents > 0n) {
+                        eventosRecebimento.push({
+                            origemId: `doc_${d.id}`,
+                            contract_id: d.contract_id,
+                            document_id: d.id,
+                            receipt_date: dataRec,
+                            baseAmountCents: valorCents
+                        });
+                    }
+                }
+            });
 
             if (colaboradores.length === 0) {
                 alert('Cadastre colaboradores antes de processar as comissões.');
@@ -431,33 +613,21 @@
 
             const lotesComissoes = [];
 
-            // 5. Processa cada recebimento do mês (Regime de Caixa)
-            for (const r of receiptsCompetencia) {
-                // Resolve o documento associado ao recebimento
-                const doc = docsMapById.get(r.document_id) || docsMapById.get(r.external_id) || null;
-                if (doc && doc.status === 'cancelled') continue;
-
-                // Resolve o contrato: prioridade receipt → doc
-                const contratoId = r.contract_id || (doc ? doc.contract_id : null);
-                if (!contratoId) continue; // sem contrato, sem comissão
-
-                // Verifica elegibilidade usando o mapa completo (não só elegíveis)
+            // 5. Processa cada evento de recebimento no Regime de Caixa
+            for (const ev of eventosRecebimento) {
+                const contratoId = ev.contract_id;
                 const contrato = todosContratosMap.get(contratoId);
                 if (!contrato || !contrato.commission_eligible) continue;
 
-                const baseCents = window.BpoMoney.toCents(r.gross_amount);
-                if (baseCents <= 0n) continue;
+                const dataEvento = ev.receipt_date;
 
-                const dataEvento = r.receipt_date; // Regime de Caixa: data do recebimento
-
-                // Busca regras vigentes para ESTE contrato específico na data do recebimento
+                // Busca regras ativas deste contrato específico na data do evento
                 const regrasDoContrato = (regrasPorContrato.get(contratoId) || []).filter(reg => {
                     const de = !reg.valid_from || reg.valid_from <= dataEvento;
                     const ate = !reg.valid_until || reg.valid_until >= dataEvento;
                     return de && ate;
                 });
 
-                // Sem regra explícita = sem comissão (não há fallback automático)
                 if (regrasDoContrato.length === 0) continue;
 
                 for (const regra of regrasDoContrato) {
@@ -467,23 +637,22 @@
                     const capValue = contrato.commission_cap_value || 0;
 
                     const res = window.BpoCommissionEngine.calcularComissao({
-                        baseAmount: baseCents,
+                        baseAmount: ev.baseAmountCents,
                         percentage: percentual,
                         capType,
                         capValue
                     });
 
-                    // Chave idempotente: recibo + contrato + colaborador
-                    const chaveIdempotente = `com_rec_${r.id}_${contratoId}_${colabId}`;
+                    const chaveIdempotente = `com_${ev.origemId}_${contratoId}_${colabId}`;
 
                     lotesComissoes.push({
                         company_id: empresaAtiva.id,
                         collaborator_id: colabId,
                         contract_id: contratoId,
-                        document_id: doc ? doc.id : null,
+                        document_id: ev.document_id,
                         competence_month: competenciaAtiva,
                         event_date: dataEvento,
-                        base_amount: window.BpoMoney.toDecimalString(baseCents),
+                        base_amount: window.BpoMoney.toDecimalString(ev.baseAmountCents),
                         percentage: percentual,
                         commission_amount: window.BpoMoney.toDecimalString(res.comissaoCents),
                         status: 'pending',
