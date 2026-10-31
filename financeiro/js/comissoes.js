@@ -367,7 +367,39 @@
         if (!empresaAtiva) return;
 
         try {
-            // 1. Busca todos os recebimentos registrados na empresa
+            // 1. Busca TODOS os contratos da empresa (não só os elegíveis) para resolver IDs
+            let todosContratos = [];
+            try {
+                todosContratos = await window.BpoSupabase.request(
+                    `contracts?company_id=eq.${empresaAtiva.id}`,
+                    { method: 'GET' }
+                );
+            } catch(e) {}
+            const todosContratosMap = new Map();
+            todosContratos.forEach(c => todosContratosMap.set(c.id, c));
+
+            // 2. Busca regras de comissão somente dos contratos elegíveis desta empresa
+            let regrasComissao = [];
+            try {
+                const elegiveisIds = (contratos || []).map(c => c.id);
+                if (elegiveisIds.length > 0) {
+                    regrasComissao = await window.BpoSupabase.request(
+                        `contract_commission_rules?contract_id=in.(${elegiveisIds.join(',')})`,
+                        { method: 'GET' }
+                    );
+                }
+            } catch(e) {}
+
+            // Mapa de regras por contract_id para lookup rápido
+            const regrasPorContrato = new Map();
+            (regrasComissao || []).forEach(reg => {
+                if (!regrasPorContrato.has(reg.contract_id)) {
+                    regrasPorContrato.set(reg.contract_id, []);
+                }
+                regrasPorContrato.get(reg.contract_id).push(reg);
+            });
+
+            // 3. Busca recebimentos da empresa e filtra pela competência ativa (Regime de Caixa)
             let receipts = [];
             try {
                 receipts = await window.BpoSupabase.request(
@@ -378,111 +410,77 @@
                 console.warn('Aviso ao consultar receipts:', rErr.message);
             }
 
-            // Filtra os recebimentos cuja data está na competência ativa (Regime de Caixa - Item 03)
-            const receiptsCompetencia = receipts.filter(r => {
-                if (!r.receipt_date) return false;
-                return r.receipt_date.startsWith(competenciaAtiva);
-            });
+            // Apenas recibos com data de recebimento na competência ativa (dia qualquer do mês)
+            const receiptsCompetencia = (receipts || []).filter(r =>
+                r.receipt_date && r.receipt_date.startsWith(competenciaAtiva)
+            );
 
-            // 2. Busca documentos para vincular dados de contrato e regras
+            // 4. Busca documentos para vincular contract_id via external_id
             const docs = await window.BpoSupabase.request(
                 `billing_documents?company_id=eq.${empresaAtiva.id}`,
                 { method: 'GET' }
             );
-            const docsMap = new Map();
-            docs.forEach(d => docsMap.set(d.id, d));
+            // Indexa por id E por número (para compatibilidade com external_id como string ou UUID)
+            const docsMapById = new Map();
+            docs.forEach(d => docsMapById.set(d.id, d));
 
             if (colaboradores.length === 0) {
                 alert('Cadastre colaboradores antes de processar as comissões.');
                 return;
             }
 
-            // 3. Busca regras de comissão somente dos contratos elegíveis desta empresa
-            let regrasComissao = [];
-            try {
-                if (contratos.length > 0) {
-                    const idsElegiveis = contratos.map(c => c.id).join(',');
-                    regrasComissao = await window.BpoSupabase.request(
-                        `contract_commission_rules?contract_id=in.(${idsElegiveis})`,
-                        { method: 'GET' }
-                    );
-                }
-            } catch(e) {}
-
             const lotesComissoes = [];
-            const idsDocsComReceipt = new Set();
 
-            // 4. Processa cada baixa/recebimento recebido no mês (suporte a baixas parciais - Item 03)
+            // 5. Processa cada recebimento do mês (Regime de Caixa)
             for (const r of receiptsCompetencia) {
-                const doc = docsMap.get(r.external_id);
+                // Resolve o documento associado ao recebimento
+                const doc = docsMapById.get(r.document_id) || docsMapById.get(r.external_id) || null;
                 if (doc && doc.status === 'cancelled') continue;
-                if (doc) idsDocsComReceipt.add(doc.id);
 
+                // Resolve o contrato: prioridade receipt → doc
                 const contratoId = r.contract_id || (doc ? doc.contract_id : null);
-                const contrato = contratos.find(c => c.id === contratoId);
+                if (!contratoId) continue; // sem contrato, sem comissão
 
-                // Se o contrato existir e não for elegível a comissão, pula
-                if (contrato && !contrato.commission_eligible) continue;
+                // Verifica elegibilidade usando o mapa completo (não só elegíveis)
+                const contrato = todosContratosMap.get(contratoId);
+                if (!contrato || !contrato.commission_eligible) continue;
 
                 const baseCents = window.BpoMoney.toCents(r.gross_amount);
                 if (baseCents <= 0n) continue;
 
-                const dataEvento = r.receipt_date;
+                const dataEvento = r.receipt_date; // Regime de Caixa: data do recebimento
 
-                // Regras vinculadas ao contrato e vigentes na data do recebimento
-                const regrasDoContrato = contrato ? regrasComissao.filter(reg => {
-                    if (reg.contract_id !== contrato.id) return false;
+                // Busca regras vigentes para ESTE contrato específico na data do recebimento
+                const regrasDoContrato = (regrasPorContrato.get(contratoId) || []).filter(reg => {
                     const de = !reg.valid_from || reg.valid_from <= dataEvento;
                     const ate = !reg.valid_until || reg.valid_until >= dataEvento;
                     return de && ate;
-                }) : [];
+                });
 
-                if (regrasDoContrato.length > 0) {
-                    for (const regra of regrasDoContrato) {
-                        const colabId = regra.collaborator_id;
-                        const percentual = parseFloat(regra.percentage) || 5.0;
-                        const capType = contrato ? (contrato.commission_cap_type || 'none') : 'none';
-                        const capValue = contrato ? (contrato.commission_cap_value || 0) : 0;
+                // Sem regra explícita = sem comissão (não há fallback automático)
+                if (regrasDoContrato.length === 0) continue;
 
-                        const res = window.BpoCommissionEngine.calcularComissao({
-                            baseAmount: baseCents,
-                            percentage: percentual,
-                            capType,
-                            capValue
-                        });
+                for (const regra of regrasDoContrato) {
+                    const colabId = regra.collaborator_id;
+                    const percentual = parseFloat(regra.percentage) || 0;
+                    const capType = contrato.commission_cap_type || 'none';
+                    const capValue = contrato.commission_cap_value || 0;
 
-                        const chaveIdempotente = `com_rec_${r.id}_${colabId}`;
-
-                        lotesComissoes.push({
-                            company_id: empresaAtiva.id,
-                            collaborator_id: colabId,
-                            contract_id: contrato ? contrato.id : null,
-                            document_id: doc ? doc.id : (r.external_id || null),
-                            competence_month: competenciaAtiva,
-                            event_date: dataEvento,
-                            base_amount: window.BpoMoney.toDecimalString(baseCents),
-                            percentage: percentual,
-                            commission_amount: window.BpoMoney.toDecimalString(res.comissaoCents),
-                            status: 'pending',
-                            idempotency_key: chaveIdempotente
-                        });
-                    }
-                } else if (colaboradores.length > 0 && (!contrato || contrato.commission_eligible)) {
-                    // Fallback para vendedor padrão caso contrato seja elegível sem regra específica
-                    const colabPadrao = colaboradores[0];
-                    const percentual = 5.0;
                     const res = window.BpoCommissionEngine.calcularComissao({
                         baseAmount: baseCents,
-                        percentage: percentual
+                        percentage: percentual,
+                        capType,
+                        capValue
                     });
 
-                    const chaveIdempotente = `com_rec_${r.id}_${colabPadrao.id}`;
+                    // Chave idempotente: recibo + contrato + colaborador
+                    const chaveIdempotente = `com_rec_${r.id}_${contratoId}_${colabId}`;
 
                     lotesComissoes.push({
                         company_id: empresaAtiva.id,
-                        collaborator_id: colabPadrao.id,
-                        contract_id: contrato ? contrato.id : null,
-                        document_id: doc ? doc.id : (r.external_id || null),
+                        collaborator_id: colabId,
+                        contract_id: contratoId,
+                        document_id: doc ? doc.id : null,
                         competence_month: competenciaAtiva,
                         event_date: dataEvento,
                         base_amount: window.BpoMoney.toDecimalString(baseCents),
@@ -494,87 +492,8 @@
                 }
             }
 
-            // 5. Fallback para documentos pagos na competência sem linha em receipts (legados)
-            for (const d of docs) {
-                if (d.status === 'cancelled') continue;
-                if (idsDocsComReceipt.has(d.id)) continue;
-
-                const taxDetails = d.tax_details || (window.BpoFiscalUtils ? window.BpoFiscalUtils.extrairTaxDetails(d) : null) || {};
-                const dataPagamento = taxDetails.payment_date || (d.status === 'paid' && d.competence_month === competenciaAtiva ? d.issue_date : null);
-
-                if (!dataPagamento || !dataPagamento.startsWith(competenciaAtiva)) continue;
-
-                const contrato = contratos.find(c => c.id === d.contract_id);
-                if (contrato && !contrato.commission_eligible) continue;
-
-                const baseCents = window.BpoMoney.toCents(d.net_amount || d.gross_amount);
-                if (baseCents <= 0n) continue;
-
-                const regrasDoContrato = contrato ? regrasComissao.filter(reg => {
-                    if (reg.contract_id !== contrato.id) return false;
-                    const de = !reg.valid_from || reg.valid_from <= dataPagamento;
-                    const ate = !reg.valid_until || reg.valid_until >= dataPagamento;
-                    return de && ate;
-                }) : [];
-
-                if (regrasDoContrato.length > 0) {
-                    for (const regra of regrasDoContrato) {
-                        const colabId = regra.collaborator_id;
-                        const percentual = parseFloat(regra.percentage) || 5.0;
-                        const capType = contrato ? (contrato.commission_cap_type || 'none') : 'none';
-                        const capValue = contrato ? (contrato.commission_cap_value || 0) : 0;
-
-                        const res = window.BpoCommissionEngine.calcularComissao({
-                            baseAmount: baseCents,
-                            percentage: percentual,
-                            capType,
-                            capValue
-                        });
-
-                        const chaveIdempotente = `com_doc_${d.id}_${colabId}`;
-
-                        lotesComissoes.push({
-                            company_id: empresaAtiva.id,
-                            collaborator_id: colabId,
-                            contract_id: contrato ? contrato.id : null,
-                            document_id: d.id,
-                            competence_month: competenciaAtiva,
-                            event_date: dataPagamento,
-                            base_amount: window.BpoMoney.toDecimalString(baseCents),
-                            percentage: percentual,
-                            commission_amount: window.BpoMoney.toDecimalString(res.comissaoCents),
-                            status: 'pending',
-                            idempotency_key: chaveIdempotente
-                        });
-                    }
-                } else if (colaboradores.length > 0 && (!contrato || contrato.commission_eligible)) {
-                    const colabPadrao = colaboradores[0];
-                    const percentual = 5.0;
-                    const res = window.BpoCommissionEngine.calcularComissao({
-                        baseAmount: baseCents,
-                        percentage: percentual
-                    });
-
-                    const chaveIdempotente = `com_doc_${d.id}_${colabPadrao.id}`;
-
-                    lotesComissoes.push({
-                        company_id: empresaAtiva.id,
-                        collaborator_id: colabPadrao.id,
-                        contract_id: contrato ? contrato.id : null,
-                        document_id: d.id,
-                        competence_month: competenciaAtiva,
-                        event_date: dataPagamento,
-                        base_amount: window.BpoMoney.toDecimalString(baseCents),
-                        percentage: percentual,
-                        commission_amount: window.BpoMoney.toDecimalString(res.comissaoCents),
-                        status: 'pending',
-                        idempotency_key: chaveIdempotente
-                    });
-                }
-            }
-
             if (lotesComissoes.length === 0) {
-                alert(`Nenhum recebimento registrado para a competência ${competenciaAtiva}.\n\nAs comissões são apuradas pelo regime de caixa (data de recebimento). Realize as baixas totais ou parciais no Módulo de Faturamento para apurar as comissões deste mês.`);
+                alert(`Nenhum recebimento com regra de comissão vigente encontrado para ${competenciaAtiva}.\n\nVerifique:\n• Se há baixas registradas neste mês (Regime de Caixa)\n• Se os contratos são elegíveis para comissão\n• Se há regras de comissão cadastradas para os contratos elegíveis`);
                 return;
             }
 
@@ -586,7 +505,7 @@
             });
 
             await carregarDadosComissoes();
-            alert(`Apuração concluída com sucesso!\n${lotesComissoes.length} parcela(s) de comissão vinculada(s) aos recebimentos de ${competenciaAtiva}.`);
+            alert(`Apuração concluída!\n${lotesComissoes.length} comissão(ões) calculada(s) para ${competenciaAtiva}.`);
 
         } catch (err) {
             alert('Erro ao processar comissões: ' + err.message);
