@@ -337,6 +337,33 @@
         }
     };
 
+    
+    function extrairMesAnoIso(dataStr) {
+        if (!dataStr) return '';
+        const s = String(dataStr).trim();
+        // Formato ISO: YYYY-MM-DD
+        if (/^\d{4}-\d{2}/.test(s)) {
+            return s.slice(0, 7);
+        }
+        // Formato BR: DD/MM/YYYY
+        const parts = s.split('/');
+        if (parts.length === 3) {
+            return `${parts[2]}-${parts[1].padStart(2, '0')}`;
+        }
+        return '';
+    }
+
+    function converterParaDataIso(dataStr) {
+        if (!dataStr) return '';
+        const s = String(dataStr).trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+        const parts = s.split('/');
+        if (parts.length === 3) {
+            return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+        }
+        return s;
+    }
+
     function formatarData(dataStr) {
         if (!dataStr) return '-';
         const parts = dataStr.split('-');
@@ -489,7 +516,7 @@
                     collaborator_id: colabId,
                     percentage: percentual,
                     basis_override: base,
-                    valid_from: new Date().toISOString().split('T')[0]
+                    valid_from: '2000-01-01'
                 })
             });
 
@@ -561,7 +588,7 @@
             const docsProcessadosViaReceipts = new Set();
 
             (receipts || []).forEach(r => {
-                if (!r.receipt_date || !r.receipt_date.startsWith(competenciaAtiva)) return;
+                if (!r.receipt_date || extrairMesAnoIso(r.receipt_date) !== competenciaAtiva) return;
 
                 const doc = docsMapById.get(r.document_id) || docsMapById.get(r.external_id) || null;
                 const contratoId = r.contract_id || (doc ? doc.contract_id : null);
@@ -581,25 +608,26 @@
                 });
             });
 
-            // Resiliência / Fallback: documentos cujo pagamento foi registrado diretamente no doc (ou em tax_details.payment_date)
-            // com data de recebimento na competência ativa, mas que não estejam em receipts
+            // Resiliência / Fallback: documentos cujo recebimento foi registrado no faturamento (payment_date, tax_details ou receipt_date)
+            // que pertençam à competência ativa e que não tenham sido capturados via receipts
             docs.forEach(d => {
                 if (docsProcessadosViaReceipts.has(d.id)) return;
                 const td = d.tax_details || (window.BpoFiscalUtils ? window.BpoFiscalUtils.extrairTaxDetails(d) : null) || {};
-                const dataRec = td.payment_date || d.payment_date || null;
+                const dataRecRaw = td.payment_date || d.payment_date || d.receipt_date || null;
+                const dataRecIso = converterParaDataIso(dataRecRaw);
 
-                if (!dataRec || !dataRec.startsWith(competenciaAtiva)) return;
+                if (!dataRecRaw || extrairMesAnoIso(dataRecRaw) !== competenciaAtiva) return;
                 if (!d.contract_id) return;
 
                 // Se o documento estiver liquidado ou com baixa parcial
-                if (d.status === 'paid' || d.status === 'partially_paid') {
+                if (d.status === 'paid' || d.status === 'partially_paid' || dataRecRaw) {
                     const valorCents = window.BpoMoney.toCents(d.net_amount || d.gross_amount);
                     if (valorCents > 0n) {
                         eventosRecebimento.push({
                             origemId: `doc_${d.id}`,
                             contract_id: d.contract_id,
                             document_id: d.id,
-                            receipt_date: dataRec,
+                            receipt_date: dataRecIso,
                             baseAmountCents: valorCents
                         });
                     }
@@ -621,11 +649,10 @@
 
                 const dataEvento = ev.receipt_date;
 
-                // Busca regras ativas deste contrato específico na data do evento
+                // Busca regras ativas deste contrato específico (com flexibilidade para valid_until se preenchido)
                 const regrasDoContrato = (regrasPorContrato.get(contratoId) || []).filter(reg => {
-                    const de = !reg.valid_from || reg.valid_from <= dataEvento;
                     const ate = !reg.valid_until || reg.valid_until >= dataEvento;
-                    return de && ate;
+                    return ate;
                 });
 
                 if (regrasDoContrato.length === 0) continue;
@@ -662,7 +689,20 @@
             }
 
             if (lotesComissoes.length === 0) {
-                alert(`Nenhum recebimento com regra de comissão vigente encontrado para ${competenciaAtiva}.\n\nVerifique:\n• Se há baixas registradas neste mês (Regime de Caixa)\n• Se os contratos são elegíveis para comissão\n• Se há regras de comissão cadastradas para os contratos elegíveis`);
+                const totalRecebimentosMes = eventosRecebimento.length;
+                let detalheMsg = `Nenhum recebimento elegível com regra de comissão ativa foi encontrado para ${competenciaAtiva}.\n\n`;
+                detalheMsg += `• Recebimentos detectados em ${competenciaAtiva}: ${totalRecebimentosMes}\n`;
+                if (totalRecebimentosMes > 0) {
+                    const ctrsComRec = [...new Set(eventosRecebimento.map(e => {
+                        const c = todosContratosMap.get(e.contract_id);
+                        return c ? `${c.code} (${c.name}) [Elegível: ${c.commission_eligible ? 'SIM' : 'NÃO'}]` : e.contract_id;
+                    }))];
+                    detalheMsg += `• Contratos dos recebimentos:\n  - ${ctrsComRec.join('\n  - ')}\n\n`;
+                    detalheMsg += `Certifique-se de que os contratos estão marcados como 'Elegível para Comissões' e que possuem uma regra cadastrada na seção 'Regras de Comissão por Contrato'.`;
+                } else {
+                    detalheMsg += `Nenhuma baixa/recebimento foi encontrada com data em ${competenciaAtiva}. Verifique a data de recebimento das notas no módulo de faturamento.`;
+                }
+                alert(detalheMsg);
                 return;
             }
 
