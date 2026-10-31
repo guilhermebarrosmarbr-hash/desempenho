@@ -582,15 +582,21 @@
                 console.warn('Aviso ao consultar receipts:', rErr.message);
             }
 
-            // Compila lista unificada de eventos de recebimento por Regime de Caixa (competência = mês do recebimento)
-            // Cada item: { id, contract_id, document_id, receipt_date, baseAmountCents }
+            // Compilação universal de recebimentos:
+            // Atende tanto recebimentos com data no mês da competência (Regime de Caixa)
+            // quanto documentos emitidos na competência que já estejam liquidados/recebidos.
             const eventosRecebimento = [];
             const docsProcessadosViaReceipts = new Set();
 
             (receipts || []).forEach(r => {
-                if (!r.receipt_date || extrairMesAnoIso(r.receipt_date) !== competenciaAtiva) return;
-
                 const doc = docsMapById.get(r.document_id) || docsMapById.get(r.external_id) || null;
+                const mesRec = extrairMesAnoIso(r.receipt_date);
+                const mesDoc = doc ? doc.competence_month : null;
+
+                // Captura se a data de recebimento for da competência OU se o doc faturado for da competência
+                const matchCompetencia = (mesRec === competenciaAtiva) || (mesDoc === competenciaAtiva);
+                if (!matchCompetencia) return;
+
                 const contratoId = r.contract_id || (doc ? doc.contract_id : null);
                 if (!contratoId) return;
 
@@ -603,34 +609,38 @@
                     origemId: `rec_${r.id}`,
                     contract_id: contratoId,
                     document_id: doc ? doc.id : null,
-                    receipt_date: r.receipt_date,
+                    receipt_date: r.receipt_date || (doc ? doc.issue_date : null),
                     baseAmountCents: valorCents
                 });
             });
 
-            // Resiliência / Fallback: documentos cujo recebimento foi registrado no faturamento (payment_date, tax_details ou receipt_date)
-            // que pertençam à competência ativa e que não tenham sido capturados via receipts
+            // Resiliência total: varre billing_documents da empresa
             docs.forEach(d => {
                 if (docsProcessadosViaReceipts.has(d.id)) return;
+                if (!d.contract_id) return;
+
                 const td = d.tax_details || (window.BpoFiscalUtils ? window.BpoFiscalUtils.extrairTaxDetails(d) : null) || {};
                 const dataRecRaw = td.payment_date || d.payment_date || d.receipt_date || null;
                 const dataRecIso = converterParaDataIso(dataRecRaw);
+                const mesRec = extrairMesAnoIso(dataRecRaw);
+                const mesDoc = d.competence_month;
 
-                if (!dataRecRaw || extrairMesAnoIso(dataRecRaw) !== competenciaAtiva) return;
-                if (!d.contract_id) return;
+                // Aceita se o recebimento ocorreu nesta competência OU se a nota é da competência e está paga
+                const matchCompetencia = (mesRec === competenciaAtiva) || (mesDoc === competenciaAtiva);
+                if (!matchCompetencia) return;
 
-                // Se o documento estiver liquidado ou com baixa parcial
-                if (d.status === 'paid' || d.status === 'partially_paid' || dataRecRaw) {
-                    const valorCents = window.BpoMoney.toCents(d.net_amount || d.gross_amount);
-                    if (valorCents > 0n) {
-                        eventosRecebimento.push({
-                            origemId: `doc_${d.id}`,
-                            contract_id: d.contract_id,
-                            document_id: d.id,
-                            receipt_date: dataRecIso,
-                            baseAmountCents: valorCents
-                        });
-                    }
+                const isPago = d.status === 'paid' || d.status === 'partially_paid' || !!dataRecRaw;
+                if (!isPago) return;
+
+                const valorCents = window.BpoMoney.toCents(d.net_amount || d.gross_amount);
+                if (valorCents > 0n) {
+                    eventosRecebimento.push({
+                        origemId: `doc_${d.id}`,
+                        contract_id: d.contract_id,
+                        document_id: d.id,
+                        receipt_date: dataRecIso || d.issue_date,
+                        baseAmountCents: valorCents
+                    });
                 }
             });
 
