@@ -113,8 +113,9 @@
             // 1. Colaboradores
             colaboradores = await window.BpoSupabase.request(`collaborators?company_id=eq.${empresaAtiva.id}&order=name.asc`, { method: 'GET' });
 
-            // 2. Contratos
-            contratos = await window.BpoSupabase.request(`contracts?company_id=eq.${empresaAtiva.id}&order=name.asc`, { method: 'GET' });
+            // 2. Contratos — somente elegíveis para comissão
+            const todosCtr = await window.BpoSupabase.request(`contracts?company_id=eq.${empresaAtiva.id}&order=name.asc`, { method: 'GET' });
+            contratos = (todosCtr || []).filter(c => !!c.commission_eligible);
 
             // 3. Comissões calculadas na competência
             comissoes = await window.BpoSupabase.request(
@@ -396,10 +397,16 @@
                 return;
             }
 
-            // 3. Busca regras de comissão dos contratos
+            // 3. Busca regras de comissão somente dos contratos elegíveis desta empresa
             let regrasComissao = [];
             try {
-                regrasComissao = await window.BpoSupabase.request('contract_commission_rules', { method: 'GET' });
+                if (contratos.length > 0) {
+                    const idsElegiveis = contratos.map(c => c.id).join(',');
+                    regrasComissao = await window.BpoSupabase.request(
+                        `contract_commission_rules?contract_id=in.(${idsElegiveis})`,
+                        { method: 'GET' }
+                    );
+                }
             } catch(e) {}
 
             const lotesComissoes = [];
