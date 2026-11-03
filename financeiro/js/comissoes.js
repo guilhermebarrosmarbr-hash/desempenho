@@ -581,9 +581,15 @@
                 { method: 'GET' }
             ) || [];
             const docsMapById = new Map();
-            docs.forEach(d => docsMapById.set(d.id, d));
+            docs.forEach(d => {
+                // Extrai tax_details inline da descrição (payment_date fica armazenado lá)
+                const td = window.BpoFiscalUtils ? window.BpoFiscalUtils.extrairTaxDetails(d) : null;
+                docsMapById.set(d.id, { ...d, tax_details: td || d.tax_details });
+            });
 
-            // 4. Busca recebimentos da tabela receipts
+            // 4. Busca recebimentos da tabela receipts (usa external_id para vincular ao documento)
+            // Estratégia: busca receipts filtrados por company_id; se a coluna estiver nula nos registros,
+            // faz fallback buscando todos e filtrando pelos que apontam para documentos desta empresa.
             let receipts = [];
             try {
                 receipts = await window.BpoSupabase.request(
@@ -591,8 +597,46 @@
                     { method: 'GET' }
                 ) || [];
             } catch (rErr) {
-                console.warn('Aviso ao consultar receipts:', rErr.message);
+                console.warn('[Comissões] Aviso ao consultar receipts com company_id:', rErr.message);
             }
+
+            // Fallback: busca receipts sem filtro de company_id caso a coluna não esteja preenchida
+            // Importante: sempre faz o fallback para garantir que não perde registros sem company_id
+            try {
+                const allReceipts = await window.BpoSupabase.request(
+                    `receipts?order=receipt_date.desc`,
+                    { method: 'GET' }
+                ) || [];
+                // Mescla: adiciona receipts que pertencem a docs desta empresa e ainda não estão na lista
+                const idsJaCapturados = new Set(receipts.map(r => r.id));
+                const extras = allReceipts.filter(r => {
+                    if (idsJaCapturados.has(r.id)) return false;
+                    const doc = docsMapById.get(r.external_id) || docsMapById.get(r.document_id);
+                    return !!doc;
+                });
+                if (extras.length > 0) {
+                    console.log(`[Comissões] Fallback receipts: +${extras.length} encontrado(s) sem company_id`);
+                    receipts = receipts.concat(extras);
+                }
+            } catch (rErr2) {
+                console.warn('[Comissões] Aviso ao consultar receipts sem filtro:', rErr2.message);
+            }
+
+            // Diagnóstico: quais receipt_dates existem no período selecionado
+            const receiptsNoPeriodo = receipts.filter(r => extrairMesAnoIso(r.receipt_date) === competenciaAtiva);
+            console.log(`[Comissões] Docs carregados: ${docs.length} | Receipts totais da empresa: ${receipts.length} | Receipts no período ${competenciaAtiva}: ${receiptsNoPeriodo.length}`);
+            if (receipts.length > 0) {
+                const mesesDistintos = [...new Set(receipts.map(r => extrairMesAnoIso(r.receipt_date)).filter(Boolean))].sort();
+                console.log(`[Comissões] Meses com receipts:`, mesesDistintos);
+            }
+            // Diagnóstico: docs com payment_date no período (fallback)
+            const docsComPaymentNoPeriodo = docs.filter(d => {
+                const docComTd = docsMapById.get(d.id) || d;
+                const td = docComTd.tax_details || {};
+                const dataRaw = td.payment_date || d.payment_date || d.receipt_date || null;
+                return extrairMesAnoIso(dataRaw) === competenciaAtiva;
+            });
+            console.log(`[Comissões] Docs com payment_date no período ${competenciaAtiva}: ${docsComPaymentNoPeriodo.length}`);
 
             // Compilação de recebimentos — REGIME DE CAIXA PURO:
             // Somente a DATA DE RECEBIMENTO (baixa) determina o período.
@@ -601,12 +645,14 @@
             const docsProcessadosViaReceipts = new Set();
 
             (receipts || []).forEach(r => {
-                const doc = docsMapById.get(r.document_id) || docsMapById.get(r.external_id) || null;
+                // O faturamento vincula pelo external_id (id do billing_document)
+                const doc = docsMapById.get(r.external_id) || docsMapById.get(r.document_id) || null;
                 const mesRec = extrairMesAnoIso(r.receipt_date);
 
                 // Captura APENAS se a data de recebimento for do período selecionado
                 if (mesRec !== competenciaAtiva) return;
 
+                // contract_id: tenta no receipt, depois no documento vinculado
                 const contratoId = r.contract_id || (doc ? doc.contract_id : null);
                 if (!contratoId) return;
 
@@ -618,36 +664,43 @@
                 eventosRecebimento.push({
                     origemId: `rec_${r.id}`,
                     contract_id: contratoId,
-                    document_id: doc ? doc.id : null,
-                    receipt_date: r.receipt_date || (doc ? doc.issue_date : null),
+                    document_id: doc ? doc.id : (r.external_id || null),
+                    receipt_date: r.receipt_date,
                     baseAmountCents: valorCents
                 });
             });
 
             // Resiliência: varre billing_documents que não passaram pela tabela receipts.
             // Regime de Caixa Puro: usa APENAS a data de recebimento/pagamento registrada no documento.
-            // Documentos sem data de recebimento são ignorados independente da competência de faturamento.
+            // O payment_date pode estar em: tax_details (embutido na description), d.payment_date, ou d.receipt_date.
             docs.forEach(d => {
                 if (docsProcessadosViaReceipts.has(d.id)) return;
-                if (!d.contract_id) return;
+                // contract_id pode estar no documento ou ser inferido pelo contrato da empresa
+                // Aceita sem contract_id aqui; o filtro de contrato elegível ocorre depois
 
-                const td = d.tax_details || (window.BpoFiscalUtils ? window.BpoFiscalUtils.extrairTaxDetails(d) : null) || {};
+                // tax_details já foi extraído e armazenado no mapa (linha de construção de docsMapById)
+                const docComTd = docsMapById.get(d.id) || d;
+                const td = docComTd.tax_details || {};
                 const dataRecRaw = td.payment_date || d.payment_date || d.receipt_date || null;
                 const dataRecIso = converterParaDataIso(dataRecRaw);
                 const mesRec = extrairMesAnoIso(dataRecRaw);
 
                 // Aceita APENAS se o recebimento ocorreu no período selecionado
-                // (não usa competência do faturamento)
                 if (mesRec !== competenciaAtiva) return;
 
-                const isPago = d.status === 'paid' || d.status === 'partially_paid' || !!dataRecRaw;
+                // Considera pago se tem data de recebimento OU status indica pagamento
+                const isPago = !!dataRecRaw || d.status === 'paid' || d.status === 'partially_paid' || d.status === 'received';
                 if (!isPago) return;
+
+                // contract_id: usa do doc ou tenta encontrar pelos contratos da empresa
+                const contratoId = d.contract_id || null;
+                if (!contratoId) return;
 
                 const valorCents = window.BpoMoney.toCents(d.net_amount || d.gross_amount);
                 if (valorCents > 0n) {
                     eventosRecebimento.push({
                         origemId: `doc_${d.id}`,
-                        contract_id: d.contract_id,
+                        contract_id: contratoId,
                         document_id: d.id,
                         receipt_date: dataRecIso || d.issue_date,
                         baseAmountCents: valorCents
