@@ -200,7 +200,7 @@
             listaComissoesBody.innerHTML = `
                 <tr>
                     <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 32px;">
-                        Nenhuma comissão apurada para a competência ${competenciaAtiva}. Clique em "Processar Apuração".
+                        Nenhuma comissão apurada para o período ${competenciaAtiva}. Clique em "Processar Apuração".
                     </td>
                 </tr>
             `;
@@ -594,20 +594,18 @@
                 console.warn('Aviso ao consultar receipts:', rErr.message);
             }
 
-            // Compilação universal de recebimentos:
-            // Atende tanto recebimentos com data no mês da competência (Regime de Caixa)
-            // quanto documentos emitidos na competência que já estejam liquidados/recebidos.
+            // Compilação de recebimentos — REGIME DE CAIXA PURO:
+            // Somente a DATA DE RECEBIMENTO (baixa) determina o período.
+            // A competência original do documento de faturamento é irrelevante.
             const eventosRecebimento = [];
             const docsProcessadosViaReceipts = new Set();
 
             (receipts || []).forEach(r => {
                 const doc = docsMapById.get(r.document_id) || docsMapById.get(r.external_id) || null;
                 const mesRec = extrairMesAnoIso(r.receipt_date);
-                const mesDoc = doc ? doc.competence_month : null;
 
-                // Captura se a data de recebimento for da competência OU se o doc faturado for da competência
-                const matchCompetencia = (mesRec === competenciaAtiva) || (mesDoc === competenciaAtiva);
-                if (!matchCompetencia) return;
+                // Captura APENAS se a data de recebimento for do período selecionado
+                if (mesRec !== competenciaAtiva) return;
 
                 const contratoId = r.contract_id || (doc ? doc.contract_id : null);
                 if (!contratoId) return;
@@ -626,7 +624,9 @@
                 });
             });
 
-            // Resiliência total: varre billing_documents da empresa
+            // Resiliência: varre billing_documents que não passaram pela tabela receipts.
+            // Regime de Caixa Puro: usa APENAS a data de recebimento/pagamento registrada no documento.
+            // Documentos sem data de recebimento são ignorados independente da competência de faturamento.
             docs.forEach(d => {
                 if (docsProcessadosViaReceipts.has(d.id)) return;
                 if (!d.contract_id) return;
@@ -635,11 +635,10 @@
                 const dataRecRaw = td.payment_date || d.payment_date || d.receipt_date || null;
                 const dataRecIso = converterParaDataIso(dataRecRaw);
                 const mesRec = extrairMesAnoIso(dataRecRaw);
-                const mesDoc = d.competence_month;
 
-                // Aceita se o recebimento ocorreu nesta competência OU se a nota é da competência e está paga
-                const matchCompetencia = (mesRec === competenciaAtiva) || (mesDoc === competenciaAtiva);
-                if (!matchCompetencia) return;
+                // Aceita APENAS se o recebimento ocorreu no período selecionado
+                // (não usa competência do faturamento)
+                if (mesRec !== competenciaAtiva) return;
 
                 const isPago = d.status === 'paid' || d.status === 'partially_paid' || !!dataRecRaw;
                 if (!isPago) return;
@@ -712,8 +711,8 @@
 
             if (lotesComissoes.length === 0) {
                 const totalRecebimentosMes = eventosRecebimento.length;
-                let detalheMsg = `Nenhum recebimento elegível com regra de comissão ativa foi encontrado para ${competenciaAtiva}.\n\n`;
-                detalheMsg += `• Recebimentos detectados em ${competenciaAtiva}: ${totalRecebimentosMes}\n`;
+                let detalheMsg = `Nenhum recebimento elegível com regra de comissão ativa foi encontrado para o período ${competenciaAtiva}.\n\n`;
+                detalheMsg += `• Recebimentos detectados com data no período ${competenciaAtiva}: ${totalRecebimentosMes}\n`;
                 if (totalRecebimentosMes > 0) {
                     const ctrsComRec = [...new Set(eventosRecebimento.map(e => {
                         const c = todosContratosMap.get(e.contract_id);
@@ -722,7 +721,7 @@
                     detalheMsg += `• Contratos dos recebimentos:\n  - ${ctrsComRec.join('\n  - ')}\n\n`;
                     detalheMsg += `Certifique-se de que os contratos estão marcados como 'Elegível para Comissões' e que possuem uma regra cadastrada na seção 'Regras de Comissão por Contrato'.`;
                 } else {
-                    detalheMsg += `Nenhuma baixa/recebimento foi encontrada com data em ${competenciaAtiva}. Verifique a data de recebimento das notas no módulo de faturamento.`;
+                    detalheMsg += `Nenhuma baixa/recebimento foi encontrada com data de recebimento em ${competenciaAtiva}. Verifique a data de recebimento das notas no módulo de faturamento.`;
                 }
                 alert(detalheMsg);
                 return;
@@ -736,7 +735,7 @@
             });
 
             await carregarDadosComissoes();
-            alert(`Apuração concluída!\n${lotesComissoes.length} comissão(ões) calculada(s) para ${competenciaAtiva}.`);
+            alert(`Apuração concluída!\n${lotesComissoes.length} comissão(ões) calculada(s) para o período ${competenciaAtiva}.`);
 
         } catch (err) {
             alert('Erro ao processar comissões: ' + err.message);
