@@ -803,6 +803,27 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 return;
             }
 
+            // Sincronização inteligente: limpa cálculos obsoletos que ainda estejam 'pending' neste período
+            // caso a data de recebimento de um documento tenha sido alterada ou o documento removido.
+            // Preserva comissões que já foram marcadas como 'paid' (liquidadas).
+            try {
+                const calculosAtuais = await window.BpoSupabase.request(
+                    `commission_calculations?company_id=eq.${empresaAtiva.id}&competence_month=eq.${competenciaAtiva}&select=id,idempotency_key,status`,
+                    { method: 'GET' }
+                ) || [];
+
+                const novasChaves = new Set(lotesComissoes.map(l => l.idempotency_key));
+                const obsoletosParaRemover = calculosAtuais.filter(c => c.status !== 'paid' && !novasChaves.has(c.idempotency_key));
+
+                for (const obs of obsoletosParaRemover) {
+                    await window.BpoSupabase.request(`commission_calculations?id=eq.${obs.id}`, {
+                        method: 'DELETE'
+                    });
+                }
+            } catch (syncErr) {
+                console.warn('[Comissões] Aviso ao sincronizar comissões obsoletas:', syncErr.message);
+            }
+
             // Upsert em lote ignorando duplicatas existentes
             await window.BpoSupabase.request('commission_calculations?on_conflict=idempotency_key', {
                 method: 'POST',
