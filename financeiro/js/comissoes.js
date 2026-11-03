@@ -2,6 +2,29 @@
 // comissoes.js — Lógica do Módulo 06 (Controle de Comissões)
 // ==============================================================================
 
+// Garante que BpoFiscalUtils esteja disponível mesmo sem carregar faturamento.js
+window.BpoFiscalUtils = window.BpoFiscalUtils || {
+    extrairTaxDetails: function(doc) {
+        if (!doc) return null;
+        if (doc.tax_details && typeof doc.tax_details === 'object') {
+            return doc.tax_details;
+        }
+        if (doc.description && typeof doc.description === 'string') {
+            const match = doc.description.match(/<!--bpo_tax_details:(.*?)-->/);
+            if (match) {
+                try {
+                    return JSON.parse(match[1]);
+                } catch (e) {}
+            }
+        }
+        return null;
+    },
+    limparDescricao: function(rawDesc) {
+        if (!rawDesc) return '';
+        return rawDesc.replace(/\s*<!--bpo_tax_details:.*?-->/g, '').trim();
+    }
+};
+
 (function() {
     let empresas = [];
     let empresaAtiva = null;
