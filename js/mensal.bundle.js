@@ -402,14 +402,14 @@
 
     static extractQuantitativos(rows, ws) {
       const q = {
-        equipamentosAtivos: { planejado: 482, executado: null, cell: 'C11' },
-        preventivaMensal: { planejado: 415, executado: 415, observacao: '', cell: 'C12:D12' },
-        preventivaSemestral: { planejado: 80, executado: 80, observacao: '', cell: 'C13:D13' },
-        pmocLevantamento: { planejado: '-', executado: '-', observacao: '', cell: 'C14:D14' },
-        corretiva: { planejado: 16, executado: 15, observacao: 'Aguardando peça', cell: 'C15:D15' },
-        epi: { planejado: 21, executado: 21, observacao: '', cell: 'C18:D18' },
-        ferramentas: { planejado: 1, executado: 1, observacao: '', cell: 'C19:D19' },
-        auditorias: { planejado: 2, executado: 2, observacao: '', cell: 'C20:D20' }
+        equipamentosAtivos: { planejado: 0, executado: null, cell: '' },
+        preventivaMensal: { planejado: 0, executado: 0, observacao: '', cell: '' },
+        preventivaSemestral: { planejado: '-', executado: '-', observacao: '', cell: '' },
+        pmocLevantamento: { planejado: '-', executado: '-', observacao: '', cell: '' },
+        corretiva: { planejado: 0, executado: 0, observacao: '', cell: '' },
+        epi: { planejado: 0, executado: 0, observacao: '', cell: '' },
+        ferramentas: { planejado: 0, executado: 0, observacao: '', cell: '' },
+        auditorias: { planejado: 0, executado: 0, observacao: '', cell: '' }
       };
 
       rows.forEach((row, rIdx) => {
@@ -420,18 +420,25 @@
 
         const valCol1 = row[1];
         const valCol2 = row[2];
+        const valCol3 = row[3];
         const valCol4 = row[4];
 
         if (label.includes('EQUIPAMENTOS ATIVOS')) {
-          q.equipamentosAtivos.planejado = this.parseCellNumber(valCol1 || valCol2);
+          q.equipamentosAtivos.planejado = this.parseCellNumber(valCol1 || valCol2 || valCol3);
           q.equipamentosAtivos.cell = `B${rIdx + 1}`;
-        } else if (label.includes('MANUTENCAO PREVENTIVA MENSAL') || (label.includes('PREVENTIVA') && label.includes('MENSAL'))) {
+        } else if (
+          label.includes('PLANO VERAO') ||
+          label.includes('PLANO DE VERAO') ||
+          label.includes('MANUTENCAO PREVENTIVA MENSAL') ||
+          (label.includes('PREVENTIVA') && label.includes('MENSAL')) ||
+          label === 'MENSAL'
+        ) {
           q.preventivaMensal.planejado = this.parseCellNumber(valCol1);
-          q.preventivaMensal.executado = this.parseCellNumber(valCol2);
+          q.preventivaMensal.executado = this.parseCellNumber(valCol2 !== undefined && valCol2 !== '' ? valCol2 : valCol1);
           q.preventivaMensal.cell = `B${rIdx + 1}:C${rIdx + 1}`;
         } else if (label.includes('SEMESTRAL')) {
           q.preventivaSemestral.planejado = this.parseCellNumber(valCol1);
-          q.preventivaSemestral.executado = this.parseCellNumber(valCol2);
+          q.preventivaSemestral.executado = this.parseCellNumber(valCol2 !== undefined && valCol2 !== '' ? valCol2 : valCol1);
           q.preventivaSemestral.cell = `B${rIdx + 1}:C${rIdx + 1}`;
         } else if (label.includes('LEVANTAMENTO') || label.includes('PMOC')) {
           q.pmocLevantamento.planejado = String(valCol1).trim() || '-';
@@ -456,35 +463,6 @@
           q.auditorias.cell = `B${rIdx + 1}:C${rIdx + 1}`;
         }
       });
-
-      if (ws['C11'] && ws['C11'].v !== undefined) {
-        q.equipamentosAtivos.planejado = Number(ws['C11'].v) || q.equipamentosAtivos.planejado;
-      }
-      if (ws['C12'] && ws['D12']) {
-        q.preventivaMensal.planejado = Number(ws['C12'].v) || q.preventivaMensal.planejado;
-        q.preventivaMensal.executado = Number(ws['D12'].v) || q.preventivaMensal.executado;
-      }
-      if (ws['C13'] && ws['D13']) {
-        q.preventivaSemestral.planejado = Number(ws['C13'].v) || q.preventivaSemestral.planejado;
-        q.preventivaSemestral.executado = Number(ws['D13'].v) || q.preventivaSemestral.executado;
-      }
-      if (ws['C15'] && ws['D15']) {
-        q.corretiva.planejado = Number(ws['C15'].v) || q.corretiva.planejado;
-        q.corretiva.executado = Number(ws['D15'].v) || q.corretiva.executado;
-        if (ws['F15'] && ws['F15'].v) q.corretiva.observacao = String(ws['F15'].v).replace(/[()]/g, '').trim();
-      }
-      if (ws['C18'] && ws['D18']) {
-        q.epi.planejado = Number(ws['C18'].v) || q.epi.planejado;
-        q.epi.executado = Number(ws['D18'].v) || q.epi.executado;
-      }
-      if (ws['C19'] && ws['D19']) {
-        q.ferramentas.planejado = Number(ws['C19'].v) || q.ferramentas.planejado;
-        q.ferramentas.executado = Number(ws['D19'].v) || q.ferramentas.executado;
-      }
-      if (ws['C20'] && ws['D20']) {
-        q.auditorias.planejado = Number(ws['C20'].v) || q.auditorias.planejado;
-        q.auditorias.executado = Number(ws['D20'].v) || q.auditorias.executado;
-      }
 
       return q;
     }

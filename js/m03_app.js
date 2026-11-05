@@ -205,20 +205,20 @@
       // Mapeamento de quantidades planejadas, executadas e percentuais
       const quantMap = {
         'MENSAL': {
-          planejado: q.preventivaMensal?.planejado !== undefined ? q.preventivaMensal.planejado : 415,
-          executado: q.preventivaMensal?.executado !== undefined ? q.preventivaMensal.executado : 415
+          planejado: q.preventivaMensal?.planejado !== undefined && q.preventivaMensal?.planejado !== null ? q.preventivaMensal.planejado : (q.equipamentosAtivos?.planejado || 0),
+          executado: q.preventivaMensal?.executado !== undefined && q.preventivaMensal?.executado !== null ? q.preventivaMensal.executado : (q.preventivaMensal?.planejado || 0)
         },
         'SEMESTRAL': {
-          planejado: q.preventivaSemestral?.planejado !== undefined ? q.preventivaSemestral.planejado : 80,
-          executado: q.preventivaSemestral?.executado !== undefined ? q.preventivaSemestral.executado : 80
+          planejado: q.preventivaSemestral?.planejado !== undefined && q.preventivaSemestral?.planejado !== null ? q.preventivaSemestral.planejado : '—',
+          executado: q.preventivaSemestral?.executado !== undefined && q.preventivaSemestral?.executado !== null ? q.preventivaSemestral.executado : '—'
         },
         'CORRETIVA': {
-          planejado: q.corretiva?.planejado !== undefined ? q.corretiva.planejado : 16,
-          executado: q.corretiva?.executado !== undefined ? q.corretiva.executado : 15
+          planejado: q.corretiva?.planejado !== undefined && q.corretiva?.planejado !== null ? q.corretiva.planejado : 0,
+          executado: q.corretiva?.executado !== undefined && q.corretiva?.executado !== null ? q.corretiva.executado : 0
         },
         'EPI': {
-          planejado: q.epi?.planejado !== undefined ? q.epi.planejado : 21,
-          executado: q.epi?.executado !== undefined ? q.epi.executado : 21
+          planejado: q.epi?.planejado !== undefined && q.epi?.planejado !== null ? q.epi.planejado : 0,
+          executado: q.epi?.executado !== undefined && q.epi?.executado !== null ? q.epi.executado : 0
         }
       };
 
@@ -557,11 +557,11 @@
                   <tr style="border-bottom: 1px solid #cbd5e1;">
                     <td style="padding: 6px 12px; font-weight: 700; text-align: left; color: #000000;">EXCEDENTE</td>
                     <td style="padding: 6px 10px; text-align: center; color: #000000;">500</td>
-                    <td style="padding: 6px 10px; text-align: center; color: #000000;">${exc.qtd > 0 ? (500 + exc.qtd) : 500}</td>
-                    <td style="padding: 6px 10px; text-align: center; color: #000000;">${exc.qtd} un.</td>
+                    <td style="padding: 6px 10px; text-align: center; color: #000000;">${(exc.qtd || 0) > 0 ? (500 + Number(exc.qtd)) : 500}</td>
+                    <td style="padding: 6px 10px; text-align: center; color: #000000;">${exc.qtd || 0} un.</td>
                     <td style="padding: 6px 10px; text-align: right; color: #000000;">R$ ${formatMoeda(exc.tarifa)}</td>
                     <td style="padding: 6px 10px; text-align: right; color: #000000;">R$ ${formatMoeda(exc.unitario)}</td>
-                    <td style="padding: 6px 10px; text-align: right; color: #000000; font-weight: 600;">${exc.total > 0 ? `R$ ${formatMoeda(exc.total)}` : 'R$ -'}</td>
+                    <td style="padding: 6px 10px; text-align: right; color: #000000; font-weight: 600;">${(exc.total || 0) > 0 ? `R$ ${formatMoeda(exc.total)}` : 'R$ -'}</td>
                   </tr>
 
                   <!-- Linha Subtotal -->
