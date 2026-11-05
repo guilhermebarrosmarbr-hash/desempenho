@@ -202,12 +202,24 @@
       const q = parsed.quantitativos || {};
       const tarefas = window.M03Cadastros.getTarefas();
       
-      // Mapeamento de percentuais de execução
-      const execMap = {
-        'MENSAL': q.preventivaMensal?.executado !== undefined && q.preventivaMensal?.planejado ? (q.preventivaMensal.executado / q.preventivaMensal.planejado) : 1.0,
-        'SEMESTRAL': q.preventivaSemestral?.executado !== undefined && q.preventivaSemestral?.planejado ? (q.preventivaSemestral.executado / q.preventivaSemestral.planejado) : 1.0,
-        'CORRETIVA': q.corretiva?.executado !== undefined && q.corretiva?.planejado ? (q.corretiva.executado / q.corretiva.planejado) : (15/16),
-        'EPI': q.epi?.executado !== undefined && q.epi?.planejado ? (q.epi.executado / q.epi.planejado) : 1.0
+      // Mapeamento de quantidades planejadas, executadas e percentuais
+      const quantMap = {
+        'MENSAL': {
+          planejado: q.preventivaMensal?.planejado !== undefined ? q.preventivaMensal.planejado : 415,
+          executado: q.preventivaMensal?.executado !== undefined ? q.preventivaMensal.executado : 415
+        },
+        'SEMESTRAL': {
+          planejado: q.preventivaSemestral?.planejado !== undefined ? q.preventivaSemestral.planejado : 80,
+          executado: q.preventivaSemestral?.executado !== undefined ? q.preventivaSemestral.executado : 80
+        },
+        'CORRETIVA': {
+          planejado: q.corretiva?.planejado !== undefined ? q.corretiva.planejado : 16,
+          executado: q.corretiva?.executado !== undefined ? q.corretiva.executado : 15
+        },
+        'EPI': {
+          planejado: q.epi?.planejado !== undefined ? q.epi.planejado : 21,
+          executado: q.epi?.executado !== undefined ? q.epi.executado : 21
+        }
       };
 
       const valorContrato = Number(tecnico.valorContrato) || window.M03Cadastros.getValorPadraoNivel(tecnico.nivel);
@@ -215,9 +227,19 @@
       // Calcular itens
       const itensCalculados = tarefas.map(tar => {
         const nomeNorm = tar.nome.toUpperCase();
+        let planQtd = '—';
+        let execQtd = '—';
         let execPct = 1.0;
-        if (execMap[nomeNorm] !== undefined) {
-          execPct = execMap[nomeNorm];
+
+        if (quantMap[nomeNorm]) {
+          const itemQ = quantMap[nomeNorm];
+          planQtd = itemQ.planejado;
+          execQtd = itemQ.executado;
+          if (planQtd && !isNaN(Number(planQtd)) && Number(planQtd) > 0) {
+            execPct = (Number(execQtd) || 0) / Number(planQtd);
+          } else {
+            execPct = 1.0;
+          }
         }
         execPct = Math.min(1.0, Math.max(0.0, execPct));
 
@@ -227,6 +249,8 @@
 
         return {
           descricao: tar.nome,
+          planejado: planQtd,
+          executadoQtd: execQtd,
           executado: execPct,
           peso: pesoPct,
           valor: valorItem,
@@ -477,10 +501,12 @@
         const rowsHtml = itens.map(it => `
           <tr style="border-bottom: 1px solid #cbd5e1;">
             <td style="padding: 6px 12px; font-weight: 700; text-align: left; color: #000000; font-size: 13px;">${it.descricao || ''}</td>
-            <td style="padding: 6px 12px; text-align: center; color: #000000; font-size: 13px;">${formatPct(it.executado)}</td>
-            <td style="padding: 6px 12px; text-align: right; color: #000000; font-size: 13px;">${formatPct(it.peso)}</td>
-            <td style="padding: 6px 12px; text-align: right; color: #000000; font-size: 13px;">R$ ${formatMoeda(it.valor)}</td>
-            <td style="padding: 6px 12px; text-align: right; color: #000000; font-size: 13px; font-weight: 600;">R$ ${formatMoeda(it.total)}</td>
+            <td style="padding: 6px 10px; text-align: center; color: #000000; font-size: 13px;">${it.planejado !== undefined ? it.planejado : '—'}</td>
+            <td style="padding: 6px 10px; text-align: center; color: #000000; font-size: 13px;">${it.executadoQtd !== undefined ? it.executadoQtd : '—'}</td>
+            <td style="padding: 6px 10px; text-align: center; color: #000000; font-size: 13px;">${formatPct(it.executado)}</td>
+            <td style="padding: 6px 10px; text-align: right; color: #000000; font-size: 13px;">${formatPct(it.peso)}</td>
+            <td style="padding: 6px 10px; text-align: right; color: #000000; font-size: 13px;">R$ ${formatMoeda(it.valor)}</td>
+            <td style="padding: 6px 10px; text-align: right; color: #000000; font-size: 13px; font-weight: 600;">R$ ${formatMoeda(it.total)}</td>
           </tr>
         `).join('');
 
@@ -506,20 +532,22 @@
               </div>
             </div>
 
-            <!-- Tabela Estilo Imagem Modelo -->
+            <!-- Tabela Estilo Imagem Modelo com Planejado e Executado -->
             <div style="padding: 12px; overflow-x: auto;">
               <table style="width: 100%; border-collapse: collapse; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px;">
                 <thead>
                   <tr style="background: #d1d5db; color: #000000; font-weight: 800; border-bottom: 2px solid #9ca3af;">
-                    <th colspan="4" style="padding: 6px 12px; text-align: center; font-size: 14px; letter-spacing: 0.5px;">VALORES</th>
+                    <th colspan="6" style="padding: 6px 12px; text-align: center; font-size: 14px; letter-spacing: 0.5px;">VALORES</th>
                     <th style="padding: 6px 12px; text-align: right; font-size: 14px; font-weight: 800;">R$ ${formatMoeda(valorContrato)}</th>
                   </tr>
                   <tr style="background: #e5e7eb; color: #000000; font-weight: 700; border-bottom: 1px solid #cbd5e1; font-size: 12px;">
                     <th style="padding: 6px 12px; text-align: left;">DESCRIÇÃO</th>
-                    <th style="padding: 6px 12px; text-align: center;">EXECUTADO</th>
-                    <th style="padding: 6px 12px; text-align: right;">PESO</th>
-                    <th style="padding: 6px 12px; text-align: right;">VALOR</th>
-                    <th style="padding: 6px 12px; text-align: right;">TOTAL</th>
+                    <th style="padding: 6px 10px; text-align: center;">PLANEJADO</th>
+                    <th style="padding: 6px 10px; text-align: center;">EXECUTADO</th>
+                    <th style="padding: 6px 10px; text-align: center;">% EXEC.</th>
+                    <th style="padding: 6px 10px; text-align: right;">PESO</th>
+                    <th style="padding: 6px 10px; text-align: right;">VALOR</th>
+                    <th style="padding: 6px 10px; text-align: right;">TOTAL</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -528,33 +556,37 @@
                   <!-- Linha Excedente -->
                   <tr style="border-bottom: 1px solid #cbd5e1;">
                     <td style="padding: 6px 12px; font-weight: 700; text-align: left; color: #000000;">EXCEDENTE</td>
-                    <td style="padding: 6px 12px; text-align: center; color: #000000;">${exc.qtd}</td>
-                    <td style="padding: 6px 12px; text-align: right; color: #000000;">R$ ${formatMoeda(exc.tarifa)}</td>
-                    <td style="padding: 6px 12px; text-align: right; color: #000000;">R$ ${formatMoeda(exc.unitario)}</td>
-                    <td style="padding: 6px 12px; text-align: right; color: #000000; font-weight: 600;">${exc.total > 0 ? `R$ ${formatMoeda(exc.total)}` : 'R$ -'}</td>
+                    <td style="padding: 6px 10px; text-align: center; color: #000000;">500</td>
+                    <td style="padding: 6px 10px; text-align: center; color: #000000;">${exc.qtd > 0 ? (500 + exc.qtd) : 500}</td>
+                    <td style="padding: 6px 10px; text-align: center; color: #000000;">${exc.qtd} un.</td>
+                    <td style="padding: 6px 10px; text-align: right; color: #000000;">R$ ${formatMoeda(exc.tarifa)}</td>
+                    <td style="padding: 6px 10px; text-align: right; color: #000000;">R$ ${formatMoeda(exc.unitario)}</td>
+                    <td style="padding: 6px 10px; text-align: right; color: #000000; font-weight: 600;">${exc.total > 0 ? `R$ ${formatMoeda(exc.total)}` : 'R$ -'}</td>
                   </tr>
 
                   <!-- Linha Subtotal -->
                   <tr style="background: #e5e7eb; border-bottom: 1px solid #cbd5e1; font-weight: 700;">
-                    <td colspan="4" style="padding: 6px 12px; text-align: left; font-weight: 800; color: #000000;">SUBTOTAL</td>
-                    <td style="padding: 6px 12px; text-align: right; font-weight: 800; color: #000000;">R$ ${formatMoeda(fat.subtotal)}</td>
+                    <td colspan="6" style="padding: 6px 12px; text-align: left; font-weight: 800; color: #000000;">SUBTOTAL</td>
+                    <td style="padding: 6px 10px; text-align: right; font-weight: 800; color: #000000;">R$ ${formatMoeda(fat.subtotal)}</td>
                   </tr>
 
                   <!-- Linha Incentivo Veicular (se ativo) -->
                   ${inc.ativo ? `
                     <tr style="border-bottom: 1px solid #cbd5e1;">
                       <td style="padding: 6px 12px; font-weight: 700; text-align: left; color: #000000;">INCENTIVO VEICULAR</td>
-                      <td style="padding: 6px 12px; text-align: center; color: #000000;">100%</td>
-                      <td style="padding: 6px 12px; text-align: right; color: #000000;">—</td>
-                      <td style="padding: 6px 12px; text-align: right; color: #000000;">R$ ${formatMoeda(inc.valor)}</td>
-                      <td style="padding: 6px 12px; text-align: right; color: #000000; font-weight: 600;">R$ ${formatMoeda(inc.total)}</td>
+                      <td style="padding: 6px 10px; text-align: center; color: #000000;">1</td>
+                      <td style="padding: 6px 10px; text-align: center; color: #000000;">1</td>
+                      <td style="padding: 6px 10px; text-align: center; color: #000000;">100%</td>
+                      <td style="padding: 6px 10px; text-align: right; color: #000000;">—</td>
+                      <td style="padding: 6px 10px; text-align: right; color: #000000;">R$ ${formatMoeda(inc.valor)}</td>
+                      <td style="padding: 6px 10px; text-align: right; color: #000000; font-weight: 600;">R$ ${formatMoeda(inc.total)}</td>
                     </tr>
                   ` : ''}
 
                   <!-- Linha TOTAL -->
                   <tr style="background: #d1d5db; border-top: 2px solid #9ca3af; font-weight: 800;">
-                    <td colspan="4" style="padding: 8px 12px; text-align: left; font-size: 14px; color: #000000;">TOTAL</td>
-                    <td style="padding: 8px 12px; text-align: right; font-size: 14px; color: #000000;">R$ ${formatMoeda(fat.totalGeral)}</td>
+                    <td colspan="6" style="padding: 8px 12px; text-align: left; font-size: 14px; color: #000000;">TOTAL</td>
+                    <td style="padding: 8px 10px; text-align: right; font-size: 14px; color: #000000;">R$ ${formatMoeda(fat.totalGeral)}</td>
                   </tr>
                 </tbody>
               </table>
