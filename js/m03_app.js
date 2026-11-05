@@ -258,12 +258,14 @@
         };
       });
 
-      // Excedente
-      const excedenteQtd = (q.preventivaMensal?.executado || 0) + (q.preventivaSemestral?.executado || 0);
-      const excedenteDiff = Math.max(0, excedenteQtd - 500);
+      // Excedente: quantidade de máquinas que excederem 500 na soma de Mensais e Semestrais
+      const mensalExecNum = Number(q.preventivaMensal?.executado) || 0;
+      const semestralExecNum = (q.preventivaSemestral?.executado !== '-' && q.preventivaSemestral?.executado !== '—') ? (Number(q.preventivaSemestral?.executado) || 0) : 0;
+      const somaMensalSemestral = mensalExecNum + semestralExecNum;
+      const excedenteDiff = Math.max(0, somaMensalSemestral - 500);
       const tarifaExcedente = 10.75;
       const unitExcedente = 3.50;
-      const totalExcedente = excedenteDiff * (tarifaExcedente + unitExcedente);
+      const totalExcedente = excedenteDiff > 0 ? (excedenteDiff * (tarifaExcedente + unitExcedente)) : 0;
 
       const subtotal = itensCalculados.reduce((acc, it) => acc + it.total, 0) + totalExcedente;
 
@@ -556,11 +558,11 @@
                   <!-- Linha Excedente -->
                   <tr style="border-bottom: 1px solid #cbd5e1;">
                     <td style="padding: 6px 12px; font-weight: 700; text-align: left; color: #000000;">EXCEDENTE</td>
-                    <td style="padding: 6px 10px; text-align: center; color: #000000;">500</td>
-                    <td style="padding: 6px 10px; text-align: center; color: #000000;">${(exc.qtd || 0) > 0 ? (500 + Number(exc.qtd)) : 500}</td>
-                    <td style="padding: 6px 10px; text-align: center; color: #000000;">${exc.qtd || 0} un.</td>
-                    <td style="padding: 6px 10px; text-align: right; color: #000000;">R$ ${formatMoeda(exc.tarifa)}</td>
-                    <td style="padding: 6px 10px; text-align: right; color: #000000;">R$ ${formatMoeda(exc.unitario)}</td>
+                    <td style="padding: 6px 10px; text-align: center; color: #000000;">${(exc.qtd || 0) > 0 ? 500 : '—'}</td>
+                    <td style="padding: 6px 10px; text-align: center; color: #000000;">${(exc.qtd || 0) > 0 ? (500 + Number(exc.qtd)) : '—'}</td>
+                    <td style="padding: 6px 10px; text-align: center; color: #000000;">${(exc.qtd || 0) > 0 ? `${exc.qtd} un.` : '—'}</td>
+                    <td style="padding: 6px 10px; text-align: right; color: #000000;">${(exc.qtd || 0) > 0 ? `R$ ${formatMoeda(exc.tarifa)}` : '—'}</td>
+                    <td style="padding: 6px 10px; text-align: right; color: #000000;">${(exc.qtd || 0) > 0 ? `R$ ${formatMoeda(exc.unitario)}` : '—'}</td>
                     <td style="padding: 6px 10px; text-align: right; color: #000000; font-weight: 600;">${(exc.total || 0) > 0 ? `R$ ${formatMoeda(exc.total)}` : 'R$ -'}</td>
                   </tr>
 
