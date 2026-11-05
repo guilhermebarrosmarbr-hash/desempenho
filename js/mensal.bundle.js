@@ -1381,7 +1381,10 @@
   window.MensalApp = MensalApp;
 
   document.addEventListener('DOMContentLoaded', () => {
-    window.mensalApp = new MensalApp();
+    // Só instancia MensalApp se o relatório legado container reportContainer estiver na página
+    if (document.getElementById('reportContainer')) {
+      window.mensalApp = new MensalApp();
+    }
   });
 
 })(window);

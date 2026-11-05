@@ -23,8 +23,17 @@
     },
 
     // -------------------------------------------------------------
-    // Competência
+    // Formatadores Seguros
     // -------------------------------------------------------------
+    formatMoeda(val) {
+      if (val === null || val === undefined || isNaN(Number(val))) return '0,00';
+      return Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    },
+
+    formatPct(val) {
+      if (val === null || val === undefined || isNaN(Number(val))) return '0%';
+      return `${Math.round(Number(val) * 100)}%`;
+    },
     initCompetenciaSelector() {
       const select = document.getElementById('selectCompetenciaNav');
       if (!select) return;
@@ -346,7 +355,7 @@
             </div>
             <div style="display: flex; justify-content: space-between; font-size: 11px; color: #64748b;">
               <span>Nível 0${tec.nivel || 1} &bull; ${tec.hasIncentivoVeicular ? '🚗 Com Incentivo' : 'Sem Incentivo'}</span>
-              <span>${isOk ? `R$ ${fat.totalGeral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : 'R$ 0,00'}</span>
+              <span>${isOk ? `R$ ${this.formatMoeda(fat.totalGeral)}` : 'R$ 0,00'}</span>
             </div>
           </div>
         `;
@@ -446,7 +455,7 @@
                     ⏳ Faturamento Pendente
                   </span>
                   <div style="font-size: 12px; font-weight: 700; color: #475569; margin-top: 4px;">
-                    Base Contrato: R$ ${valorContrato.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    Base Contrato: R$ ${this.formatMoeda(valorContrato)}
                   </div>
                 </div>
               </div>
@@ -461,12 +470,13 @@
         }
 
         // Card com Tabela Fiel à Imagem Anexada
-        const formatMoeda = (val) => Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        const formatPct = (val) => `${Math.round(Number(val) * 100)}%`;
+        const formatMoeda = (val) => this.formatMoeda(val);
+        const formatPct = (val) => this.formatPct(val);
 
-        const rowsHtml = fat.itens.map(it => `
+        const itens = Array.isArray(fat.itens) ? fat.itens : [];
+        const rowsHtml = itens.map(it => `
           <tr style="border-bottom: 1px solid #cbd5e1;">
-            <td style="padding: 6px 12px; font-weight: 700; text-align: left; color: #000000; font-size: 13px;">${it.descricao}</td>
+            <td style="padding: 6px 12px; font-weight: 700; text-align: left; color: #000000; font-size: 13px;">${it.descricao || ''}</td>
             <td style="padding: 6px 12px; text-align: center; color: #000000; font-size: 13px;">${formatPct(it.executado)}</td>
             <td style="padding: 6px 12px; text-align: right; color: #000000; font-size: 13px;">${formatPct(it.peso)}</td>
             <td style="padding: 6px 12px; text-align: right; color: #000000; font-size: 13px;">R$ ${formatMoeda(it.valor)}</td>
@@ -746,7 +756,7 @@
                 <tr style="border-bottom: 1px solid #f1f5f9;">
                   <td style="padding: 8px 10px; font-weight: 600; color: #1e293b;">${t.nome}</td>
                   <td style="padding: 8px 10px; text-align: center;">Nível 0${t.nivel}</td>
-                  <td style="padding: 8px 10px; text-align: right; font-weight: 600;">R$ ${Number(t.valorContrato).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                  <td style="padding: 8px 10px; text-align: right; font-weight: 600;">R$ ${this.formatMoeda(t.valorContrato)}</td>
                   <td style="padding: 8px 10px; text-align: center;">${t.hasIncentivoVeicular ? '✅ Sim' : '❌ Não'}</td>
                   <td style="padding: 8px 10px; text-align: center;">
                     <button class="btn btn-outline btn-sm" onclick="window.M03.editarTecnico('${t.id}')" style="padding: 2px 6px; font-size: 11px;">✏️</button>
