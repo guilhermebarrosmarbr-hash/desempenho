@@ -211,12 +211,53 @@
         updatedAt: new Date().toISOString()
       };
       saveJson(STORAGE_KEYS.FATURAMENTOS, store);
+      
+      // Persistência assíncrona no Supabase (se configurado)
+      if (window.BpoSupabase && window.BpoSupabase.isConfigured()) {
+        try {
+          const tec = this.getTecnicos().find(t => t.id === tecnicoId);
+          const payload = {
+            idempotency_key: `fat_m03_${competencia}_${tecnicoId}`,
+            competence_month: competencia,
+            prestador_nome: tec ? tec.nome : 'Técnico',
+            categoria: 'PMOC_MENSAL',
+            total_apurado: dados.totalGeral || 0.0,
+            report_data: {
+              tecnico: tec,
+              dados: dados,
+              updatedAt: new Date().toISOString()
+            }
+          };
+          window.BpoSupabase.request('monthly_performance_reports', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+          }).catch(err => {
+            console.warn('Persistência Supabase Módulo 03:', err.message);
+          });
+        } catch (e) {
+          console.warn('Erro ao disparar gravação Supabase:', e);
+        }
+      }
     },
     removerFaturamento(competencia, tecnicoId) {
       const store = loadJson(STORAGE_KEYS.FATURAMENTOS, {});
       const key = `${competencia}_${tecnicoId}`;
       delete store[key];
       saveJson(STORAGE_KEYS.FATURAMENTOS, store);
+
+      // Exclusão no Supabase (se configurado)
+      if (window.BpoSupabase && window.BpoSupabase.isConfigured()) {
+        try {
+          const idKey = `fat_m03_${competencia}_${tecnicoId}`;
+          window.BpoSupabase.request(`monthly_performance_reports?idempotency_key=eq.${idKey}`, {
+            method: 'DELETE'
+          }).catch(err => {
+            console.warn('Exclusão Supabase Módulo 03:', err.message);
+          });
+        } catch (e) {
+          console.warn('Erro ao disparar exclusão Supabase:', e);
+        }
+      }
     },
     listarFaturamentos(competencia) {
       const store = loadJson(STORAGE_KEYS.FATURAMENTOS, {});

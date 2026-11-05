@@ -11,6 +11,10 @@
   ],
   "rewrites": [
     {
+      "source": "/medicao_mensal/:slug",
+      "destination": "/medicao_mensal.html?comp=:slug"
+    },
+    {
       "source": "/proxy-auvo/:path*",
       "destination": "http://92.113.38.123:9000/:path*"
     }

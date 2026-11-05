@@ -86,11 +86,8 @@
       <button type="button" class="btn btn-primary" id="btnOpenCadastros" title="Cadastrar Técnicos, Contratos, Setores e Pesos das Tarefas" style="background: #2563eb; font-weight: 700;">
         ⚙️ Cadastros &amp; Parâmetros
       </button>
-      <button type="button" class="btn btn-outline" id="btnResetSample" title="Carrega dados de demonstração (Tabela Modelo)">
-        🔄 Carregar Amostra
-      </button>
       <button type="button" class="btn btn-danger" id="btnClearData" title="Limpa faturamentos da competência">
-        🗑️ Limpar
+        🗑️ Limpar Todos
       </button>
     </div>
   </nav>
@@ -120,47 +117,17 @@
         </div>
       </section>
 
-      <!-- Tópicos 2 e 3 Unificados com Botão para Esconder/Exibir -->
+      <!-- Tópico 2 & 3: Ajuste de Tarefas & Pesos -->
       <section class="card">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-          <h2 class="card-title" style="margin: 0; font-size: 14px;">
-            <span>🏢 2 &amp; 3. Ciclo &amp; Parâmetros</span>
-          </h2>
-          <button type="button" id="btnToggleParametros" class="btn btn-outline btn-sm" style="font-size: 11px; padding: 2px 8px;">
-            👁️ Ocultar Parâmetros
-          </button>
-        </div>
-
-        <div id="boxParametrosUnificados">
-          <div style="font-size: 11px; color: #64748b; margin-bottom: 8px;">
-            Identificação rápida do ciclo atual e regras contratuais base.
-          </div>
-
-          <div class="form-group" style="margin-bottom: 8px;">
-            <label class="form-label" style="font-size: 11px;">Contrato Padrão:</label>
-            <input type="text" class="form-input" value="STS36693/22 - SEDUC" readonly style="background: #f8fafc; font-size: 12px;" />
-          </div>
-
-          <div class="form-group" style="margin-bottom: 8px;">
-            <label class="form-label" style="font-size: 11px;">Excedente (> 500 eqp):</label>
-            <div style="font-size: 11.5px; color: #1e293b; background: #f8fafc; padding: 6px 8px; border-radius: 4px; border: 1px solid #e2e8f0;">
-              Tarifa: <strong>R$ 10,75</strong> &bull; Unit: <strong>R$ 3,50</strong> (Total: R$ 14,25)
-            </div>
-          </div>
-
-          <div class="form-group" style="margin-bottom: 8px;">
-            <label class="form-label" style="font-size: 11px;">Incentivo Veicular:</label>
-            <div style="font-size: 11.5px; color: #1e293b; background: #f8fafc; padding: 6px 8px; border-radius: 4px; border: 1px solid #e2e8f0;">
-              Valor Fixo: <strong>R$ 1.000,00</strong> (quando habilitado)
-            </div>
-          </div>
-
-          <div style="margin-top: 10px;">
-            <button type="button" class="btn btn-outline btn-sm" onclick="window.M03.openModalCadastros('tarefas')" style="width: 100%; font-size: 11.5px;">
-              ⚙️ Ajustar Pesos das Tarefas
-            </button>
-          </div>
-        </div>
+        <h2 class="card-title" style="margin: 0 0 10px 0; font-size: 14px;">
+          <span>⚙️ 2 &amp; 3. Tarefas &amp; Pesos</span>
+        </h2>
+        <p style="font-size: 11.5px; color: #64748b; margin-bottom: 12px; line-height: 1.4;">
+          Configure as tarefas do ciclo, suas descrições e percentuais de remuneração.
+        </p>
+        <button type="button" class="btn btn-outline btn-sm" onclick="window.M03.openModalCadastros('tarefas')" style="width: 100%; font-size: 12px; padding: 8px 10px; font-weight: 600;">
+          ⚙️ Ajustar Pesos das Tarefas
+        </button>
       </section>
 
     </aside>

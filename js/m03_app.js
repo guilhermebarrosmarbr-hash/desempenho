@@ -34,7 +34,64 @@
       if (val === null || val === undefined || isNaN(Number(val))) return '0%';
       return `${Math.round(Number(val) * 100)}%`;
     },
+    // -------------------------------------------------------------
+    // Competência e Roteamento de URL
+    // -------------------------------------------------------------
+    mesesMap: {
+      'janeiro': '01', 'fevereiro': '02', 'marco': '03', 'abril': '04',
+      'maio': '05', 'junho': '06', 'julho': '07', 'agosto': '08',
+      'setembro': '09', 'outubro': '10', 'novembro': '11', 'dezembro': '12'
+    },
+    mesesReverso: {
+      '01': 'janeiro', '02': 'fevereiro', '03': 'marco', '04': 'abril',
+      '05': 'maio', '06': 'junho', '07': 'julho', '08': 'agosto',
+      '09': 'setembro', '10': 'outubro', '11': 'novembro', '12': 'dezembro'
+    },
+
+    detectCompetenciaFromUrl() {
+      // 1. Verifica query param ?comp=...
+      const urlParams = new URLSearchParams(window.location.search);
+      const paramComp = urlParams.get('comp') || urlParams.get('competencia') || urlParams.get('periodo');
+      if (paramComp) {
+        const clean = paramComp.toLowerCase().trim();
+        if (this.mesesMap[clean]) {
+          return `2026-${this.mesesMap[clean]}`;
+        }
+        if (/^\d{4}-\d{2}$/.test(clean)) {
+          return clean;
+        }
+      }
+
+      // 2. Verifica pathname: ex: /medicao_mensal/outubro ou /medicao_mensal/2026-10
+      const pathParts = window.location.pathname.split('/').filter(Boolean);
+      const lastPart = pathParts[pathParts.length - 1];
+      if (lastPart && lastPart !== 'medicao_mensal.html' && lastPart !== 'medicao_mensal') {
+        const clean = lastPart.toLowerCase().trim();
+        if (this.mesesMap[clean]) {
+          return `2026-${this.mesesMap[clean]}`;
+        }
+        if (/^\d{4}-\d{2}$/.test(clean)) {
+          return clean;
+        }
+      }
+
+      return '2026-10';
+    },
+
+    updateUrlForCompetencia(comp) {
+      try {
+        const mesNum = comp.split('-')[1];
+        const slugMes = this.mesesReverso[mesNum] || comp;
+        const newUrl = `${window.location.origin}/medicao_mensal/${slugMes}`;
+        window.history.pushState({ comp }, '', newUrl);
+      } catch (e) {
+        // Fallback em ambientes com restrição de pushState
+      }
+    },
+
     initCompetenciaSelector() {
+      this.competencia = this.detectCompetenciaFromUrl();
+
       const select = document.getElementById('selectCompetenciaNav');
       if (!select) return;
 
@@ -54,6 +111,15 @@
 
       select.addEventListener('change', (e) => {
         this.competencia = e.target.value;
+        this.updateUrlForCompetencia(this.competencia);
+        this.renderTecnicosStatusList();
+        this.renderCentralCards();
+      });
+
+      // Suporte para botão voltar/avançar do navegador
+      window.addEventListener('popstate', () => {
+        this.competencia = this.detectCompetenciaFromUrl();
+        if (select) select.value = this.competencia;
         this.renderTecnicosStatusList();
         this.renderCentralCards();
       });
@@ -354,6 +420,9 @@
         return;
       }
 
+      const contratos = window.M03Cadastros.getContratos();
+      const setores = window.M03Cadastros.getSetores();
+
       let totalApurados = 0;
 
       const itemsHtml = tecnicos.map(tec => {
@@ -362,6 +431,8 @@
         if (isOk) totalApurados++;
 
         const isSelected = this.selectedTecnicoId === tec.id;
+        const contrato = contratos.find(c => c.id === tec.contratoId) || { codigo: 'STS36693/22', nome: 'SEDUC' };
+        const setor = setores.find(s => s.id === tec.setorId) || { nome: 'Setor 01' };
 
         return `
           <div class="tec-status-item ${isSelected ? 'selected' : ''}" 
@@ -380,7 +451,7 @@
               `}
             </div>
             <div style="display: flex; justify-content: space-between; font-size: 11px; color: #64748b;">
-              <span>Nível 0${tec.nivel || 1} &bull; ${tec.hasIncentivoVeicular ? '🚗 Com Incentivo' : 'Sem Incentivo'}</span>
+              <span>${setor.nome} &bull; ${contrato.codigo}</span>
               <span>${isOk ? `R$ ${this.formatMoeda(fat.totalGeral)}` : 'R$ 0,00'}</span>
             </div>
           </div>
@@ -531,6 +602,9 @@
                 <button class="btn btn-outline btn-sm" onclick="window.M03.exportarRelatorioTecnico('${tec.id}')" title="Exportar PDF A4 deste técnico" style="padding: 4px 8px; font-size: 11px;">
                   🖨️ PDF
                 </button>
+                <button class="btn btn-danger btn-sm" onclick="window.M03.limparFaturamentoTecnico('${tec.id}')" title="Limpar faturamento deste técnico" style="padding: 4px 8px; font-size: 11px; background: #fee2e2; border: 1px solid #f87171; color: #991b1b; border-radius: 4px; cursor: pointer;">
+                  🗑️ Limpar
+                </button>
               </div>
             </div>
 
@@ -598,6 +672,18 @@
       }).join('');
 
       container.innerHTML = cardsHtml;
+    },
+
+    limparFaturamentoTecnico(tecnicoId) {
+      const tecnicos = window.M03Cadastros.getTecnicos();
+      const tec = tecnicos.find(t => t.id === tecnicoId);
+      const nomeTec = tec ? tec.nome : 'este técnico';
+
+      if (confirm(`Deseja realmente limpar o faturamento de ${nomeTec} para a competência ${this.competencia}?`)) {
+        window.M03Cadastros.removerFaturamento(this.competencia, tecnicoId);
+        this.renderTecnicosStatusList();
+        this.renderCentralCards();
+      }
     },
 
     vincularPlanilhaTecnico(tecnicoId) {
