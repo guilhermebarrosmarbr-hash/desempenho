@@ -109,6 +109,7 @@
         else lista.push(contrato);
       }
       saveJson(STORAGE_KEYS.CONTRATOS, lista);
+      this.salvarCadastrosNoSupabase();
       return contrato;
     },
     deleteContrato(id) {
@@ -117,6 +118,7 @@
       // remover setores associados
       const setores = this.getSetores().filter(s => s.contratoId !== id);
       saveJson(STORAGE_KEYS.SETORES, setores);
+      this.salvarCadastrosNoSupabase();
     },
 
     // --- SETORES ---
@@ -139,11 +141,13 @@
         else lista.push(setor);
       }
       saveJson(STORAGE_KEYS.SETORES, lista);
+      this.salvarCadastrosNoSupabase();
       return setor;
     },
     deleteSetor(id) {
       const lista = this.getSetores().filter(s => s.id !== id);
       saveJson(STORAGE_KEYS.SETORES, lista);
+      this.salvarCadastrosNoSupabase();
     },
 
     // --- TIPOS DE TAREFAS ---
@@ -162,11 +166,13 @@
         else lista.push(tarefa);
       }
       saveJson(STORAGE_KEYS.TAREFAS, lista);
+      this.salvarCadastrosNoSupabase();
       return tarefa;
     },
     deleteTarefa(id) {
       const lista = this.getTarefas().filter(t => t.id !== id);
       saveJson(STORAGE_KEYS.TAREFAS, lista);
+      this.salvarCadastrosNoSupabase();
     },
 
     // --- TÉCNICOS ---
@@ -185,11 +191,13 @@
         else lista.push(tec);
       }
       saveJson(STORAGE_KEYS.TECNICOS, lista);
+      this.salvarCadastrosNoSupabase();
       return tec;
     },
     deleteTecnico(id) {
       const lista = this.getTecnicos().filter(t => t.id !== id);
       saveJson(STORAGE_KEYS.TECNICOS, lista);
+      this.salvarCadastrosNoSupabase();
     },
     getValorPadraoNivel(nivel) {
       return NIVEIS_PADRAO[String(nivel)] || 6000;
@@ -304,6 +312,64 @@
       } catch (err) {
         console.warn('Sincronização Supabase M03:', err.message);
       }
+    },
+
+    // Salva todas as tabelas de cadastros (técnicos, contratos, setores, tarefas) no Supabase
+    async salvarCadastrosNoSupabase() {
+      if (!window.BpoSupabase || !window.BpoSupabase.isConfigured()) return;
+      try {
+        const payload = {
+          id: 'global_settings',
+          tecnicos: this.getTecnicos(),
+          contratos: this.getContratos(),
+          setores: this.getSetores(),
+          tarefas: this.getTarefas(),
+          updated_at: new Date().toISOString()
+        };
+        await window.BpoSupabase.request('m03_cadastros_settings?on_conflict=id', {
+          method: 'POST',
+          prefer: 'resolution=merge-duplicates,return=representation',
+          body: JSON.stringify(payload)
+        });
+      } catch (e) {
+        console.warn('Falha ao sincronizar cadastros para o Supabase:', e.message);
+      }
+    },
+
+    // Baixa cadastros do Supabase ao iniciar a aplicação em qualquer dispositivo
+    async carregarCadastrosDoSupabase() {
+      if (!window.BpoSupabase || !window.BpoSupabase.isConfigured()) return false;
+      try {
+        const res = await window.BpoSupabase.request('m03_cadastros_settings?id=eq.global_settings&select=*');
+        if (Array.isArray(res) && res.length > 0 && res[0]) {
+          const dados = res[0];
+          let alterou = false;
+
+          if (Array.isArray(dados.tecnicos) && dados.tecnicos.length > 0) {
+            saveJson(STORAGE_KEYS.TECNICOS, dados.tecnicos);
+            alterou = true;
+          }
+          if (Array.isArray(dados.contratos) && dados.contratos.length > 0) {
+            saveJson(STORAGE_KEYS.CONTRATOS, dados.contratos);
+            alterou = true;
+          }
+          if (Array.isArray(dados.setores) && dados.setores.length > 0) {
+            saveJson(STORAGE_KEYS.SETORES, dados.setores);
+            alterou = true;
+          }
+          if (Array.isArray(dados.tarefas) && dados.tarefas.length > 0) {
+            saveJson(STORAGE_KEYS.TAREFAS, dados.tarefas);
+            alterou = true;
+          }
+          return alterou;
+        } else {
+          // Se o banco estiver vazio, faz o upload dos dados locais atuais para inicializar o banco
+          await this.salvarCadastrosNoSupabase();
+        }
+      } catch (e) {
+        console.warn('Falha ao obter cadastros do Supabase:', e.message);
+      }
+      return false;
     }
   };
 

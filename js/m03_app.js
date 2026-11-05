@@ -21,7 +21,16 @@
       this.renderCentralCards();
       this.initModals();
 
-      // Hidratação assíncrona do Supabase
+      // 1. Sincroniza Cadastros Globais (Técnicos, Contratos, Setores, Tarefas) do Supabase
+      if (window.M03Cadastros && window.M03Cadastros.carregarCadastrosDoSupabase) {
+        const atualizou = await window.M03Cadastros.carregarCadastrosDoSupabase();
+        if (atualizou) {
+          this.renderTecnicosStatusList();
+          this.renderCentralCards();
+        }
+      }
+
+      // 2. Hidratação dos faturamentos apurados da competência
       if (window.M03Cadastros && window.M03Cadastros.sincronizarDoSupabase) {
         await window.M03Cadastros.sincronizarDoSupabase(this.competencia);
         this.renderTecnicosStatusList();
