@@ -247,6 +247,14 @@
           const workbook = XLSX.read(data, { type: 'array' });
           const parsed = window.MensalExcelParser.parseWorkbook(workbook);
 
+          // Converte o arquivo original para Base64 para permitir download posterior
+          let binary = '';
+          const len = data.byteLength;
+          for (let i = 0; i < len; i++) {
+            binary += String.fromCharCode(data[i]);
+          }
+          const fileBase64 = window.btoa(binary);
+
           // Verifica se encontrou nome de técnico na planilha para auto-associar
           let matchTec = null;
           if (parsed.metadata && parsed.metadata.oficiais && parsed.metadata.oficiais.length > 0) {
@@ -269,8 +277,8 @@
             }
           }
 
-          // Salvar faturamento do técnico
-          this.processarFaturamentoTecnico(tecEscolhido, parsed, file.name);
+          // Salvar faturamento do técnico com o arquivo em base64
+          this.processarFaturamentoTecnico(tecEscolhido, parsed, file.name, fileBase64);
 
           const notice = document.getElementById('fileInfoNotice');
           const fileNameEl = document.getElementById('activeFileName');
@@ -292,7 +300,7 @@
       reader.readAsArrayBuffer(file);
     },
 
-    processarFaturamentoTecnico(tecnico, parsed, fileName = '') {
+    processarFaturamentoTecnico(tecnico, parsed, fileName = '', fileBase64 = null) {
       const q = parsed.quantitativos || {};
       const tarefas = window.M03Cadastros.getTarefas();
       
@@ -302,11 +310,31 @@
           planejado: q.preventivaMensal?.planejado !== undefined && q.preventivaMensal?.planejado !== null ? q.preventivaMensal.planejado : (q.equipamentosAtivos?.planejado || 0),
           executado: q.preventivaMensal?.executado !== undefined && q.preventivaMensal?.executado !== null ? q.preventivaMensal.executado : (q.preventivaMensal?.planejado || 0)
         },
+        'PREVENTIVA MENSAL': {
+          planejado: q.preventivaMensal?.planejado !== undefined && q.preventivaMensal?.planejado !== null ? q.preventivaMensal.planejado : (q.equipamentosAtivos?.planejado || 0),
+          executado: q.preventivaMensal?.executado !== undefined && q.preventivaMensal?.executado !== null ? q.preventivaMensal.executado : (q.preventivaMensal?.planejado || 0)
+        },
+        'PMOC MENSAL': {
+          planejado: q.preventivaMensal?.planejado !== undefined && q.preventivaMensal?.planejado !== null ? q.preventivaMensal.planejado : (q.equipamentosAtivos?.planejado || 0),
+          executado: q.preventivaMensal?.executado !== undefined && q.preventivaMensal?.executado !== null ? q.preventivaMensal.executado : (q.preventivaMensal?.planejado || 0)
+        },
         'SEMESTRAL': {
           planejado: q.preventivaSemestral?.planejado !== undefined && q.preventivaSemestral?.planejado !== null ? q.preventivaSemestral.planejado : '—',
           executado: q.preventivaSemestral?.executado !== undefined && q.preventivaSemestral?.executado !== null ? q.preventivaSemestral.executado : '—'
         },
+        'PREVENTIVA SEMESTRAL': {
+          planejado: q.preventivaSemestral?.planejado !== undefined && q.preventivaSemestral?.planejado !== null ? q.preventivaSemestral.planejado : '—',
+          executado: q.preventivaSemestral?.executado !== undefined && q.preventivaSemestral?.executado !== null ? q.preventivaSemestral.executado : '—'
+        },
+        'PMOC SEMESTRAL': {
+          planejado: q.preventivaSemestral?.planejado !== undefined && q.preventivaSemestral?.planejado !== null ? q.preventivaSemestral.planejado : '—',
+          executado: q.preventivaSemestral?.executado !== undefined && q.preventivaSemestral?.executado !== null ? q.preventivaSemestral.executado : '—'
+        },
         'CORRETIVA': {
+          planejado: q.corretiva?.planejado !== undefined && q.corretiva?.planejado !== null ? q.corretiva.planejado : 0,
+          executado: q.corretiva?.executado !== undefined && q.corretiva?.executado !== null ? q.corretiva.executado : 0
+        },
+        'MANUTENCAO CORRETIVA': {
           planejado: q.corretiva?.planejado !== undefined && q.corretiva?.planejado !== null ? q.corretiva.planejado : 0,
           executado: q.corretiva?.executado !== undefined && q.corretiva?.executado !== null ? q.corretiva.executado : 0
         },
@@ -394,6 +422,7 @@
       const faturamentoData = {
         apurado: true,
         fileName: fileName,
+        fileBase64: fileBase64 || null,
         valorContrato: valorContrato,
         itens: itensCalculados,
         excedente: {
@@ -652,6 +681,9 @@
                 <button class="btn btn-outline btn-sm" onclick="window.M03.exportarRelatorioTecnico('${tec.id}')" title="Exportar PDF A4 deste técnico" style="padding: 4px 8px; font-size: 11px;">
                   🖨️ PDF
                 </button>
+                <button class="btn btn-outline btn-sm" onclick="window.M03.baixarPlanilhaTecnico('${tec.id}')" title="Baixar planilha importada deste técnico" style="padding: 4px 8px; font-size: 11px; background: #f0fdf4; border: 1px solid #86efac; color: #166534; border-radius: 4px; cursor: pointer;">
+                  📥 Baixar Planilha
+                </button>
                 <button class="btn btn-danger btn-sm" onclick="window.M03.limparFaturamentoTecnico('${tec.id}')" title="Limpar faturamento deste técnico" style="padding: 4px 8px; font-size: 11px; background: #fee2e2; border: 1px solid #f87171; color: #991b1b; border-radius: 4px; cursor: pointer;">
                   🗑️ Limpar
                 </button>
@@ -724,6 +756,69 @@
       container.innerHTML = cardsHtml;
     },
 
+    baixarPlanilhaTecnico(tecnicoId) {
+      const targetId = tecnicoId || this.selectedTecnicoId;
+      if (!targetId) return;
+
+      const tecnicos = window.M03Cadastros.getTecnicos();
+      const tec = tecnicos.find(t => t.id === targetId);
+      const fat = window.M03Cadastros.getFaturamento(this.competencia, targetId);
+
+      if (!tec || !fat) {
+        alert('Nenhum faturamento apurado para este técnico.');
+        return;
+      }
+
+      const fileName = fat.fileName || `Medicao_${tec.nome}_${this.competencia}.xlsx`;
+
+      // 1. Se possuir o arquivo original em base64, baixa fielmente
+      if (fat.fileBase64) {
+        try {
+          const byteCharacters = atob(fat.fileBase64);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          const byteArray = new Uint8Array(byteNumbers);
+          const blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = fileName;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          return;
+        } catch (e) {
+          console.warn('Erro ao decodificar base64 original:', e);
+        }
+      }
+
+      // 2. Fallback: exporta os dados de apuração gerando uma nova planilha XLSX
+      if (window.XLSX) {
+        const rows = [
+          ['DESCRIÇÃO', 'PLANEJADO', 'EXECUTADO', '% EXEC.', 'PESO', 'VALOR', 'TOTAL'],
+          ...(fat.itens || []).map(it => [
+            it.descricao,
+            it.planejado,
+            it.executadoQtd,
+            `${Math.round(it.executado * 100)}%`,
+            `${Math.round(it.peso * 100)}%`,
+            it.valor,
+            it.total
+          ]),
+          ['SUBTOTAL', '', '', '', '', '', fat.subtotal || 0],
+          ['INCENTIVO VEICULAR', '1', '1', `${Math.round((fat.incentivoVeicular?.executado || 0) * 100)}%`, '', fat.incentivoVeicular?.valor || 0, fat.incentivoVeicular?.total || 0],
+          ['TOTAL GERAL', '', '', '', '', '', fat.totalGeral || 0]
+        ];
+        const ws = window.XLSX.utils.aoa_to_sheet(rows);
+        const wb = window.XLSX.utils.book_new();
+        window.XLSX.utils.book_append_sheet(wb, ws, 'APURAÇÃO');
+        window.XLSX.writeFile(wb, fileName);
+      }
+    },
+
     limparFaturamentoTecnico(tecnicoId) {
       const tecnicos = window.M03Cadastros.getTecnicos();
       const tec = tecnicos.find(t => t.id === tecnicoId);
@@ -753,6 +848,8 @@
       }
 
       const tecnicos = window.M03Cadastros.getTecnicos();
+      const contratos = window.M03Cadastros.getContratos();
+      const setores = window.M03Cadastros.getSetores();
       const tec = tecnicos.find(t => t.id === targetId);
       const fat = window.M03Cadastros.getFaturamento(this.competencia, targetId);
 
@@ -761,22 +858,198 @@
         return;
       }
 
-      // Monta modelo completo para o MensalReportRenderer legado gerar o A4 oficial
-      const cardEl = document.getElementById(`card-tecnico-${targetId}`);
-      if (!cardEl) return;
+      const contrato = contratos.find(c => c.id === tec.contratoId) || { codigo: 'STS36693/22', nome: 'SEDUC' };
+      const setor = setores.find(s => s.id === tec.setorId) || { nome: 'Setor 01' };
+
+      const formatMoeda = (val) => this.formatMoeda(val);
+      const formatPct = (val) => this.formatPct(val);
+
+      // Quantitativos para os donuts
+      const q = fat.parsedFull?.quantitativos || {};
+      const itens = Array.isArray(fat.itens) ? fat.itens : [];
+
+      const itemMensal = itens.find(it => it.descricao.toUpperCase().includes('MENSAL')) || {};
+      const itemSemestral = itens.find(it => it.descricao.toUpperCase().includes('SEMESTRAL')) || {};
+      const itemCorretiva = itens.find(it => it.descricao.toUpperCase().includes('CORRETIVA')) || {};
+      const itemEpi = itens.find(it => it.descricao.toUpperCase().includes('EPI')) || {};
+
+      const pctMensal = Math.round((Number(itemMensal.executado) || 0) * 100);
+      const pctSemestral = itemSemestral.executado !== undefined ? Math.round((Number(itemSemestral.executado) || 0) * 100) : 0;
+      const pctCorretiva = Math.round((Number(itemCorretiva.executado) || 0) * 100);
+      const pctEpi = Math.round((Number(itemEpi.executado) || 0) * 100);
+
+      const renderDonutSvg = (pct, label, sub) => {
+        const radius = 58;
+        const circumference = 2 * Math.PI * radius;
+        const offset = circumference * (1 - Math.min(100, Math.max(0, pct)) / 100);
+        return `
+          <div style="display: flex; flex-direction: column; align-items: center; text-align: center; width: 140px;">
+            <div style="position: relative; width: 120px; height: 120px;">
+              <svg viewBox="0 0 160 160" width="120" height="120">
+                <circle cx="80" cy="80" r="${radius}" stroke="#ffedd5" fill="none" stroke-width="18" />
+                <circle cx="80" cy="80" r="${radius}" stroke="#f97316" fill="none" stroke-width="18" 
+                        stroke-dasharray="${circumference.toFixed(2)}" stroke-dashoffset="${offset.toFixed(2)}" 
+                        transform="rotate(-90 80 80)" stroke-linecap="butt" />
+                <text x="80" y="88" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" 
+                      font-weight="800" font-size="32px" fill="#0f172a" text-anchor="middle">${pct}%</text>
+              </svg>
+            </div>
+            <div style="font-weight: 700; font-size: 13px; color: #1e293b; margin-top: 6px;">${label}</div>
+            <div style="font-size: 11px; color: #64748b; margin-top: 2px;">${sub}</div>
+          </div>
+        `;
+      };
+
+      const cubeLogoSvg = `
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="80" height="80">
+          <polygon points="50,12 85,32 50,52 15,32" fill="#f59e0b" />
+          <polygon points="50,22 75,36 50,50 25,36" fill="#fbbf24" />
+          <polygon points="15,32 50,52 50,90 15,70" fill="#ea580c" />
+          <polygon points="25,40 45,52 45,82 25,65" fill="#f97316" />
+          <polygon points="50,52 85,32 85,70 50,90" fill="#c2410c" />
+          <polygon points="55,52 75,40 75,65 55,82" fill="#ea580c" />
+          <polygon points="50,42 64,50 50,58 36,50" fill="#fef3c7" opacity="0.9" />
+        </svg>
+      `;
+
+      const rowsTableHtml = itens.map(it => `
+        <tr style="border-bottom: 1px solid #f1f5f9;">
+          <td style="padding: 8px 12px; font-weight: 700; color: #1e293b; text-align: left;">${it.descricao}</td>
+          <td style="padding: 8px 10px; text-align: center; color: #475569;">${formatPct(it.executado)}</td>
+          <td style="padding: 8px 10px; text-align: right; color: #475569;">${formatPct(it.peso)}</td>
+          <td style="padding: 8px 10px; text-align: right; color: #475569;">R$ ${formatMoeda(it.valor)}</td>
+          <td style="padding: 8px 10px; text-align: right; font-weight: 700; color: #0f172a;">R$ ${formatMoeda(it.total)}</td>
+        </tr>
+      `).join('');
+
+      const exc = fat.excedente || { qtd: 0, tarifa: 10.75, unitario: 3.50, total: 0 };
+      const inc = fat.incentivoVeicular || { ativo: false, valor: 1000, total: 0 };
+
+      // Monta folha completa no padrão visual da imagem
+      const reportDiv = document.createElement('div');
+      reportDiv.id = 'reportPdfTemp';
+      reportDiv.style.cssText = 'position: absolute; left: -9999px; top: 0; width: 780px; background: #ffffff; padding: 32px 36px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; box-sizing: border-box;';
+
+      reportDiv.innerHTML = `
+        <div style="margin-bottom: 24px;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+              <span style="display: inline-block; padding: 4px 10px; background: #ffedd5; color: #c2410c; border: 1px solid #fed7aa; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; margin-bottom: 8px;">
+                MAR BRASIL &mdash; SISTEMA LIMPO
+              </span>
+              <h1 style="font-size: 24px; font-weight: 800; color: #0f172a; margin: 0 0 6px 0;">
+                Medição de Desempenho - Mar Brasil
+              </h1>
+              <p style="font-size: 12px; color: #64748b; margin: 0; max-width: 520px; line-height: 1.4;">
+                Prestador: <strong>${tec.nome}</strong> &bull; Contrato: <strong>${contrato.codigo}</strong> (${setor.nome}) &bull; Competência: <strong>${this.competencia}</strong>
+              </p>
+            </div>
+            <div>
+              ${cubeLogoSvg}
+            </div>
+          </div>
+        </div>
+
+        <!-- Donut Gauges em Grid de 2x2 ou 4x1 -->
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; justify-items: center; margin: 24px 0 32px 0;">
+          ${renderDonutSvg(
+            pctMensal,
+            'PMOC Mensal',
+            itemMensal.planejado && itemMensal.planejado !== '—' ? `${itemMensal.executadoQtd || 0} de ${itemMensal.planejado} serviços executados` : '0 de 0 serviços executados'
+          )}
+          ${renderDonutSvg(
+            pctSemestral,
+            'PMOC Semestral',
+            itemSemestral.planejado && itemSemestral.planejado !== '—' ? `${itemSemestral.executadoQtd || 0} de ${itemSemestral.planejado} serviços executados` : '0 de 0 serviços executados'
+          )}
+          ${renderDonutSvg(
+            pctCorretiva,
+            'Manutenção Corretiva',
+            itemCorretiva.planejado && itemCorretiva.planejado !== '—' ? `${itemCorretiva.executadoQtd || 0} de ${itemCorretiva.planejado} serviços executados` : '0 de 0 serviços executados'
+          )}
+          ${renderDonutSvg(
+            pctEpi,
+            'EPI',
+            itemEpi.planejado && itemEpi.planejado !== '—' ? `${itemEpi.executadoQtd || 0} de ${itemEpi.planejado} itens entregues` : '0 de 0 itens entregues'
+          )}
+        </div>
+
+        <div style="border-top: 1px dashed #cbd5e1; margin: 20px 0 24px 0;"></div>
+
+        <!-- Tabela Financeira -->
+        <div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <strong style="font-size: 14px; color: #0f172a; text-transform: uppercase;">
+              VALORES - MAR BRASIL ${this.competencia}
+            </strong>
+            <strong style="font-size: 15px; color: #0f172a;">
+              R$ ${formatMoeda(fat.valorContrato || 6000)}
+            </strong>
+          </div>
+
+          <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+            <tbody>
+              ${rowsTableHtml}
+
+              <!-- Excedente -->
+              <tr style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 8px 12px; font-weight: 700; color: #1e293b; text-align: left;">EXCEDENTE</td>
+                <td style="padding: 8px 10px; text-align: center; color: #475569;">${(exc.qtd || 0) > 0 ? `${exc.qtd} un.` : '0'}</td>
+                <td style="padding: 8px 10px; text-align: right; color: #475569;">${(exc.qtd || 0) > 0 ? `R$ ${formatMoeda(exc.tarifa)}` : 'R$ 10,75'}</td>
+                <td style="padding: 8px 10px; text-align: right; color: #475569;">${(exc.qtd || 0) > 0 ? `R$ ${formatMoeda(exc.unitario)}` : 'R$ 3,50'}</td>
+                <td style="padding: 8px 10px; text-align: right; font-weight: 700; color: #0f172a;">${(exc.total || 0) > 0 ? `R$ ${formatMoeda(exc.total)}` : 'R$ -'}</td>
+              </tr>
+
+              <!-- Subtotal -->
+              <tr style="border-top: 1px solid #cbd5e1; border-bottom: 1px solid #cbd5e1; background: #f8fafc; font-weight: 700;">
+                <td colspan="4" style="padding: 10px 12px; font-weight: 800; color: #0f172a; text-transform: uppercase;">SUBTOTAL</td>
+                <td style="padding: 10px 10px; text-align: right; font-weight: 800; color: #0f172a;">R$ ${formatMoeda(fat.subtotal)}</td>
+              </tr>
+
+              <!-- Incentivo Veicular -->
+              <tr style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 8px 12px; font-weight: 700; color: #1e293b; text-align: left;">INCENTIVO VEICULAR</td>
+                <td style="padding: 8px 10px; text-align: center; color: #475569;">${formatPct(inc.executado || 0)}</td>
+                <td style="padding: 8px 10px; text-align: right; color: #475569;">—</td>
+                <td style="padding: 8px 10px; text-align: right; color: #475569;">R$ 1.000,00</td>
+                <td style="padding: 8px 10px; text-align: right; font-weight: 700; color: #0f172a;">${(inc.total || 0) > 0 ? `R$ ${formatMoeda(inc.total)}` : 'R$ -'}</td>
+              </tr>
+
+              <!-- Total Geral -->
+              <tr style="border-top: 2px solid #0f172a; background: #f8fafc; font-weight: 800;">
+                <td colspan="4" style="padding: 12px 12px; font-size: 13px; font-weight: 900; color: #0f172a; text-transform: uppercase;">TOTAL</td>
+                <td style="padding: 12px 10px; text-align: right; font-size: 14px; font-weight: 900; color: #0f172a;">R$ ${formatMoeda(fat.totalGeral)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div style="margin-top: 40px; font-size: 10px; color: #94a3b8; display: flex; justify-content: space-between;">
+          <span>https://desempenho-five.vercel.app/medicao.html</span>
+          <span>1/1</span>
+        </div>
+      `;
+
+      document.body.appendChild(reportDiv);
 
       const opt = {
-        margin: [10, 10, 10, 10],
-        filename: `Relatorio_Mensal_${this.competencia}_${tec.nome.replace(/\s+/g, '_')}.pdf`,
+        margin: [5, 5, 5, 5],
+        filename: `Relatorio_Medicao_${this.competencia}_${tec.nome.replace(/\s+/g, '_')}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
       };
 
       if (window.html2pdf) {
-        window.html2pdf().set(opt).from(cardEl).save();
+        window.html2pdf().set(opt).from(reportDiv).save().then(() => {
+          document.body.removeChild(reportDiv);
+        }).catch(err => {
+          console.error(err);
+          document.body.removeChild(reportDiv);
+        });
       } else {
         window.print();
+        document.body.removeChild(reportDiv);
       }
     },
 

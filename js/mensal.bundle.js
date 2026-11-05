@@ -430,6 +430,7 @@
           label.includes('PLANO VERAO') ||
           label.includes('PLANO DE VERAO') ||
           label.includes('MANUTENCAO PREVENTIVA MENSAL') ||
+          label.includes('PREVENTIVA MENSAL') ||
           (label.includes('PREVENTIVA') && label.includes('MENSAL')) ||
           label === 'MENSAL'
         ) {
