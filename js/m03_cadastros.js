@@ -228,8 +228,9 @@
               updatedAt: new Date().toISOString()
             }
           };
-          window.BpoSupabase.request('monthly_performance_reports', {
+          window.BpoSupabase.request('monthly_performance_reports?on_conflict=idempotency_key', {
             method: 'POST',
+            prefer: 'resolution=merge-duplicates,return=representation',
             body: JSON.stringify(payload)
           }).catch(err => {
             console.warn('Persistência Supabase Módulo 03:', err.message);
@@ -269,6 +270,40 @@
         }
       });
       return res;
+    },
+
+    // Carrega do Supabase dados da competência caso não existam no localStorage (hidratação)
+    async sincronizarDoSupabase(competencia) {
+      if (!window.BpoSupabase || !window.BpoSupabase.isConfigured()) return;
+      try {
+        const registros = await window.BpoSupabase.request(`monthly_performance_reports?competence_month=eq.${competencia}&select=*`);
+        if (Array.isArray(registros) && registros.length > 0) {
+          const store = loadJson(STORAGE_KEYS.FATURAMENTOS, {});
+          let houveMudanca = false;
+
+          registros.forEach(reg => {
+            const tecId = reg.report_data?.tecnico?.id;
+            if (tecId && reg.report_data?.dados) {
+              const key = `${competencia}_${tecId}`;
+              if (!store[key]) {
+                store[key] = {
+                  ...reg.report_data.dados,
+                  competencia,
+                  tecnicoId: tecId,
+                  updatedAt: reg.created_at || new Date().toISOString()
+                };
+                houveMudanca = true;
+              }
+            }
+          });
+
+          if (houveMudanca) {
+            saveJson(STORAGE_KEYS.FATURAMENTOS, store);
+          }
+        }
+      } catch (err) {
+        console.warn('Sincronização Supabase M03:', err.message);
+      }
     }
   };
 

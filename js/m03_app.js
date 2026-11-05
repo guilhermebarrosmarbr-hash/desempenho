@@ -14,12 +14,19 @@
     selectedTecnicoId: null,
     tecnicoSelecionadoParaPlanilha: null,
 
-    init() {
+    async init() {
       this.initCompetenciaSelector();
       this.bindEvents();
       this.renderTecnicosStatusList();
       this.renderCentralCards();
       this.initModals();
+
+      // Hidratação assíncrona do Supabase
+      if (window.M03Cadastros && window.M03Cadastros.sincronizarDoSupabase) {
+        await window.M03Cadastros.sincronizarDoSupabase(this.competencia);
+        this.renderTecnicosStatusList();
+        this.renderCentralCards();
+      }
     },
 
     // -------------------------------------------------------------
@@ -109,19 +116,31 @@
         <option value="${m.val}" ${m.val === this.competencia ? 'selected' : ''}>${m.label}</option>
       `).join('');
 
-      select.addEventListener('change', (e) => {
+      select.addEventListener('change', async (e) => {
         this.competencia = e.target.value;
         this.updateUrlForCompetencia(this.competencia);
         this.renderTecnicosStatusList();
         this.renderCentralCards();
+
+        if (window.M03Cadastros && window.M03Cadastros.sincronizarDoSupabase) {
+          await window.M03Cadastros.sincronizarDoSupabase(this.competencia);
+          this.renderTecnicosStatusList();
+          this.renderCentralCards();
+        }
       });
 
       // Suporte para botão voltar/avançar do navegador
-      window.addEventListener('popstate', () => {
+      window.addEventListener('popstate', async () => {
         this.competencia = this.detectCompetenciaFromUrl();
         if (select) select.value = this.competencia;
         this.renderTecnicosStatusList();
         this.renderCentralCards();
+
+        if (window.M03Cadastros && window.M03Cadastros.sincronizarDoSupabase) {
+          await window.M03Cadastros.sincronizarDoSupabase(this.competencia);
+          this.renderTecnicosStatusList();
+          this.renderCentralCards();
+        }
       });
     },
 
