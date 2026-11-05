@@ -335,9 +335,31 @@
 
       const subtotal = itensCalculados.reduce((acc, it) => acc + it.total, 0) + totalExcedente;
 
-      // Incentivo Veicular
+      // Incentivo Veicular:
+      // O cálculo da porcentagem do incentivo veicular é feito através da média entre todas as outras tarefas anteriores (mensal, semestral, corretiva e epi).
+      // Se o resultado for 100%, o incentivo será de R$ 1.000,00.
+      // Se o resultado for de 90% a 99%, o incentivo será de R$ 750,00.
+      // Se o resultado for menos de 90%, o incentivo será de R$ 0,00.
       const hasIncentivo = !!tecnico.hasIncentivoVeicular;
-      const valorIncentivo = hasIncentivo ? 1000.0 : 0.0;
+      let mediaTarefasPct = 1.0;
+      if (itensCalculados.length > 0) {
+        const somaPcts = itensCalculados.reduce((acc, it) => acc + (Number(it.executado) || 0), 0);
+        mediaTarefasPct = somaPcts / itensCalculados.length;
+      }
+
+      // Arredonda percentual para número inteiro (ex: 95.4% -> 95) para avaliação segura das faixas
+      const pctInt = Math.round(mediaTarefasPct * 100);
+
+      let valorIncentivo = 0.0;
+      if (hasIncentivo) {
+        if (pctInt >= 100) {
+          valorIncentivo = 1000.0;
+        } else if (pctInt >= 90) {
+          valorIncentivo = 750.0;
+        } else {
+          valorIncentivo = 0.0;
+        }
+      }
 
       const totalFinal = subtotal + valorIncentivo;
 
@@ -355,7 +377,7 @@
         subtotal: subtotal,
         incentivoVeicular: {
           ativo: hasIncentivo,
-          executado: 1.0,
+          executado: mediaTarefasPct,
           valor: 1000.0,
           total: valorIncentivo
         },
@@ -652,10 +674,10 @@
                       <td style="padding: 6px 12px; font-weight: 700; text-align: left; color: #000000;">INCENTIVO VEICULAR</td>
                       <td style="padding: 6px 10px; text-align: center; color: #000000;">1</td>
                       <td style="padding: 6px 10px; text-align: center; color: #000000;">1</td>
-                      <td style="padding: 6px 10px; text-align: center; color: #000000;">100%</td>
+                      <td style="padding: 6px 10px; text-align: center; color: #000000;">${formatPct(inc.executado)}</td>
                       <td style="padding: 6px 10px; text-align: right; color: #000000;">—</td>
                       <td style="padding: 6px 10px; text-align: right; color: #000000;">R$ ${formatMoeda(inc.valor)}</td>
-                      <td style="padding: 6px 10px; text-align: right; color: #000000; font-weight: 600;">R$ ${formatMoeda(inc.total)}</td>
+                      <td style="padding: 6px 10px; text-align: right; color: #000000; font-weight: 600;">${(inc.total || 0) > 0 ? `R$ ${formatMoeda(inc.total)}` : 'R$ -'}</td>
                     </tr>
                   ` : ''}
 
