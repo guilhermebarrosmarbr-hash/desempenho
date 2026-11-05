@@ -7,18 +7,19 @@
   'use strict';
 
   const STORAGE_KEYS = {
-    TECNICOS: 'm03_tecnicos_v1',
+    TECNICOS: 'm03_tecnicos_v2',
     CONTRATOS: 'm03_contratos_v1',
     SETORES: 'm03_setores_v1',
     TAREFAS: 'm03_tarefas_v1',
     FATURAMENTOS: 'm03_faturamentos_v1' // { `${competencia}_${tecnicoId}`: { apurado: true, data: ..., total: ... } }
   };
 
-  // Valores padrão dos níveis de técnicos (caso não configurado no técnico)
+  // Valores padrão dos níveis de técnicos (conforme regra de negócio):
+  // Nível 01: R$ 6.000,00 | Nível 02: R$ 5.250,00 | Nível 03: R$ 4.250,00
   const NIVEIS_PADRAO = {
-    '1': 5000,
-    '2': 6000,
-    '3': 7000
+    '1': 6000,
+    '2': 5250,
+    '3': 4250
   };
 
   // Dados semente iniciais caso o storage esteja vazio
@@ -40,7 +41,7 @@
       {
         id: 'tec-1',
         nome: 'Flávio Pereira',
-        nivel: '2',
+        nivel: '1',
         valorContrato: 6000,
         hasIncentivoVeicular: true,
         contratoId: 'cnt-1',
@@ -49,7 +50,7 @@
       {
         id: 'tec-2',
         nome: 'Jonathan Silva',
-        nivel: '2',
+        nivel: '1',
         valorContrato: 6000,
         hasIncentivoVeicular: true,
         contratoId: 'cnt-1',
@@ -233,3 +234,4 @@
   M03Cadastros.init();
   window.M03Cadastros = M03Cadastros;
 })(window);
+

@@ -690,14 +690,14 @@
               <div>
                 <label style="font-size: 11px; font-weight: 700; color: #475569;">Nível (01 a 03):</label>
                 <select id="tecNivel" class="form-input" style="width: 100%;" onchange="window.M03.atualizarValorContratoNivel(this.value)">
-                  <option value="1">Nível 01 (R$ 5.000)</option>
-                  <option value="2" selected>Nível 02 (R$ 6.000)</option>
-                  <option value="3">Nível 03 (R$ 7.000)</option>
+                  <option value="1" selected>Nível 01 (R$ 6.000,00)</option>
+                  <option value="2">Nível 02 (R$ 5.250,00)</option>
+                  <option value="3">Nível 03 (R$ 4.250,00)</option>
                 </select>
               </div>
               <div>
                 <label style="font-size: 11px; font-weight: 700; color: #475569;">Valor Contrato (R$):</label>
-                <input type="number" id="tecValorContrato" class="form-input" value="6000" step="100" style="width: 100%; font-weight: 700;" />
+                <input type="number" id="tecValorContrato" class="form-input" value="6000" step="50" style="width: 100%; font-weight: 700;" />
               </div>
             </div>
 
@@ -974,3 +974,4 @@
     M03.init();
   });
 })(window);
+
