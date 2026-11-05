@@ -3,11 +3,57 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Desempenho Mensal - BPO Financeiro &bull; Medição e Relatório A4</title>
+  <title>Desempenho Mensal - BPO Financeiro &bull; Medição e Relatório por Técnico</title>
   <link rel="stylesheet" href="styles.css" />
   <!-- Bibliotecas Locais para Funcionamento 100% Offline -->
   <script src="xlsx.full.min.js"></script>
   <script src="html2pdf.bundle.min.js"></script>
+  <style>
+    .app-main-grid {
+      display: grid;
+      grid-template-columns: 320px 1fr 280px;
+      gap: 16px;
+      padding: 16px;
+      max-width: 1600px;
+      margin: 0 auto;
+      align-items: start;
+    }
+    @media (max-width: 1200px) {
+      .app-main-grid {
+        grid-template-columns: 300px 1fr;
+      }
+      .right-sidebar {
+        grid-column: span 2;
+      }
+    }
+    @media (max-width: 850px) {
+      .app-main-grid {
+        grid-template-columns: 1fr;
+      }
+      .right-sidebar {
+        grid-column: span 1;
+      }
+    }
+    .m03-tec-card {
+      transition: all 0.2s ease-in-out;
+    }
+    .m03-tec-card:hover {
+      box-shadow: 0 6px 12px -2px rgba(0,0,0,0.12) !important;
+    }
+    .tec-status-item:hover {
+      border-color: #3b82f6 !important;
+      background: #f8fafc !important;
+    }
+    .nav-competencia-box {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #f8fafc;
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid #cbd5e1;
+    }
+  </style>
 </head>
 <body>
 
@@ -21,265 +67,161 @@
       </svg>
       <div>
         <h1 class="app-title">BPO Financeiro &bull; Desempenho Mensal</h1>
-        <p class="app-subtitle">Módulo 03 &bull; Apuração Mensal por Prestador e Fechamento Financeiro</p>
+        <p class="app-subtitle">Módulo 03 &bull; Apuração Mensal e Fechamento Financeiro por Técnico</p>
       </div>
+    </div>
+
+    <!-- Seletor de Competência na Barra Superior -->
+    <div class="nav-competencia-box">
+      <label for="selectCompetenciaNav" style="font-size: 12px; font-weight: 700; color: #334155;">📅 Período:</label>
+      <select id="selectCompetenciaNav" class="form-input" style="padding: 4px 8px; font-size: 13px; font-weight: 700; border-color: #94a3b8; cursor: pointer;">
+        <!-- Preenchido dinamicamente via JS -->
+      </select>
     </div>
 
     <div class="nav-actions">
       <a href="index.html" class="btn btn-secondary" style="text-decoration: none;" title="Voltar ao Hub de Módulos">
         ⬅️ Módulos
       </a>
-      <a href="medicao.html" class="btn btn-outline" style="text-decoration: none;" title="Ir para Módulo 01: Desempenho Semanal">
-        📊 Módulo 01 (Semanal)
-      </a>
-      <a href="http://localhost:3000" target="_blank" class="btn btn-outline" style="text-decoration: none;" title="Abrir Módulo 02: Consulta DAS MEI (PGMEI)">
-        🔍 Consulta MEI (PGMEI)
-      </a>
-      <button type="button" class="btn btn-danger" id="btnClearData" title="Limpa a planilha carregada e retorna o sistema ao estado zerado inicial">
-        🗑️ Limpar Dados
+      <button type="button" class="btn btn-primary" id="btnOpenCadastros" title="Cadastrar Técnicos, Contratos, Setores e Pesos das Tarefas" style="background: #2563eb; font-weight: 700;">
+        ⚙️ Cadastros &amp; Parâmetros
       </button>
-      <button type="button" class="btn btn-outline" id="btnResetSample" title="Carrega dados de demonstração (GB Climatização - Ciclo 08/2026)">
+      <button type="button" class="btn btn-outline" id="btnResetSample" title="Carrega dados de demonstração (Tabela Modelo)">
         🔄 Carregar Amostra
       </button>
-      <button type="button" class="btn btn-primary" id="btnPrint" title="Abre o assistente de impressão ou salva em PDF formato A4">
-        🖨️ Imprimir / Salvar PDF
+      <button type="button" class="btn btn-danger" id="btnClearData" title="Limpa faturamentos da competência">
+        🗑️ Limpar
       </button>
     </div>
   </nav>
 
-  <!-- Container Principal -->
-  <main class="app-container">
+  <!-- Container Principal em 3 Colunas -->
+  <main class="app-main-grid">
 
-    <!-- Painel Lateral Esquerdo: Alimentação da Planilha e Parâmetros -->
-    <aside class="controls-sidebar">
+    <!-- 1. LATERAL ESQUERDA (Reduzida e Limpa) -->
+    <aside class="left-sidebar">
 
-      <!-- Card 1: Importação da Planilha Mensal (Abas GERAL + FINANCEIRO + TAREFAS) -->
-      <section class="card">
-        <h2 class="card-title">
+      <!-- Tópico 1: Alimentar Planilha Mensal (sem mensagem 💡) -->
+      <section class="card" style="margin-bottom: 12px;">
+        <h2 class="card-title" style="font-size: 14px;">
           <span>📂 1. Alimentar Planilha Mensal</span>
           <span id="fileBadge" style="font-size: 11px; font-weight: normal; color: #16a34a; display: none;">✓ Carregada</span>
         </h2>
 
-        <div class="dropzone" id="excelDropzone">
-          <div class="dropzone-icon">📑</div>
-          <div class="dropzone-text">Arraste a planilha de ciclo aqui</div>
-          <div class="dropzone-hint">ou clique para selecionar (.xlsx, .xls)</div>
+        <div class="dropzone" id="excelDropzone" style="padding: 16px 10px; cursor: pointer;">
+          <div class="dropzone-icon" style="font-size: 24px;">📑</div>
+          <div class="dropzone-text" style="font-size: 12px;">Arraste a planilha do ciclo aqui</div>
+          <div class="dropzone-hint" style="font-size: 11px;">ou clique para selecionar (.xlsx, .xls)</div>
           <input type="file" id="excelFileInput" class="file-input-hidden" accept=".xlsx, .xls" />
         </div>
 
-        <div id="fileInfoNotice" style="margin-top: 10px; font-size: 11.5px; color: #475569; display: none;">
-          Arquivo ativo: <strong id="activeFileName"></strong>
-        </div>
-
-        <div style="margin-top: 10px; padding: 8px 10px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; font-size: 11px; color: #166534;">
-          💡 <strong>Leitura Inteligente:</strong> O sistema inicia zerado e é preenchido automaticamente ao importar a planilha (com as abas <code>GERAL</code>, <code>FINANCEIRO</code> e <code>TAREFAS DO CICLO</code>).
+        <div id="fileInfoNotice" style="margin-top: 8px; font-size: 11px; color: #475569; display: none;">
+          Arquivo: <strong id="activeFileName"></strong>
         </div>
       </section>
 
-      <!-- Card 2: Identificação do Prestador e Ciclo -->
+      <!-- Tópicos 2 e 3 Unificados com Botão para Esconder/Exibir -->
       <section class="card">
-        <h2 class="card-title">
-          <span>🏢 2. Identificação do Ciclo</span>
-        </h2>
-
-        <div class="form-grid-2">
-          <div class="form-group">
-            <label class="form-label" for="inputContrato">Contrato:</label>
-            <input type="text" id="inputContrato" class="form-input" placeholder="Aguardando importação..." />
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="inputSetor">Setor:</label>
-            <input type="text" id="inputSetor" class="form-input" placeholder="Setor..." />
-          </div>
-        </div>
-
-        <div class="form-grid-2">
-          <div class="form-group">
-            <label class="form-label" for="inputCompetencia">Competência:</label>
-            <input type="text" id="inputCompetencia" class="form-input" placeholder="MM/AAAA" />
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="inputPrestador">Prestador Parceiro:</label>
-            <input type="text" id="inputPrestador" class="form-input" placeholder="Nome do Prestador" />
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label" for="inputOficiais">Oficiais / Técnicos de Campo:</label>
-          <input type="text" id="inputOficiais" class="form-input" placeholder="Aguardando importação da planilha..." />
-        </div>
-      </section>
-
-      <!-- Card 3: Parâmetros Financeiros e Operacionais (100% Editáveis) -->
-      <section class="card">
-        <h2 class="card-title">
-          <span>⚙️ 3. Parâmetros &amp; Produtividade</span>
-        </h2>
-
-        <!-- Valor-Base Mensal -->
-        <div class="form-group">
-          <label class="form-label" for="inputValorBase">Valor-Base Contratual Mensal (R$):</label>
-          <input type="number" id="inputValorBase" class="form-input" value="0" step="50" style="font-weight: 700; font-size: 14px; color: #1e3a8a;" />
-        </div>
-
-        <!-- Sanfona com Itens Remunerados -->
-        <details class="param-accordion" open>
-          <summary>Itens Remunerados &amp; Pesos (Editável)</summary>
-          <div class="accordion-body">
-
-            <!-- Preventiva Mensal -->
-            <div class="form-group">
-              <label class="form-label">Preventiva Mensal (Prev., Exec., Peso %):</label>
-              <div class="form-grid-3">
-                <input type="number" id="inputMensalPrev" class="form-input" placeholder="Prevista" value="0" title="Planejado Mensal" />
-                <input type="number" id="inputMensalExec" class="form-input" placeholder="Executada" value="0" title="Executado Mensal" />
-                <input type="number" id="inputMensalPeso" class="form-input" placeholder="Peso %" value="5" title="Peso % (Padrão 5%)" />
-              </div>
-            </div>
-
-            <!-- Preventiva Semestral -->
-            <div class="form-group">
-              <label class="form-label">Preventiva Semestral (Prev., Exec., Peso %):</label>
-              <div class="form-grid-3">
-                <input type="number" id="inputSemestralPrev" class="form-input" placeholder="Prevista" value="0" title="Planejado Semestral" />
-                <input type="number" id="inputSemestralExec" class="form-input" placeholder="Executada" value="0" title="Executado Semestral" />
-                <input type="number" id="inputSemestralPeso" class="form-input" placeholder="Peso %" value="50" title="Peso % (Padrão 50%)" />
-              </div>
-            </div>
-
-            <!-- Corretiva -->
-            <div class="form-group">
-              <label class="form-label">Corretivas (Prev., Exec., Peso %):</label>
-              <div class="form-grid-3">
-                <input type="number" id="inputCorretivaPrev" class="form-input" placeholder="Prevista" value="0" title="Corretivas Previstas" />
-                <input type="number" id="inputCorretivaExec" class="form-input" placeholder="Executada" value="0" title="Corretivas Executadas" />
-                <input type="number" id="inputCorretivaPeso" class="form-input" placeholder="Peso %" value="40" title="Peso % (Padrão 40%)" />
-              </div>
-              <input type="text" id="inputCorretivaObs" class="form-input" value="" placeholder="Observação (ex: Aguardando peça)" style="margin-top: 6px; font-size: 11.5px;" />
-            </div>
-
-            <!-- EPI -->
-            <div class="form-group">
-              <label class="form-label">EPIs &amp; Segurança (Prev., Exec., Peso %):</label>
-              <div class="form-grid-3">
-                <input type="number" id="inputEpiPrev" class="form-input" placeholder="Previstos" value="0" title="EPIs Previstos" />
-                <input type="number" id="inputEpiExec" class="form-input" placeholder="Entregues" value="0" title="EPIs Entregues" />
-                <input type="number" id="inputEpiPeso" class="form-input" placeholder="Peso %" value="5" title="Peso % (Padrão 5%)" />
-              </div>
-            </div>
-
-          </div>
-        </details>
-
-        <!-- Sanfona com Excedente e Incentivo -->
-        <details class="param-accordion" open style="margin-top: 10px;">
-          <summary>Excedente Mensal &amp; Incentivo Veicular</summary>
-          <div class="accordion-body">
-
-            <!-- Excedente Mensal: Quantidade * (Tarifa + Unitário) -->
-            <div class="form-group">
-              <label class="form-label">
-                Excedente (Limite, Tarifa R$, Unitário R$):
-              </label>
-              <div class="form-grid-3">
-                <input type="number" id="inputExcedenteLimite" class="form-input" placeholder="Limite" value="500" title="Limite Base Mensal (500 eqp)" />
-                <input type="number" id="inputExcedenteTarifa" class="form-input" placeholder="Tarifa R$" value="10.75" step="0.05" title="Tarifa Contratual" />
-                <input type="number" id="inputExcedenteUnit" class="form-input" placeholder="Unit R$" value="3.50" step="0.05" title="Valor Unitário Excedente" />
-              </div>
-              <span style="font-size: 11px; color: #64748b; display: block; margin-top: 4px;">
-                Fórmula Mensal: <code>qtd &times; (tarifa + unitário)</code> = R$ 14,25 por equipamento acima de 500.
-              </span>
-            </div>
-
-            <!-- Incentivo Veicular -->
-            <div class="form-group">
-              <label class="form-label">
-                Incentivo Veicular (Valor Base R$):
-              </label>
-              <input type="number" id="inputIncentivoBase" class="form-input" value="1000.00" step="50" />
-              <span style="font-size: 11px; color: #64748b; display: block; margin-top: 4px;">
-                Média das 4 categorias &ge; 100%: R$ 1.000 | 90-99%: R$ 750 | &lt; 90%: R$ 0,00.
-              </span>
-            </div>
-
-          </div>
-        </details>
-
-        <div style="margin-top: 14px; display: flex; justify-content: flex-end;">
-          <button type="button" id="btnRefreshDashboard" class="btn btn-primary" style="font-size: 12.5px; padding: 7px 16px; display: flex; align-items: center; gap: 6px;" title="Recalcula e atualiza o relatório">
-            🔄 Atualizar Relatório
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <h2 class="card-title" style="margin: 0; font-size: 14px;">
+            <span>🏢 2 &amp; 3. Ciclo &amp; Parâmetros</span>
+          </h2>
+          <button type="button" id="btnToggleParametros" class="btn btn-outline btn-sm" style="font-size: 11px; padding: 2px 8px;">
+            👁️ Ocultar Parâmetros
           </button>
+        </div>
+
+        <div id="boxParametrosUnificados">
+          <div style="font-size: 11px; color: #64748b; margin-bottom: 8px;">
+            Identificação rápida do ciclo atual e regras contratuais base.
+          </div>
+
+          <div class="form-group" style="margin-bottom: 8px;">
+            <label class="form-label" style="font-size: 11px;">Contrato Padrão:</label>
+            <input type="text" class="form-input" value="STS36693/22 - SEDUC" readonly style="background: #f8fafc; font-size: 12px;" />
+          </div>
+
+          <div class="form-group" style="margin-bottom: 8px;">
+            <label class="form-label" style="font-size: 11px;">Excedente (> 500 eqp):</label>
+            <div style="font-size: 11.5px; color: #1e293b; background: #f8fafc; padding: 6px 8px; border-radius: 4px; border: 1px solid #e2e8f0;">
+              Tarifa: <strong>R$ 10,75</strong> &bull; Unit: <strong>R$ 3,50</strong> (Total: R$ 14,25)
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 8px;">
+            <label class="form-label" style="font-size: 11px;">Incentivo Veicular:</label>
+            <div style="font-size: 11.5px; color: #1e293b; background: #f8fafc; padding: 6px 8px; border-radius: 4px; border: 1px solid #e2e8f0;">
+              Valor Fixo: <strong>R$ 1.000,00</strong> (quando habilitado)
+            </div>
+          </div>
+
+          <div style="margin-top: 10px;">
+            <button type="button" class="btn btn-outline btn-sm" onclick="window.M03.openModalCadastros('tarefas')" style="width: 100%; font-size: 11.5px;">
+              ⚙️ Ajustar Pesos das Tarefas
+            </button>
+          </div>
         </div>
       </section>
 
     </aside>
 
-    <!-- Área Direita: Visualização do Relatório Oficial (Formato A4) -->
-    <section class="preview-viewport">
-      <div class="preview-toolbar">
-        <span class="preview-info">📄 Pré-visualização do Relatório Oficial Mensal (Formato A4)</span>
-        <div style="display: flex; gap: 8px; align-items: center;">
-          <button type="button" class="btn btn-outline" id="btnSyncMensalSupabase" style="font-size: 12px; padding: 6px 12px; border-color: #3b82f6; color: #60a5fa;">
-            ☁️ Salvar no Supabase
-          </button>
-          <button type="button" class="btn btn-primary" id="btnQuickPrint" style="font-size: 12px; padding: 6px 12px;">
-            🖨️ Imprimir Página
-          </button>
-        </div>
+    <!-- 2. TELA DO MEIO (Resumo de Todos os Técnicos do Ciclo no Modelo da Imagem) -->
+    <section class="center-content">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+        <h2 style="font-size: 16px; font-weight: 700; color: #1e293b; margin: 0;">
+          📊 Apuração Mensal por Técnico &bull; Competência Ativa
+        </h2>
+        <span style="font-size: 12px; color: #64748b;">
+          Valores calculados por nível de técnico e percentuais de execução
+        </span>
       </div>
 
-      <!-- Container do Relatório Gerado Dinamicamente -->
-      <div id="reportContainer">
-        <!-- Renderizado dinamicamente via MensalReportRenderer -->
+      <!-- Container onde serão injetados os cards de cada técnico -->
+      <div id="centralCardsContainer">
+        <!-- Renderizado dinamicamente via m03_app.js -->
       </div>
     </section>
 
+    <!-- 3. LATERAL DIREITA (Lista de Técnicos / Status de Faturamento e Exportação) -->
+    <aside class="right-sidebar">
+      
+      <section class="card" style="margin-bottom: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+          <h2 class="card-title" style="margin: 0; font-size: 14px;">
+            <span>👥 Técnicos do Ciclo</span>
+          </h2>
+          <button class="btn btn-outline btn-sm" onclick="window.M03.openModalCadastros('tecnicos')" style="font-size: 11px; padding: 2px 6px;">
+            + Gerenciar
+          </button>
+        </div>
+
+        <!-- Lista de Status: Pendentes x Apurados -->
+        <div id="tecnicosStatusList">
+          <!-- Renderizado dinamicamente via m03_app.js -->
+        </div>
+      </section>
+
+      <!-- Card de Exportação do Relatório do Técnico -->
+      <section class="card" style="background: #f8fafc; border: 1px solid #cbd5e1;">
+        <h2 class="card-title" style="font-size: 13px; color: #334155; margin-bottom: 8px;">
+          <span>📄 Exportação de Relatório</span>
+        </h2>
+        <p style="font-size: 11.5px; color: #64748b; margin-bottom: 12px;">
+          Selecione um técnico na lista acima para exportar o relatório mensal oficial em formato A4/PDF.
+        </p>
+        <button type="button" class="btn btn-primary" id="btnExportarTecnico" onclick="window.M03.exportarRelatorioTecnico()" disabled style="width: 100%; font-size: 12px; padding: 8px 12px; font-weight: 700;">
+          📄 Exportar Relatório do Técnico
+        </button>
+      </section>
+
+    </aside>
+
   </main>
 
-  <!-- Script com o motor do Módulo 03 -->
+  <!-- Scripts -->
   <script src="financeiro/js/supabase.js"></script>
   <script src="js/mensal.bundle.js"></script>
-  <script>
-    document.getElementById('btnSyncMensalSupabase')?.addEventListener('click', async () => {
-      if (!window.BpoSupabase || !window.BpoSupabase.isConfigured()) {
-        alert('Supabase não configurado. Acesse a tela de configurações no financeiro/config.html.');
-        return;
-      }
-      try {
-        const app = window.mensalApp;
-        const model = app && app.model ? app.model : {};
-        const meta = model.metadata || {};
-        const res = model.calcResult || {};
-        
-        const competencia = meta.competencia || (() => {
-          const hoje = new Date();
-          return `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
-        })();
-        
-        const payload = {
-          competence_month: competencia,
-          prestador_nome: meta.prestador || 'GB CLIMATIZAÇÃO',
-          categoria: meta.setor || 'CONSOLIDADO',
-          taxa_conclusao: res.geral ? parseFloat((res.geral.taxaConclusao * 100).toFixed(2)) : null,
-          valor_excedente: res.excedente?.valorReconhecido || 0.0,
-          incentivo_veicular: res.incentivo?.reconhecido || 0.0,
-          total_apurado: res.totalApurado || 0.0,
-          report_data: {
-            timestamp: new Date().toISOString(),
-            origem: 'medicao_mensal',
-            model: model
-          }
-        };
-
-        await window.BpoSupabase.request('monthly_performance_reports', {
-          method: 'POST',
-          body: JSON.stringify(payload)
-        });
-        alert('Apuração Mensal do Módulo 03 gravada com sucesso no Supabase!');
-      } catch (err) {
-        alert('Erro ao gravar no Supabase: ' + err.message);
-      }
-    });
-  </script>
+  <script src="js/m03_cadastros.js"></script>
+  <script src="js/m03_app.js"></script>
 </body>
 </html>
