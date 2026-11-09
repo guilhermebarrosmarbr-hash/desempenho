@@ -516,6 +516,10 @@
             const issRetido = Boolean(params.issRetido);
             const aliquotaIss = params.aliquotaIss !== undefined ? parseToNumber(params.aliquotaIss) : 5.0;
 
+            // Isenção de ISS por Locação — base legal: locação de bens não é prestação de serviço
+            // (STJ, Súmula 31; LC 116/2003). ISS = R$ 0,00 independente do regime tributário.
+            const isLocacao = Boolean(params.isLocacao);
+
             const descontosComerciais = parseToNumber(params.discounts || 0);
 
             if (regime === 'simples_nacional') {
@@ -558,9 +562,10 @@
                 // Lucro Presumido
                 const pis = roundCents(valorBruto * 0.0065);
                 const cofins = roundCents(valorBruto * 0.03);
-                const issCalculado = tipoItem === 'service' ? roundCents(valorBruto * (aliquotaIss / 100)) : 0;
-                const issRetidoValor = (tipoItem === 'service' && issRetido) ? issCalculado : 0;
-                const issEmpresa = issRetido ? 0 : issCalculado;
+                // ISS isento para Locação de bens em qualquer regime tributário (STJ Súmula 31; LC 116/2003)
+                const issCalculado = (!isLocacao && tipoItem === 'service') ? roundCents(valorBruto * (aliquotaIss / 100)) : 0;
+                const issRetidoValor = (!isLocacao && tipoItem === 'service' && issRetido) ? issCalculado : 0;
+                const issEmpresa = (isLocacao || issRetido) ? 0 : issCalculado;
 
                 // Retenções
                 const retencaoIrrf = (tipoItem === 'service' && temIrrf) ? roundCents(valorBruto * (aliquotaIrrf / 100)) : 0;

@@ -628,7 +628,8 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     temInss: !!doc.tax_details.has_inss,
                     aliquotaInss: doc.tax_details.inss_aliq,
                     issRetido: !!doc.tax_details.iss_retained,
-                    aliquotaIss: doc.tax_details.iss_aliq || 5.0
+                    aliquotaIss: doc.tax_details.iss_aliq || 5.0,
+                    isLocacao: !!(doc.document_type === 'locacao' || doc.tax_details.is_locacao)
                 });
                 if (p) {
                     const tot = (p.impostosMensais ? ((p.impostosMensais.pis?.valor || 0) + (p.impostosMensais.cofins?.valor || 0) + (p.impostosMensais.iss?.valor || 0)) : (p.impostosEconomicos?.valorTotal || 0)) + (p.provisaoTrimestral ? ((p.provisaoTrimestral.irpjProvisao || 0) + (p.provisaoTrimestral.csllProvisao || 0)) : 0);
@@ -835,6 +836,10 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             if (el) el.addEventListener('change', () => dispararPreviaImpostos('empresa_ou_tipo'));
         });
 
+        // Tipo de documento: locação altera isenção de ISS
+        const selTipoDoc = document.getElementById('docTipo');
+        if (selTipoDoc) selTipoDoc.addEventListener('change', () => dispararPreviaImpostos('empresa_ou_tipo'));
+
         // Interação bidirecional dos campos de PIS/COFINS/IRPJ/CSLL
         if (inpAliqPis) inpAliqPis.addEventListener('input', () => dispararPreviaImpostos('aliq_pis'));
         if (inpValorPis) inpValorPis.addEventListener('input', () => dispararPreviaImpostos('valor_pis'));
@@ -933,6 +938,23 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         const isSimples = emp && emp.tax_regime === 'simples_nacional';
         const isLucroPresumido = !isSimples;
 
+        // Isenção de ISS por Locação — base legal: locação de bens não é prestação de serviço,
+        // portanto não sujeita ao ISS (STJ, Súmula 31; LC 116/2003), em qualquer regime tributário.
+        const docTipoAtual = document.getElementById('docTipo')?.value || '';
+        const isLocacao = (docTipoAtual === 'locacao');
+
+        // Atualiza banner de isenção de ISS por Locação
+        let bannerLocacao = document.getElementById('bannerIssIsentoLocacao');
+        if (!bannerLocacao) {
+            bannerLocacao = document.createElement('div');
+            bannerLocacao.id = 'bannerIssIsentoLocacao';
+            bannerLocacao.style.cssText = 'display:none; margin-bottom:10px; padding:8px 12px; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.35); border-radius:6px; font-size:0.8rem; color:#f59e0b; line-height:1.4;';
+            bannerLocacao.innerHTML = '⚖️ <strong>ISS Isento — Contrato de Locação:</strong> Locação de bens não configura prestação de serviço (STJ, Súmula 31; LC 116/2003). ISS zerado automaticamente em todos os regimes tributários.';
+            const painelRetencoes = document.getElementById('painelRetencoesIss');
+            if (painelRetencoes) painelRetencoes.insertAdjacentElement('afterbegin', bannerLocacao);
+        }
+        if (bannerLocacao) bannerLocacao.style.display = isLocacao ? 'block' : 'none';
+
         // Painéis condicionais por Regime Fiscal (Item 02)
         const painelSimples = document.getElementById('painelSimplesNacional');
         const painelLucro = document.getElementById('painelCalculoTributosLancamento');
@@ -962,7 +984,8 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
 
             const anexoKey = selAnexo ? selAnexo.value : 'anexo_iii';
             const rbt12Num = inpRbt12 ? Number(window.BpoMoney.toCents(inpRbt12.value)) / 100 : 180000;
-            const issIsento = chkIssIsento ? chkIssIsento.checked : false;
+            // Locação isenta de ISS em qualquer regime; sobrepõe o checkbox do Simples também
+            const issIsento = isLocacao ? true : (chkIssIsento ? chkIssIsento.checked : false);
 
             // Atualiza badge de isenção de ISS
             if (badgeIssIsento) badgeIssIsento.style.display = issIsento ? 'inline-block' : 'none';
@@ -1078,6 +1101,21 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             const aliqIssVal = parseFloat(document.getElementById('aliqIss').value) || 0;
             const chkIssRetido = document.getElementById('chkIssRetido').checked;
             const itemTipo = document.getElementById('docItemTipo').value || 'servico';
+
+            // Locação: ISS zerado por isenção legal (qualquer regime), oculta seção ISS e mostra info
+            const boxIssLP = document.querySelector('#painelRetencoesIss > div > div:last-child');
+            if (isLocacao) {
+                // Desabilita aliq ISS e ISS retido visualmente (não apaga o valor para não confundir)
+                const elAliqIss = document.getElementById('aliqIss');
+                const elChkIssRetido = document.getElementById('chkIssRetido');
+                if (elAliqIss) { elAliqIss.disabled = true; elAliqIss.style.opacity = '0.4'; }
+                if (elChkIssRetido) { elChkIssRetido.disabled = true; elChkIssRetido.checked = false; }
+            } else {
+                const elAliqIss = document.getElementById('aliqIss');
+                const elChkIssRetido = document.getElementById('chkIssRetido');
+                if (elAliqIss) { elAliqIss.disabled = false; elAliqIss.style.opacity = '1'; }
+                if (elChkIssRetido) { elChkIssRetido.disabled = false; }
+            }
 
             // Elementos dos tributos editáveis
             const elAliqPis = document.getElementById('inpAliqPis');
@@ -1198,10 +1236,11 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             const inssCents = (itemTipo === 'servico' && chkInss) 
                 ? BigInt(Math.round(brutoNum * (aliqInssVal / 100) * 100)) 
                 : 0n;
-            const issCalcCents = (itemTipo === 'servico') 
-                ? BigInt(Math.round(brutoNum * (aliqIssVal / 100) * 100)) 
-                : 0n;
-            const issRetidoCents = chkIssRetido ? issCalcCents : 0n;
+            // ISS isento para Locação de bens em qualquer regime tributário
+            const issCalcCents = (isLocacao || itemTipo !== 'servico')
+                ? 0n
+                : BigInt(Math.round(brutoNum * (aliqIssVal / 100) * 100));
+            const issRetidoCents = (!isLocacao && chkIssRetido) ? issCalcCents : 0n;
 
             retTotalCents = irrfCents + inssCents + issRetidoCents;
 
@@ -1521,6 +1560,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         const isSimples = emp && emp.tax_regime === 'simples_nacional';
 
         const tipo = document.getElementById('docTipo').value;
+        const isLocacaoDoc = (tipo === 'locacao');
         const itemTipo = document.getElementById('docItemTipo').value;
         const serie = '1';
         const numero = document.getElementById('docNumero').value.trim();
@@ -1559,6 +1599,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             taxDetailsPayload = {
                 is_simples: true,
                 item_type: itemTipo,
+                is_locacao: isLocacaoDoc,
                 das_anexo: anexoSelecionado,
                 das_rbt12: document.getElementById('inpRbt12Simples')?.value || '180.000,00',
                 das_aliq: parseFloat(document.getElementById('inpAliqDas')?.value) || 0,
@@ -1578,6 +1619,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             taxDetailsPayload = {
                 is_simples: false,
                 item_type: itemTipo,
+                is_locacao: isLocacaoDoc,
                 has_irrf: document.getElementById('chkIrrf').checked,
                 irrf_aliq: parseFloat(document.getElementById('aliqIrrf').value) || 0,
                 has_inss: document.getElementById('chkInss').checked,

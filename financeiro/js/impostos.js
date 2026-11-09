@@ -521,6 +521,10 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     const retCents = window.BpoMoney.toCents(doc.retentions);
                     const fatTotalNum = Number(fatTotalCents) / 100;
 
+                    // Isenção de ISS por Locação — base legal: locação de bens não é prestação de serviço
+                    // (STJ, Súmula 31; LC 116/2003). ISS = R$ 0,00 independente do regime tributário.
+                    const isLocacao = (doc.document_type === 'locacao') || !!(taxDetails && taxDetails.is_locacao);
+
                     let pisCents = 0n;
                     let cofinsCents = 0n;
                     let issCents = 0n;
@@ -539,11 +543,13 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                             ? window.BpoMoney.toCents(taxDetails.cofins_valor)
                             : BigInt(Math.round(fatTotalNum * 0.03 * 100));
 
-                        if (itemType === 'servico') {
+                        if (itemType === 'servico' && !isLocacao) {
                             issCents = BigInt(Math.round(fatTotalNum * (aliqIss / 100) * 100));
                         } else {
                             issCents = 0n;
                         }
+                        // Marcar isenção para exibição
+                        if (isLocacao) issIsento = true;
 
                         // IRPJ e CSLL calculados conforme a fórmula da planilha (Opção A)
                         // A coluna IRPJ na planilha reflete o IRPJ devido líquido (já abatendo o IRRF retido na fonte do documento)
@@ -574,7 +580,8 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     } else {
                         // Simples Nacional: DZM / Ybox
                         const anexoKey = (taxDetails && taxDetails.das_anexo) ? taxDetails.das_anexo : 'anexo_iii';
-                        issIsento = !!(taxDetails && taxDetails.iss_isento_simples);
+                        // Locação isenta de ISS em qualquer regime; sobrepõe o checkbox do Simples
+                        issIsento = isLocacao || !!(taxDetails && taxDetails.iss_isento_simples);
                         
                         // RBT12 real calculado a partir das 12 competências anteriores da empresa
                         const rbt12Real = rbt12PorEmpresaMap.get(doc.company_id) || 0;
@@ -647,7 +654,9 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                         : (ctr ? escapeHtml(ctr.name) : '<span style="color:var(--text-muted);font-size:0.78rem;">Avulso</span>');
 
                     let issLabel = '';
-                    if (issIsento) {
+                    if (isLocacao) {
+                        issLabel = `<span style="color: #f59e0b; font-size: 0.78rem;" title="Isento — Locação de bens não é prestação de serviço (STJ Súmula 31; LC 116/2003)">R$ 0,00 <span style="font-size:0.68rem; padding:1px 4px; border-radius:3px; background:rgba(245,158,11,0.15);">Locação</span></span>`;
+                    } else if (issIsento) {
                         issLabel = `<span style="color: #f59e0b; font-size: 0.78rem;" title="Isento de ISS">R$ 0,00 <span style="font-size:0.68rem; padding:1px 4px; border-radius:3px; background:rgba(245,158,11,0.15);">Isento</span></span>`;
                     } else if (issRetido) {
                         issLabel = `<span style="color:var(--color-danger); font-size:0.8rem;" title="Retido na Fonte pelo Tomador">${window.BpoMoney.formatBRL(issCents)} <span style="font-size:0.68rem; padding:1px 4px; border-radius:3px; background:rgba(239,68,68,0.15);">Retido</span></span>`;
