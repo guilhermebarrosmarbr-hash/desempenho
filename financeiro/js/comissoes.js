@@ -1,8 +1,10 @@
 // ==============================================================================
 // comissoes.js — Lógica do Módulo 06 (Controle de Comissões)
+// Atualizado com layout em colunas por colaborador ativo, linha de totais oficial,
+// modal de configurações com abas (Regras, Contratos e Colaboradores), setor,
+// vigência de contratos e precisão decimal livre de comissão.
 // ==============================================================================
 
-// Garante que BpoFiscalUtils esteja disponível mesmo sem carregar faturamento.js
 window.BpoFiscalUtils = window.BpoFiscalUtils || {
     extrairTaxDetails: function(doc) {
         if (!doc) return null;
@@ -31,15 +33,18 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
     let competenciaAtiva = '';
     let colaboradores = [];
     let contratos = [];
-    let comissoes = [];
+    let todosContratosEmpresa = [];
     let regrasContrato = [];
+    let comissoesCalculadas = [];
+    let documentosDoMes = [];
 
-    // DOM
+    // DOM Elements
     const selectEmpresa = document.getElementById('selectEmpresa');
     const inputCompetencia = document.getElementById('inputCompetencia');
-    const listaComissoesBody = document.getElementById('listaComissoesBody');
-    const listaColaboradoresBody = document.getElementById('listaColaboradoresBody');
-    const listaRegrasBody = document.getElementById('listaRegrasBody');
+    const tituloDemonstrativo = document.getElementById('tituloDemonstrativo');
+    const theadDemonstrativo = document.getElementById('theadDemonstrativo');
+    const tbodyDemonstrativo = document.getElementById('tbodyDemonstrativo');
+    const tfootDemonstrativo = document.getElementById('tfootDemonstrativo');
 
     // Métricas
     const valBaseComissao = document.getElementById('valBaseComissao');
@@ -48,78 +53,142 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
     const valComissaoPendente = document.getElementById('valComissaoPendente');
 
     // Modais
+    const modalConfiguracoes = document.getElementById('modalConfiguracoes');
     const modalColaborador = document.getElementById('modalColaborador');
     const modalRegra = document.getElementById('modalRegra');
+    const modalConfigContrato = document.getElementById('modalConfigContrato');
 
     window.addEventListener('DOMContentLoaded', async () => {
+        // Inicializa competência com o mês atual (ex: 2026-09 ou conforme dados)
         const hoje = new Date();
         const ano = hoje.getFullYear();
         const mes = String(hoje.getMonth() + 1).padStart(2, '0');
         competenciaAtiva = `${ano}-${mes}`;
-        inputCompetencia.value = competenciaAtiva;
+        if (inputCompetencia) inputCompetencia.value = competenciaAtiva;
 
         await carregarEmpresas();
 
-        selectEmpresa.addEventListener('change', async (e) => {
-            empresaAtiva = empresas.find(emp => emp.id === e.target.value) || null;
-            await carregarDadosComissoes();
-        });
-
-        inputCompetencia.addEventListener('change', async (e) => {
-            competenciaAtiva = e.target.value;
-            await carregarDadosComissoes();
-        });
-
-        document.getElementById('btnNovoColaborador').addEventListener('click', () => {
-            document.getElementById('colabId').value = '';
-            document.getElementById('modalColaboradorTitulo').textContent = 'Cadastrar Colaborador';
-            document.getElementById('formColaborador').reset();
-            const btnExc = document.getElementById('btnExcluirColaborador');
-            if (btnExc) btnExc.style.display = 'none';
-            modalColaborador.style.display = 'flex';
-        });
-
-        document.getElementById('btnRegrasContrato').addEventListener('click', () => abrirModalRegras());
-        const btnNovaRegraCard = document.getElementById('btnNovaRegraCard');
-        if (btnNovaRegraCard) btnNovaRegraCard.addEventListener('click', () => abrirModalRegras());
-        document.getElementById('btnCalcularComissoes').addEventListener('click', processarApuracaoComissoes);
-
-        // Delegate: quitar comissão
-        listaComissoesBody.addEventListener('click', (e) => {
-            const btn = e.target.closest('.btn-quitar-comissao');
-            if (btn) window.quitarComissao(btn.dataset.id);
-        });
-
-        // Delegate: editar / excluir regra de contrato
-        if (listaRegrasBody) {
-            listaRegrasBody.addEventListener('click', (e) => {
-                const btnEditar = e.target.closest('.btn-editar-regra');
-                if (btnEditar) { window.editarRegra(btnEditar.dataset.id); return; }
-                const btnExcluir = e.target.closest('.btn-excluir-regra');
-                if (btnExcluir) window.deletarRegra(btnExcluir.dataset.id);
+        // Eventos de topo
+        if (selectEmpresa) {
+            selectEmpresa.addEventListener('change', async (e) => {
+                empresaAtiva = empresas.find(emp => emp.id === e.target.value) || null;
+                await carregarDadosComissoes();
             });
         }
 
-        // Delegate: editar / excluir colaborador
-        listaColaboradoresBody.addEventListener('click', (e) => {
-            const btnEditar = e.target.closest('.btn-editar-colab');
-            if (btnEditar) { window.editarColaborador(btnEditar.dataset.id); return; }
-            const btnExcluir = e.target.closest('.btn-excluir-colab');
-            if (btnExcluir) window.deletarColaborador(btnExcluir.dataset.id);
-        });
+        if (inputCompetencia) {
+            inputCompetencia.addEventListener('change', async (e) => {
+                competenciaAtiva = e.target.value;
+                await carregarDadosComissoes();
+            });
+        }
 
-        document.getElementById('formColaborador').addEventListener('submit', salvarColaborador);
-        document.getElementById('formRegra').addEventListener('submit', salvarRegraContrato);
+        // Botão de Engrenagem (Abre Modal de Configurações)
+        const btnGear = document.getElementById('btnConfiguracoesComissoes');
+        if (btnGear) {
+            btnGear.addEventListener('click', () => abrirModalConfiguracoes('regras'));
+        }
+        const btnRegrasRapido = document.getElementById('btnAbrirRegrasRapido');
+        if (btnRegrasRapido) {
+            btnRegrasRapido.addEventListener('click', () => abrirModalConfiguracoes('regras'));
+        }
+
+        // Processar apuração
+        const btnCalcular = document.getElementById('btnCalcularComissoes');
+        if (btnCalcular) {
+            btnCalcular.addEventListener('click', processarApuracaoComissoes);
+        }
+
+        // Botões dentro das abas do Modal de Configurações
+        const btnNovoColabAba = document.getElementById('btnNovoColaboradorModal');
+        if (btnNovoColabAba) {
+            btnNovoColabAba.addEventListener('click', () => abrirModalColaborador());
+        }
+        const btnNovaRegraAba = document.getElementById('btnNovaRegraAba');
+        if (btnNovaRegraAba) {
+            btnNovaRegraAba.addEventListener('click', () => abrirModalRegras());
+        }
+
+        // Filtro de contrato na aba de regras
+        const filtroContratoRegras = document.getElementById('filtroContratoRegras');
+        if (filtroContratoRegras) {
+            filtroContratoRegras.addEventListener('change', renderizarRegrasModal);
+        }
+
+        // Comportamento do campo Status do colaborador (desabilita fim de vigência se Ativo)
+        const selColabStatus = document.getElementById('colabStatus');
+        const inpColabFimVigencia = document.getElementById('colabFimVigencia');
+        if (selColabStatus && inpColabFimVigencia) {
+            selColabStatus.addEventListener('change', () => {
+                const isAtivo = selColabStatus.value === 'active';
+                inpColabFimVigencia.disabled = isAtivo;
+                if (isAtivo) {
+                    inpColabFimVigencia.value = '';
+                }
+            });
+        }
+
+        // Comportamento do escopo do contrato
+        const selCfgEscopo = document.getElementById('cfgContratoEscopo');
+        const boxCustom = document.getElementById('boxCfgContratoCustom');
+        if (selCfgEscopo && boxCustom) {
+            selCfgEscopo.addEventListener('change', () => {
+                boxCustom.style.display = selCfgEscopo.value === 'custom' ? 'block' : 'none';
+            });
+        }
+
+        // Submits dos formulários
+        const formColab = document.getElementById('formColaborador');
+        if (formColab) formColab.addEventListener('submit', salvarColaborador);
+
+        const formRegra = document.getElementById('formRegra');
+        if (formRegra) formRegra.addEventListener('submit', salvarRegraContrato);
+
+        const formCfgContrato = document.getElementById('formConfigContrato');
+        if (formCfgContrato) formCfgContrato.addEventListener('submit', salvarConfiguracaoContrato);
     });
 
-    window.fecharModais = function() {
-        modalColaborador.style.display = 'none';
-        modalRegra.style.display = 'none';
+    // =========================================================================
+    // NAVEGAÇÃO DE ABAS NO MODAL DE CONFIGURAÇÕES
+    // =========================================================================
+    window.alternarAbaModal = function(abaNome) {
+        const abas = ['regras', 'contratos', 'colaboradores'];
+        abas.forEach(nome => {
+            const btn = document.getElementById(`tabBtn${capitalize(nome)}`);
+            const box = document.getElementById(`tabConteudo${capitalize(nome)}`);
+            if (btn) btn.classList.toggle('active', nome === abaNome);
+            if (box) box.classList.toggle('active', nome === abaNome);
+        });
+
+        if (abaNome === 'regras') renderizarRegrasModal();
+        if (abaNome === 'contratos') renderizarContratosModal();
+        if (abaNome === 'colaboradores') renderizarColaboradoresModal();
     };
 
+    function capitalize(s) {
+        if (!s) return '';
+        return s.charAt(0).toUpperCase() + s.slice(1);
+    }
+
+    window.abrirModalConfiguracoes = function(abaInicial = 'regras') {
+        alternarAbaModal(abaInicial);
+        if (modalConfiguracoes) modalConfiguracoes.style.display = 'flex';
+    };
+
+    window.fecharModais = function() {
+        if (modalConfiguracoes) modalConfiguracoes.style.display = 'none';
+        if (modalColaborador) modalColaborador.style.display = 'none';
+        if (modalRegra) modalRegra.style.display = 'none';
+        if (modalConfigContrato) modalConfigContrato.style.display = 'none';
+    };
+
+    // =========================================================================
+    // CARREGAMENTO DE DADOS
+    // =========================================================================
     async function carregarEmpresas() {
         try {
-            empresas = await window.BpoSupabase.request('companies?order=name.asc', { method: 'GET' });
+            empresas = await window.BpoSupabase.request('companies?order=name.asc', { method: 'GET' }) || [];
+            if (!selectEmpresa) return;
             selectEmpresa.innerHTML = '';
 
             if (empresas.length === 0) {
@@ -134,8 +203,11 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 selectEmpresa.appendChild(opt);
             });
 
-            empresaAtiva = empresas[0];
+            // Dá preferência à Mar Brasil
+            const marBrasil = empresas.find(e => (e.trade_name || e.name || '').toLowerCase().includes('mar brasil'));
+            empresaAtiva = marBrasil || empresas[0];
             selectEmpresa.value = empresaAtiva.id;
+
             await carregarDadosComissoes();
 
         } catch (err) {
@@ -147,14 +219,54 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         if (!empresaAtiva) return;
 
         try {
-            // 1. Colaboradores
-            colaboradores = await window.BpoSupabase.request(`collaborators?company_id=eq.${empresaAtiva.id}&order=name.asc`, { method: 'GET' });
+            // 1. Colaboradores da empresa
+            const colabsDb = await window.BpoSupabase.request(
+                `collaborators?company_id=eq.${empresaAtiva.id}&order=name.asc`,
+                { method: 'GET' }
+            ) || [];
 
-            // 2. Contratos — somente elegíveis para comissão
-            const todosCtr = await window.BpoSupabase.request(`contracts?company_id=eq.${empresaAtiva.id}&order=name.asc`, { method: 'GET' });
-            contratos = (todosCtr || []).filter(c => !!c.commission_eligible);
+            // Suporte aos campos: setor, inicio_vigencia, fim_vigencia (extrai se salvo em document/meta se schema antigo)
+            colaboradores = colabsDb.map(c => {
+                let setor = 'Geral';
+                let inicioVigencia = c.created_at ? c.created_at.slice(0, 10) : '2026-01-01';
+                let fimVigencia = null;
 
-            // 3. Regras de comissão dos contratos elegíveis desta empresa
+                // Tenta extrair metadados extras se armazenados em role ou document
+                if (c.role && c.role.includes('[')) {
+                    const match = c.role.match(/\[Setor:\s*(.*?)\]/);
+                    if (match) setor = match[1];
+                } else if (c.role) {
+                    if (c.role.toLowerCase().includes('licitaç')) setor = 'Licitações';
+                    else if (c.role.toLowerCase().includes('juríd') || c.role.toLowerCase().includes('direito')) setor = 'Jurídico';
+                    else if (c.role.toLowerCase().includes('vended') || c.role.toLowerCase().includes('comerc')) setor = 'Comercial';
+                }
+
+                return {
+                    ...c,
+                    setor: c.sector || setor,
+                    inicioVigencia: c.start_date || inicioVigencia,
+                    fimVigencia: c.end_date || fimVigencia,
+                    active: c.active !== false
+                };
+            });
+
+            // 2. Todos os contratos da empresa
+            todosContratosEmpresa = await window.BpoSupabase.request(
+                `contracts?company_id=eq.${empresaAtiva.id}&order=code.asc`,
+                { method: 'GET' }
+            ) || [];
+
+            // Contratos elegíveis
+            contratos = todosContratosEmpresa.filter(c => !!c.commission_eligible);
+
+            // Popula dropdown de filtro de contratos na aba de regras
+            const selFiltro = document.getElementById('filtroContratoRegras');
+            if (selFiltro) {
+                selFiltro.innerHTML = '<option value="all">Todos os Contratos</option>' + 
+                    todosContratosEmpresa.map(c => `<option value="${c.id}">${escapeHtml(c.code)} - ${escapeHtml(c.name)}</option>`).join('');
+            }
+
+            // 3. Regras de comissão
             regrasContrato = [];
             if (contratos.length > 0) {
                 try {
@@ -168,20 +280,279 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 }
             }
 
-            // 4. Comissões calculadas na competência
-            comissoes = await window.BpoSupabase.request(
-                `commission_calculations?company_id=eq.${empresaAtiva.id}&competence_month=eq.${competenciaAtiva}&order=event_date.desc`,
+            // 4. Comissões calculadas gravadas no banco para o período
+            comissoesCalculadas = await window.BpoSupabase.request(
+                `commission_calculations?company_id=eq.${empresaAtiva.id}&competence_month=eq.${competenciaAtiva}&order=event_date.asc`,
                 { method: 'GET' }
             ) || [];
 
+            // 5. Documentos e baixas do período
+            await carregarDocumentosDoPeriodo();
+
+            // Atualiza UI
+            atualizarTituloBanner();
             renderizarMetricas();
-            renderizarExtrato();
-            renderizarRegras();
-            renderizarColaboradores();
+            renderizarDemonstrativoOficial();
+            renderizarRegrasModal();
+            renderizarContratosModal();
+            renderizarColaboradoresModal();
 
         } catch (err) {
             console.error("Erro ao carregar dados de comissões:", err);
         }
+    }
+
+    async function carregarDocumentosDoPeriodo() {
+        documentosDoMes = [];
+        try {
+            // Busca documentos de faturamento
+            const docs = await window.BpoSupabase.request(
+                `billing_documents?company_id=eq.${empresaAtiva.id}&status=neq.cancelled`,
+                { method: 'GET' }
+            ) || [];
+
+            // Filtra os documentos cuja DATA DE RECEBIMENTO seja no período selecionado (Regime de Caixa)
+            docs.forEach(d => {
+                const td = window.BpoFiscalUtils.extrairTaxDetails(d) || {};
+                const dataRec = td.payment_date || d.payment_date || d.receipt_date || null;
+                const mesRec = extrairMesAnoIso(dataRec);
+
+                if (mesRec === competenciaAtiva) {
+                    documentosDoMes.push({
+                        ...d,
+                        tax_details: td,
+                        payment_date: converterParaDataIso(dataRec)
+                    });
+                }
+            });
+        } catch (e) {
+            console.warn("Erro ao buscar documentos do período:", e);
+        }
+    }
+
+    function atualizarTituloBanner() {
+        if (!tituloDemonstrativo) return;
+        const [anoStr, mesStr] = competenciaAtiva.split('-');
+        const nomesMeses = [
+            'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+            'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+        ];
+        const mesNome = nomesMeses[parseInt(mesStr, 10) - 1] || mesStr;
+        const empNome = empresaAtiva ? (empresaAtiva.trade_name || empresaAtiva.name) : 'Empresa';
+        tituloDemonstrativo.textContent = `Demonstrativo de comissões - ${empNome} - ${mesNome}/${anoStr}`;
+    }
+
+    // =========================================================================
+    // RENDERIZAR O DEMONSTRATIVO OFICIAL (ESTILO PLANILHA COM COLUNAS DINÂMICAS)
+    // =========================================================================
+    function renderizarDemonstrativoOficial() {
+        if (!theadDemonstrativo || !tbodyDemonstrativo || !tfootDemonstrativo) return;
+
+        // Identifica colaboradores ativos para compor as colunas dinâmicas
+        const colabsAtivos = colaboradores.filter(c => c.active !== false);
+
+        // Agrupa colaboradores por Setor para exibir no cabeçalho (ex: Licitações 1%, Jurídico 0,45%)
+        const setoresMap = new Map();
+        colabsAtivos.forEach(c => {
+            const set = c.setor || 'Geral';
+            if (!setoresMap.has(set)) setoresMap.set(set, []);
+            setoresMap.get(set).push(c);
+        });
+
+        // 1. MONTAGEM DO CABEÇALHO (2 LINHAS: LINHA DE GRUPOS/SETORES E LINHA DE NOMES)
+        let trHead1 = `
+            <tr>
+                <th rowspan="2" style="min-width: 170px;">Contrato</th>
+                <th rowspan="2" style="min-width: 60px;">NF</th>
+                <th rowspan="2" style="min-width: 75px;">Ciclo</th>
+                <th rowspan="2" style="min-width: 110px;">Data de recebimento</th>
+                <th rowspan="2" style="min-width: 100px;">Valor Bruto</th>
+                <th rowspan="2" style="min-width: 100px;">Valor recebido</th>
+                <th rowspan="2" style="min-width: 100px;">Valor Líquido</th>
+        `;
+
+        let trHead2 = `<tr>`;
+
+        // Para cada setor, adiciona uma coluna agrupada ou totalizadora se houver regra
+        colabsAtivos.forEach(colab => {
+            // Percentual padrão de exibição do colaborador
+            const regraRef = regrasContrato.find(r => r.collaborator_id === colab.id);
+            const pctExibicao = regraRef ? `${regraRef.percentage}%` : '';
+
+            trHead1 += `<th style="min-width: 95px;">${escapeHtml(colab.name.split(' ')[0])}</th>`;
+            trHead2 += `<th>${pctExibicao || escapeHtml(colab.setor)}</th>`;
+        });
+
+        trHead1 += `</tr>`;
+        trHead2 += `</tr>`;
+
+        theadDemonstrativo.innerHTML = trHead1 + trHead2;
+
+        // 2. MONTAGEM DAS LINHAS DA TABELA (DOCUMENTOS RECEBIDOS NO PERÍODO)
+        // Se houver comissões calculadas no banco, agrupa por documento
+        // Caso não haja cálculos no banco mas haja documentos, projeta os valores usando as regras
+        const linhasData = [];
+
+        // Monta mapa de regras por contrato
+        const regrasPorContrato = new Map();
+        regrasContrato.forEach(r => {
+            if (!regrasPorContrato.has(r.contract_id)) regrasPorContrato.set(r.contract_id, []);
+            regrasPorContrato.get(r.contract_id).push(r);
+        });
+
+        // Documentos do período
+        if (documentosDoMes.length === 0 && comissoesCalculadas.length === 0) {
+            tbodyDemonstrativo.innerHTML = `
+                <tr>
+                    <td colspan="${7 + colabsAtivos.length}" style="text-align: center; color: var(--text-muted); padding: 36px;">
+                        Nenhum faturamento com recebimento registrado em ${competenciaAtiva}.<br>
+                        Verifique a data de recebimento das notas no módulo de faturamento ou clique em "Processar Apuração do Período".
+                    </td>
+                </tr>
+            `;
+            tfootDemonstrativo.innerHTML = '';
+            return;
+        }
+
+        // Agrupa por documento de faturamento
+        const docsMap = new Map();
+        documentosDoMes.forEach(doc => docsMap.set(doc.id, doc));
+
+        // Estrutura das linhas
+        const linhasTabela = [];
+
+        // Acumuladores de totais para o rodapé
+        let totalBrutoCents = 0n;
+        let totalRecebidoCents = 0n;
+        let totalLiquidoCents = 0n;
+        const totaisPorColaborador = new Map();
+        colabsAtivos.forEach(c => totaisPorColaborador.set(c.id, 0n));
+
+        // Processa documentos
+        documentosDoMes.forEach(doc => {
+            const ctr = todosContratosEmpresa.find(c => c.id === doc.contract_id);
+            const td = doc.tax_details || {};
+            const numNF = doc.document_number || '-';
+            const ciclo = doc.competence_month ? formatarCiclo(doc.competence_month) : '-';
+            const dataRec = doc.payment_date ? formatarData(doc.payment_date) : '-';
+
+            const brutoCents = window.BpoMoney.toCents(doc.gross_amount);
+            const recebidoCents = window.BpoMoney.toCents(doc.net_amount || doc.gross_amount);
+
+            // Valor Líquido Deduzido de Impostos (Base Oficial de Comissão)
+            // Desconta os impostos federais proporcionais da nota
+            const deducoesImpostosCents = calcularImpostosProporcionaisDoc(doc);
+            const liquidoCents = recebidoCents > deducoesImpostosCents ? (recebidoCents - deducoesImpostosCents) : recebidoCents;
+
+            totalBrutoCents += brutoCents;
+            totalRecebidoCents += recebidoCents;
+            totalLiquidoCents += liquidoCents;
+
+            // Nome do contrato/aditivo conforme notas e descrição
+            let nomeContrato = ctr ? (ctr.code || ctr.name) : 'Avulso';
+            if (doc.description && doc.description.toLowerCase().includes('aditivo')) {
+                const matchAd = doc.description.match(/Aditivo\s*\d+/i);
+                if (matchAd) nomeContrato += ` - ${matchAd[0]}`;
+            }
+
+            // Comissões de cada colaborador para este documento
+            const comissoesColabs = {};
+            colabsAtivos.forEach(colab => {
+                // Busca se há comissão gravada no banco para este doc + colab
+                const calcGravado = comissoesCalculadas.find(c => c.document_id === doc.id && c.collaborator_id === colab.id);
+                if (calcGravado) {
+                    const cCents = window.BpoMoney.toCents(calcGravado.commission_amount);
+                    comissoesColabs[colab.id] = cCents;
+                } else if (ctr && ctr.commission_eligible) {
+                    // Calcula dinamicamente com base na regra do contrato
+                    const regras = regrasPorContrato.get(ctr.id) || [];
+                    const reg = regras.find(r => r.collaborator_id === colab.id);
+                    if (reg) {
+                        const pct = parseFloat(reg.percentage) || 0;
+                        const baseUso = (reg.basis_override === 'gross_invoiced') ? brutoCents : liquidoCents;
+                        const cNum = (Number(baseUso) / 100) * (pct / 100);
+                        comissoesColabs[colab.id] = BigInt(Math.round(cNum * 100));
+                    } else {
+                        comissoesColabs[colab.id] = 0n;
+                    }
+                } else {
+                    comissoesColabs[colab.id] = 0n;
+                }
+
+                // Soma totalizador
+                totaisPorColaborador.set(colab.id, totaisPorColaborador.get(colab.id) + (comissoesColabs[colab.id] || 0n));
+            });
+
+            // Monta linha HTML
+            let rowHtml = `
+                <tr>
+                    <td style="font-weight: 600; color: #fff;">${escapeHtml(nomeContrato)}</td>
+                    <td style="text-align: center;">${escapeHtml(numNF)}</td>
+                    <td style="text-align: center;">${escapeHtml(ciclo)}</td>
+                    <td style="text-align: center;">${escapeHtml(dataRec)}</td>
+                    <td style="text-align: right; color: #94a3b8;">${window.BpoMoney.formatBRL(brutoCents)}</td>
+                    <td style="text-align: right; color: #38bdf8;">${window.BpoMoney.formatBRL(recebidoCents)}</td>
+                    <td style="text-align: right; font-weight: 700; color: #fff;">${window.BpoMoney.formatBRL(liquidoCents)}</td>
+            `;
+
+            colabsAtivos.forEach(colab => {
+                const valC = comissoesColabs[colab.id] || 0n;
+                const formatado = valC > 0n ? window.BpoMoney.formatBRL(valC) : 'R$ 0,00';
+                const styleVal = valC > 0n ? 'color: #fbbf24; font-weight: 600;' : 'color: var(--text-muted);';
+                rowHtml += `<td style="text-align: right; ${styleVal}">${formatado}</td>`;
+            });
+
+            rowHtml += `</tr>`;
+            linhasTabela.push(rowHtml);
+        });
+
+        tbodyDemonstrativo.innerHTML = linhasTabela.join('');
+
+        // 3. MONTAGEM DA LINHA DE TOTAIS (FOOTER IDÊNTICO À PLANILHA OFICIAL)
+        let tfootHtml = `
+            <tr>
+                <td colspan="4" style="text-align: center; font-weight: 800; font-size: 0.9rem;">Total</td>
+                <td style="text-align: right; font-weight: 800;">${window.BpoMoney.formatBRL(totalBrutoCents)}</td>
+                <td style="text-align: right; font-weight: 800;">${window.BpoMoney.formatBRL(totalRecebidoCents)}</td>
+                <td style="text-align: right; font-weight: 800;">${window.BpoMoney.formatBRL(totalLiquidoCents)}</td>
+        `;
+
+        colabsAtivos.forEach(colab => {
+            const totC = totaisPorColaborador.get(colab.id) || 0n;
+            tfootHtml += `<td style="text-align: right; font-weight: 800;">${window.BpoMoney.formatBRL(totC)}</td>`;
+        });
+
+        tfootHtml += `</tr>`;
+        tfootDemonstrativo.innerHTML = tfootHtml;
+    }
+
+    function calcularImpostosProporcionaisDoc(doc) {
+        const td = doc.tax_details || {};
+        let impostosCents = 0n;
+
+        // Se tem tributos declarados no tax_details
+        if (td.pis_valor) impostosCents += window.BpoMoney.toCents(td.pis_valor);
+        if (td.cofins_valor) impostosCents += window.BpoMoney.toCents(td.cofins_valor);
+        if (td.irpj_valor) impostosCents += window.BpoMoney.toCents(td.irpj_valor);
+        if (td.csll_valor) impostosCents += window.BpoMoney.toCents(td.csll_valor);
+
+        // Se não houver detalhamento salvo, aplica a estimativa de Lucro Presumido (~14.63%)
+        if (impostosCents === 0n) {
+            const b = Number(window.BpoMoney.toCents(doc.gross_amount)) / 100;
+            // 0.65% PIS + 3% COFINS + ~8% IRPJ + ~3% CSLL
+            impostosCents = BigInt(Math.round(b * 0.1463 * 100));
+        }
+
+        return impostosCents;
+    }
+
+    function formatarCiclo(competenciaStr) {
+        if (!competenciaStr) return '-';
+        const parts = competenciaStr.split('-');
+        if (parts.length === 2) {
+            return `${parts[1]}/${parts[0]}`;
+        }
+        return competenciaStr;
     }
 
     function renderizarMetricas() {
@@ -189,7 +560,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         let comissaoTotal = 0n;
         let comissaoPaga = 0n;
 
-        comissoes.forEach(c => {
+        comissoesCalculadas.forEach(c => {
             const bCents = window.BpoMoney.toCents(c.base_amount);
             const cCents = window.BpoMoney.toCents(c.commission_amount);
             baseTotal += bCents;
@@ -202,96 +573,101 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
 
         const pendente = comissaoTotal > comissaoPaga ? comissaoTotal - comissaoPaga : 0n;
 
-        valBaseComissao.textContent = window.BpoMoney.formatBRL(baseTotal);
-        valTotalComissao.textContent = window.BpoMoney.formatBRL(comissaoTotal);
-        valComissaoPaga.textContent = window.BpoMoney.formatBRL(comissaoPaga);
-        valComissaoPendente.textContent = window.BpoMoney.formatBRL(pendente);
+        if (valBaseComissao) valBaseComissao.textContent = window.BpoMoney.formatBRL(baseTotal);
+        if (valTotalComissao) valTotalComissao.textContent = window.BpoMoney.formatBRL(comissaoTotal);
+        if (valComissaoPaga) valComissaoPaga.textContent = window.BpoMoney.formatBRL(comissaoPaga);
+        if (valComissaoPendente) valComissaoPendente.textContent = window.BpoMoney.formatBRL(pendente);
     }
 
-    function escapeHtml(str) {
-        if (!str) return '';
-        return String(str)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-    }
+    // =========================================================================
+    // MODAL DE CONFIGURAÇÕES: ABA 1 — REGRAS DE COMISSÃO
+    // =========================================================================
+    function renderizarRegrasModal() {
+        const tbody = document.getElementById('listaRegrasModalBody');
+        if (!tbody) return;
 
-    function renderizarExtrato() {
-        if (comissoes.length === 0) {
-            listaComissoesBody.innerHTML = `
-                <tr>
-                    <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 32px;">
-                        Nenhuma comissão apurada para o período ${competenciaAtiva}. Clique em "Processar Apuração".
-                    </td>
-                </tr>
-            `;
-            return;
-        }
+        const filtroContrato = document.getElementById('filtroContratoRegras')?.value || 'all';
+        const regrasFiltradas = filtroContrato === 'all'
+            ? regrasContrato
+            : regrasContrato.filter(r => r.contract_id === filtroContrato);
 
-        listaComissoesBody.innerHTML = comissoes.map(c => {
-            const colab = colaboradores.find(col => col.id === c.collaborator_id) || { name: 'Colaborador' };
-            const contrato = contratos.find(con => con.id === c.contract_id);
-            const contratoNome = contrato ? `${escapeHtml(contrato.code || '')} - ${escapeHtml(contrato.name || '')}` : 'Avulso / NF';
-            const statusBadge = c.status === 'paid' 
-                ? '<span class="badge badge-success">Pago</span>' 
-                : '<span class="badge badge-warning">Pendente</span>';
-
-            return `
-                <tr>
-                    <td style="font-weight: 600; color: #fff;">${escapeHtml(colab.name)}</td>
-                    <td style="font-size: 0.85rem;">${contratoNome}</td>
-                    <td>${formatarData(c.event_date)}</td>
-                    <td>${window.BpoMoney.formatBRL(c.base_amount)}</td>
-                    <td style="color: var(--color-warning);">${c.percentage}%</td>
-                    <td style="font-weight: 700; color: #fff;">${window.BpoMoney.formatBRL(c.commission_amount)}</td>
-                    <td>${statusBadge}</td>
-                    <td>
-                        ${c.status !== 'paid' ? `
-                            <button class="btn btn-secondary btn-sm btn-quitar-comissao" data-id="${escapeHtml(c.id)}">
-                                Quitar
-                            </button>
-                        ` : '<span style="color: var(--text-muted); font-size: 0.8rem;">Liquidado</span>'}
-                    </td>
-                </tr>
-            `;
-        }).join('');
-    }
-
-    
-    function renderizarRegras() {
-        if (!listaRegrasBody) return;
-        if (!regrasContrato || regrasContrato.length === 0) {
-            listaRegrasBody.innerHTML = `
+        if (regrasFiltradas.length === 0) {
+            tbody.innerHTML = `
                 <tr>
                     <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;">
-                        Nenhuma regra de comissão cadastrada para os contratos elegíveis desta empresa.
+                        Nenhuma regra de comissão cadastrada para o filtro selecionado.
                     </td>
                 </tr>
             `;
             return;
         }
 
-        listaRegrasBody.innerHTML = regrasContrato.map(r => {
-            const ctr = contratos.find(c => c.id === r.contract_id) || { code: 'CTR', name: 'Contrato' };
-            const col = colaboradores.find(c => c.id === r.collaborator_id) || { name: 'Colaborador' };
-            const baseTxt = r.basis_override === 'gross_invoiced' ? 'Faturamento Emitido (Bruto)' : 'Líquido Recebido';
-            const vigencia = r.valid_from ? formatarData(r.valid_from) : 'Desde o início';
+        tbody.innerHTML = regrasFiltradas.map(r => {
+            const ctr = todosContratosEmpresa.find(c => c.id === r.contract_id) || { code: 'CTR', name: 'Contrato' };
+            const col = colaboradores.find(c => c.id === r.collaborator_id) || { name: 'Colaborador', setor: 'Geral' };
+            const baseTxt = r.basis_override === 'gross_invoiced' ? 'Faturamento Bruto' : 'Líquido Recebido';
 
             return `
                 <tr>
                     <td style="font-weight: 600; color: #fff;">${escapeHtml(ctr.code)} - ${escapeHtml(ctr.name)}</td>
                     <td>${escapeHtml(col.name)}</td>
-                    <td style="color: var(--color-warning); font-weight: 700;">${r.percentage}%</td>
+                    <td><span class="badge badge-info">${escapeHtml(col.setor)}</span></td>
+                    <td style="color: #f59e0b; font-weight: 700;">${r.percentage}%</td>
                     <td style="font-size: 0.85rem; color: var(--text-secondary);">${baseTxt}</td>
-                    <td style="font-size: 0.85rem; color: var(--text-muted);">${vigencia}</td>
-                    <td style="display: flex; gap: 6px;">
-                        <button class="btn btn-secondary btn-sm btn-editar-regra" data-id="${escapeHtml(r.id)}">
-                            ✏️ Editar
-                        </button>
-                        <button class="btn btn-danger btn-sm btn-excluir-regra" data-id="${escapeHtml(r.id)}">
-                            🗑️ Excluir
+                    <td style="white-space: nowrap;">
+                        <button class="btn btn-secondary btn-sm" onclick="window.editarRegra('${r.id}')">✏️ Editar</button>
+                        <button class="btn btn-danger btn-sm" onclick="window.deletarRegra('${r.id}')" style="margin-left: 4px;">🗑️</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    // =========================================================================
+    // MODAL DE CONFIGURAÇÕES: ABA 2 — GERENCIAMENTO DE CONTRATOS
+    // =========================================================================
+    function renderizarContratosModal() {
+        const tbody = document.getElementById('listaGerenciarContratosBody');
+        if (!tbody) return;
+
+        if (todosContratosEmpresa.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 24px;">
+                        Nenhum contrato cadastrado para esta empresa.
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        tbody.innerHTML = todosContratosEmpresa.map(c => {
+            const elegivel = !!c.commission_eligible;
+            const badgeElegivel = elegivel 
+                ? '<span class="badge badge-success">Sim</span>'
+                : '<span class="badge badge-danger">Não</span>';
+
+            let modoTxt = 'Total';
+            if (c.notes && c.notes.includes('[ComissaoEscopo:')) {
+                const match = c.notes.match(/\[ComissaoEscopo:\s*(.*?)\]/);
+                if (match) {
+                    if (match[1] === 'aditivos_only') modoTxt = 'Apenas Aditivos';
+                    else if (match[1] === 'base_only') modoTxt = 'Apenas Valor Base';
+                    else if (match[1] === 'custom') modoTxt = 'Customizado';
+                }
+            }
+
+            return `
+                <tr>
+                    <td style="font-weight: 600; color: #fff;">${escapeHtml(c.code)}</td>
+                    <td>${escapeHtml(c.name)}</td>
+                    <td style="color: var(--text-secondary);">${escapeHtml(c.contract_type || 'B2B')}</td>
+                    <td>${window.BpoMoney.formatBRL(c.reference_value || 0)}</td>
+                    <td>${badgeElegivel}</td>
+                    <td style="font-size: 0.85rem; color: #f59e0b;">${modoTxt}</td>
+                    <td>
+                        <button class="btn btn-secondary btn-sm" onclick="window.abrirConfigContrato('${c.id}')">
+                            ⚙️ Definir Comissão
                         </button>
                     </td>
                 </tr>
@@ -299,11 +675,72 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         }).join('');
     }
 
-    function renderizarColaboradores() {
+    window.abrirConfigContrato = function(contratoId) {
+        const c = todosContratosEmpresa.find(ctr => ctr.id === contratoId);
+        if (!c) return;
+
+        document.getElementById('cfgContratoId').value = c.id;
+        document.getElementById('cfgContratoNome').value = `${c.code} — ${c.name}`;
+        document.getElementById('cfgContratoElegivel').checked = !!c.commission_eligible;
+
+        let escopo = 'total';
+        let pctCustom = '100';
+        let obsLimpa = c.notes || '';
+
+        if (c.notes && c.notes.includes('[ComissaoEscopo:')) {
+            const mEscopo = c.notes.match(/\[ComissaoEscopo:\s*(.*?)\]/);
+            if (mEscopo) escopo = mEscopo[1];
+            const mPct = c.notes.match(/\[ComissaoPctCustom:\s*(.*?)\]/);
+            if (mPct) pctCustom = mPct[1];
+            obsLimpa = obsLimpa.replace(/\[ComissaoEscopo:.*?\]/g, '').replace(/\[ComissaoPctCustom:.*?\]/g, '').trim();
+        }
+
+        document.getElementById('cfgContratoEscopo').value = escopo;
+        document.getElementById('cfgContratoPctFaturamento').value = pctCustom;
+        document.getElementById('boxCfgContratoCustom').style.display = escopo === 'custom' ? 'block' : 'none';
+        document.getElementById('cfgContratoObs').value = obsLimpa;
+
+        if (modalConfigContrato) modalConfigContrato.style.display = 'flex';
+    };
+
+    async function salvarConfiguracaoContrato(e) {
+        e.preventDefault();
+        const id = document.getElementById('cfgContratoId').value;
+        const elegivel = document.getElementById('cfgContratoElegivel').checked;
+        const escopo = document.getElementById('cfgContratoEscopo').value;
+        const pctCustom = document.getElementById('cfgContratoPctFaturamento').value;
+        const obs = document.getElementById('cfgContratoObs').value.trim();
+
+        const notesCompleto = `${obs} [ComissaoEscopo: ${escopo}] [ComissaoPctCustom: ${pctCustom}]`.trim();
+
+        try {
+            await window.BpoSupabase.request(`contracts?id=eq.${id}`, {
+                method: 'PATCH',
+                body: JSON.stringify({
+                    commission_eligible: elegivel,
+                    notes: notesCompleto
+                })
+            });
+
+            if (modalConfigContrato) modalConfigContrato.style.display = 'none';
+            await carregarDadosComissoes();
+            alert('Configuração do contrato salva com sucesso!');
+        } catch (err) {
+            alert('Erro ao salvar configuração do contrato: ' + err.message);
+        }
+    }
+
+    // =========================================================================
+    // MODAL DE CONFIGURAÇÕES: ABA 3 — COLABORADORES
+    // =========================================================================
+    function renderizarColaboradoresModal() {
+        const tbody = document.getElementById('listaColaboradoresModalBody');
+        if (!tbody) return;
+
         if (colaboradores.length === 0) {
-            listaColaboradoresBody.innerHTML = `
+            tbody.innerHTML = `
                 <tr>
-                    <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 24px;">
+                    <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">
                         Nenhum colaborador cadastrado.
                     </td>
                 </tr>
@@ -311,48 +748,123 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             return;
         }
 
-        listaColaboradoresBody.innerHTML = colaboradores.map(c => `
-            <tr>
-                <td style="font-weight: 600; color: #fff;">${c.name}</td>
-                <td>${c.document || '-'}</td>
-                <td>${c.email || '-'}</td>
-                <td>${c.role}</td>
-                <td><span class="badge badge-success">Ativo</span></td>
-                <td style="display: flex; gap: 6px;">
-                    <button class="btn btn-secondary btn-sm btn-editar-colab" data-id="${c.id}">
-                        ✏️ Editar
-                    </button>
-                    <button class="btn btn-danger btn-sm btn-excluir-colab" data-id="${c.id}">
-                        🗑️ Excluir
-                    </button>
-                </td>
-            </tr>
-        `).join('');
+        tbody.innerHTML = colaboradores.map(c => {
+            const statusBadge = c.active !== false 
+                ? '<span class="badge badge-success">Ativo</span>'
+                : '<span class="badge badge-danger">Inativo</span>';
+
+            const ini = c.inicioVigencia ? formatarData(c.inicioVigencia) : '-';
+            const fim = c.fimVigencia ? formatarData(c.fimVigencia) : (c.active !== false ? 'Vigente' : '-');
+
+            return `
+                <tr>
+                    <td style="font-weight: 600; color: #fff;">${escapeHtml(c.name)}</td>
+                    <td><span class="badge badge-info">${escapeHtml(c.setor)}</span></td>
+                    <td>${escapeHtml(c.role || '-')}</td>
+                    <td>${escapeHtml(c.document || '-')}</td>
+                    <td>${statusBadge}</td>
+                    <td style="font-size: 0.85rem;">${ini}</td>
+                    <td style="font-size: 0.85rem;">${fim}</td>
+                    <td style="white-space: nowrap;">
+                        <button class="btn btn-secondary btn-sm" onclick="window.editarColaborador('${c.id}')">✏️ Editar</button>
+                        <button class="btn btn-danger btn-sm" onclick="window.deletarColaborador('${c.id}')" style="margin-left: 4px;">🗑️</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
     }
+
+    window.abrirModalColaborador = function(colabExistente = null) {
+        document.getElementById('formColaborador').reset();
+        const titulo = document.getElementById('modalColaboradorTitulo');
+        const inpId = document.getElementById('colabId');
+        const btnExc = document.getElementById('btnExcluirColaborador');
+        const inpFim = document.getElementById('colabFimVigencia');
+
+        if (colabExistente) {
+            titulo.textContent = 'Editar Colaborador';
+            inpId.value = colabExistente.id;
+            document.getElementById('colabNome').value = colabExistente.name || '';
+            document.getElementById('colabSetor').value = colabExistente.setor || 'Licitações';
+            document.getElementById('colabFuncao').value = colabExistente.role || '';
+            document.getElementById('colabCpf').value = colabExistente.document || '';
+            document.getElementById('colabEmail').value = colabExistente.email || '';
+            document.getElementById('colabStatus').value = colabExistente.active !== false ? 'active' : 'inactive';
+            document.getElementById('colabInicioVigencia').value = colabExistente.inicioVigencia || '2026-01-01';
+            document.getElementById('colabFimVigencia').value = colabExistente.fimVigencia || '';
+
+            const isAtivo = colabExistente.active !== false;
+            inpFim.disabled = isAtivo;
+
+            if (btnExc) btnExc.style.display = 'inline-flex';
+        } else {
+            titulo.textContent = 'Cadastrar Colaborador';
+            inpId.value = '';
+            document.getElementById('colabStatus').value = 'active';
+            document.getElementById('colabInicioVigencia').value = '2026-01-01';
+            inpFim.disabled = true;
+            if (btnExc) btnExc.style.display = 'none';
+        }
+
+        if (modalColaborador) modalColaborador.style.display = 'flex';
+    };
 
     window.editarColaborador = function(id) {
         const c = colaboradores.find(col => col.id === id);
-        if (!c) return;
-
-        document.getElementById('colabId').value = c.id;
-        document.getElementById('modalColaboradorTitulo').textContent = 'Editar Colaborador';
-        document.getElementById('colabNome').value = c.name || '';
-        document.getElementById('colabCpf').value = c.document || '';
-        document.getElementById('colabFuncao').value = c.role || 'Vendedor Técnico';
-        document.getElementById('colabEmail').value = c.email || '';
-        const btnExc = document.getElementById('btnExcluirColaborador');
-        if (btnExc) btnExc.style.display = 'inline-flex';
-
-        modalColaborador.style.display = 'flex';
+        if (c) abrirModalColaborador(c);
     };
 
-    window.deletarColaboradorModal = async function() {
+    async function salvarColaborador(e) {
+        e.preventDefault();
         const id = document.getElementById('colabId').value;
-        if (!id) return;
+        const nome = document.getElementById('colabNome').value.trim();
+        const setor = document.getElementById('colabSetor').value;
+        const funcao = document.getElementById('colabFuncao').value.trim();
+        const cpf = document.getElementById('colabCpf').value.trim();
+        const email = document.getElementById('colabEmail').value.trim();
+        const status = document.getElementById('colabStatus').value;
+        const inicioVigencia = document.getElementById('colabInicioVigencia').value;
+        const fimVigencia = status === 'active' ? null : (document.getElementById('colabFimVigencia').value || null);
+
+        // Salva role enriquecida com o Setor para compatibilidade
+        const roleEnriquecida = `${funcao} [Setor: ${setor}]`.trim();
+
+        const payload = {
+            name: nome,
+            role: roleEnriquecida,
+            document: cpf,
+            email: email,
+            active: (status === 'active')
+        };
+
+        try {
+            if (id) {
+                await window.BpoSupabase.request(`collaborators?id=eq.${id}`, {
+                    method: 'PATCH',
+                    body: JSON.stringify(payload)
+                });
+            } else {
+                await window.BpoSupabase.request('collaborators', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        ...payload,
+                        company_id: empresaAtiva.id
+                    })
+                });
+            }
+
+            if (modalColaborador) modalColaborador.style.display = 'none';
+            await carregarDadosComissoes();
+            alert('Colaborador salvo com sucesso!');
+        } catch (err) {
+            alert('Erro ao salvar colaborador: ' + err.message);
+        }
+    }
+
+    window.deletarColaborador = async function(id) {
         if (!confirm('Tem certeza que deseja excluir este colaborador?')) return;
         try {
             await window.BpoSupabase.request(`collaborators?id=eq.${id}`, { method: 'DELETE' });
-            fecharModais();
             await carregarDadosComissoes();
             alert('Colaborador excluído com sucesso.');
         } catch (err) {
@@ -360,52 +872,15 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         }
     };
 
-    
-    function extrairMesAnoIso(dataStr) {
-        if (!dataStr) return '';
-        const s = String(dataStr).trim();
-        // Formato ISO: YYYY-MM-DD
-        if (/^\d{4}-\d{2}/.test(s)) {
-            return s.slice(0, 7);
-        }
-        // Formato BR: DD/MM/YYYY
-        const parts = s.split('/');
-        if (parts.length === 3) {
-            return `${parts[2]}-${parts[1].padStart(2, '0')}`;
-        }
-        return '';
-    }
+    window.deletarColaboradorModal = async function() {
+        const id = document.getElementById('colabId')?.value;
+        if (id) window.deletarColaborador(id);
+    };
 
-    function converterParaDataIso(dataStr) {
-        if (!dataStr) return '';
-        const s = String(dataStr).trim();
-        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-        const parts = s.split('/');
-        if (parts.length === 3) {
-            return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-        }
-        return s;
-    }
-
-    
-    function hashCurto(str) {
-        if (!str) return '00000000';
-        let hash = 0;
-        const s = String(str);
-        for (let i = 0; i < s.length; i++) {
-            hash = ((hash << 5) - hash) + s.charCodeAt(i);
-            hash |= 0;
-        }
-        return Math.abs(hash).toString(36).padStart(6, '0');
-    }
-
-    function formatarData(dataStr) {
-        if (!dataStr) return '-';
-        const parts = dataStr.split('-');
-        return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : dataStr;
-    }
-
-    function abrirModalRegras(regraExistente = null) {
+    // =========================================================================
+    // MODAL DE REGRAS DE COMISSÃO POR CONTRATO
+    // =========================================================================
+    window.abrirModalRegras = function(regraExistente = null) {
         const selContrato = document.getElementById('regraContrato');
         const selColab = document.getElementById('regraColaborador');
         const inpRegraId = document.getElementById('regraId');
@@ -415,26 +890,27 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         const titulo = document.getElementById('modalRegraTitulo');
 
         selContrato.innerHTML = contratos.map(c => `<option value="${c.id}">${escapeHtml(c.code)} - ${escapeHtml(c.name)}</option>`).join('') || '<option value="">Sem contratos elegíveis</option>';
-        selColab.innerHTML = colaboradores.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('') || '<option value="">Sem colaboradores</option>';
+        selColab.innerHTML = colaboradores.map(c => `<option value="${c.id}">${escapeHtml(c.name)} (${escapeHtml(c.setor)})</option>`).join('') || '<option value="">Sem colaboradores</option>';
 
         if (regraExistente) {
             if (inpRegraId) inpRegraId.value = regraExistente.id;
             if (titulo) titulo.textContent = 'Editar Regra de Comissão';
             selContrato.value = regraExistente.contract_id;
             selColab.value = regraExistente.collaborator_id;
+            // Preserva as casas decimais exatas da regra
             if (inpPercentual) inpPercentual.value = regraExistente.percentage;
-            if (selBase) selBase.value = regraExistente.basis_override || 'gross_invoiced';
+            if (selBase) selBase.value = regraExistente.basis_override || 'net_proportional';
             if (btnExc) btnExc.style.display = 'inline-flex';
         } else {
             if (inpRegraId) inpRegraId.value = '';
             if (titulo) titulo.textContent = 'Regra de Comissão por Contrato';
             document.getElementById('formRegra').reset();
-            if (inpPercentual) inpPercentual.value = '5.0';
+            if (inpPercentual) inpPercentual.value = '0.5';
             if (btnExc) btnExc.style.display = 'none';
         }
 
-        modalRegra.style.display = 'flex';
-    }
+        if (modalRegra) modalRegra.style.display = 'flex';
+    };
 
     window.editarRegra = function(id) {
         const r = regrasContrato.find(reg => reg.id === id);
@@ -454,71 +930,15 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
 
     window.deletarRegraModal = async function() {
         const id = document.getElementById('regraId')?.value;
-        if (!id) return;
-        if (!confirm('Deseja excluir esta regra de comissão?')) return;
-        try {
-            await window.BpoSupabase.request(`contract_commission_rules?id=eq.${id}`, { method: 'DELETE' });
-            fecharModais();
-            await carregarDadosComissoes();
-            alert('Regra excluída com sucesso.');
-        } catch (err) {
-            alert('Erro ao excluir regra: ' + err.message);
-        }
+        if (id) window.deletarRegra(id);
     };
-
-    async function salvarColaborador(e) {
-        e.preventDefault();
-        const idExistente = document.getElementById('colabId').value;
-        const nome = document.getElementById('colabNome').value.trim();
-        const cpf = document.getElementById('colabCpf').value.trim();
-        const funcao = document.getElementById('colabFuncao').value.trim();
-        const email = document.getElementById('colabEmail').value.trim();
-
-        try {
-            if (idExistente) {
-                await window.BpoSupabase.request(`collaborators?id=eq.${idExistente}`, {
-                    method: 'PATCH',
-                    body: JSON.stringify({
-                        name: nome,
-                        document: cpf,
-                        role: funcao,
-                        email: email
-                    })
-                });
-
-                fecharModais();
-                document.getElementById('formColaborador').reset();
-                await carregarDadosComissoes();
-                alert('Colaborador atualizado com sucesso!');
-                return;
-            }
-
-            await window.BpoSupabase.request('collaborators', {
-                method: 'POST',
-                body: JSON.stringify({
-                    company_id: empresaAtiva.id,
-                    name: nome,
-                    document: cpf,
-                    role: funcao,
-                    email: email,
-                    active: true
-                })
-            });
-
-            fecharModais();
-            document.getElementById('formColaborador').reset();
-            await carregarDadosComissoes();
-            alert('Colaborador cadastrado com sucesso!');
-        } catch (err) {
-            alert('Erro ao salvar colaborador: ' + err.message);
-        }
-    }
 
     async function salvarRegraContrato(e) {
         e.preventDefault();
-        const idExistente = document.getElementById('regraId')?.value;
+        const id = document.getElementById('regraId')?.value;
         const contratoId = document.getElementById('regraContrato').value;
         const colabId = document.getElementById('regraColaborador').value;
+        // Permite casas decimais arbitrárias (ex: 0.5, 0.225, 0.135, etc.)
         const percentual = parseFloat(document.getElementById('regraPercentual').value);
         const base = document.getElementById('regraBase').value;
 
@@ -528,8 +948,8 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         }
 
         try {
-            if (idExistente) {
-                await window.BpoSupabase.request(`contract_commission_rules?id=eq.${idExistente}`, {
+            if (id) {
+                await window.BpoSupabase.request(`contract_commission_rules?id=eq.${id}`, {
                     method: 'PATCH',
                     body: JSON.stringify({
                         contract_id: contratoId,
@@ -538,329 +958,158 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                         basis_override: base
                     })
                 });
-                fecharModais();
-                await carregarDadosComissoes();
-                alert('Regra atualizada com sucesso!');
-                return;
+            } else {
+                await window.BpoSupabase.request('contract_commission_rules', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        contract_id: contratoId,
+                        collaborator_id: colabId,
+                        percentage: percentual,
+                        basis_override: base,
+                        valid_from: '2000-01-01'
+                    })
+                });
             }
 
-            await window.BpoSupabase.request('contract_commission_rules', {
-                method: 'POST',
-                body: JSON.stringify({
-                    contract_id: contratoId,
-                    collaborator_id: colabId,
-                    percentage: percentual,
-                    basis_override: base,
-                    valid_from: '2000-01-01'
-                })
-            });
-
-            fecharModais();
+            if (modalRegra) modalRegra.style.display = 'none';
             await carregarDadosComissoes();
-            alert('Regra vinculada ao contrato com sucesso!');
+            alert('Regra salva com sucesso!');
         } catch (err) {
             alert('Erro ao salvar regra: ' + err.message);
         }
     }
 
+    // =========================================================================
+    // PROCESSAMENTO DE APURAÇÃO DE COMISSÕES (REGIME DE CAIXA OFICIAL)
+    // =========================================================================
     async function processarApuracaoComissoes() {
         if (!empresaAtiva) return;
 
         try {
-            // 1. Busca TODOS os contratos da empresa para resolução precisa de dados
-            let todosContratos = [];
-            try {
-                todosContratos = await window.BpoSupabase.request(
-                    `contracts?company_id=eq.${empresaAtiva.id}`,
-                    { method: 'GET' }
-                ) || [];
-            } catch(e) {}
-            const todosContratosMap = new Map();
-            todosContratos.forEach(c => todosContratosMap.set(c.id, c));
-
-            // 2. Busca regras vigentes de comissão dos contratos elegíveis
-            let regrasComissao = [];
-            try {
-                const elegiveisIds = (contratos || []).map(c => c.id);
-                if (elegiveisIds.length > 0) {
-                    regrasComissao = await window.BpoSupabase.request(
-                        `contract_commission_rules?contract_id=in.(${elegiveisIds.join(',')})`,
-                        { method: 'GET' }
-                    ) || [];
-                }
-            } catch(e) {}
-
-            const regrasPorContrato = new Map();
-            (regrasComissao || []).forEach(reg => {
-                if (!regrasPorContrato.has(reg.contract_id)) {
-                    regrasPorContrato.set(reg.contract_id, []);
-                }
-                regrasPorContrato.get(reg.contract_id).push(reg);
-            });
-
-            // 3. Busca todos os documentos da empresa para vincular baixas e pagamentos
-            const docs = await window.BpoSupabase.request(
-                `billing_documents?company_id=eq.${empresaAtiva.id}&status=neq.cancelled`,
-                { method: 'GET' }
-            ) || [];
-            const docsMapById = new Map();
-            docs.forEach(d => {
-                // Extrai tax_details inline da descrição (payment_date fica armazenado lá)
-                const td = window.BpoFiscalUtils ? window.BpoFiscalUtils.extrairTaxDetails(d) : null;
-                docsMapById.set(d.id, { ...d, tax_details: td || d.tax_details });
-            });
-
-            // 4. Busca recebimentos da tabela receipts (usa external_id para vincular ao documento)
-            // Estratégia: busca receipts filtrados por company_id; se a coluna estiver nula nos registros,
-            // faz fallback buscando todos e filtrando pelos que apontam para documentos desta empresa.
-            let receipts = [];
-            try {
-                receipts = await window.BpoSupabase.request(
-                    `receipts?company_id=eq.${empresaAtiva.id}&order=receipt_date.desc`,
-                    { method: 'GET' }
-                ) || [];
-            } catch (rErr) {
-                console.warn('[Comissões] Aviso ao consultar receipts com company_id:', rErr.message);
-            }
-
-            // Fallback: busca receipts sem filtro de company_id caso a coluna não esteja preenchida
-            // Importante: sempre faz o fallback para garantir que não perde registros sem company_id
-            try {
-                const allReceipts = await window.BpoSupabase.request(
-                    `receipts?order=receipt_date.desc`,
-                    { method: 'GET' }
-                ) || [];
-                // Mescla: adiciona receipts que pertencem a docs desta empresa e ainda não estão na lista
-                const idsJaCapturados = new Set(receipts.map(r => r.id));
-                const extras = allReceipts.filter(r => {
-                    if (idsJaCapturados.has(r.id)) return false;
-                    const doc = docsMapById.get(r.external_id) || docsMapById.get(r.document_id);
-                    return !!doc;
-                });
-                if (extras.length > 0) {
-                    console.log(`[Comissões] Fallback receipts: +${extras.length} encontrado(s) sem company_id`);
-                    receipts = receipts.concat(extras);
-                }
-            } catch (rErr2) {
-                console.warn('[Comissões] Aviso ao consultar receipts sem filtro:', rErr2.message);
-            }
-
-            // Diagnóstico: quais receipt_dates existem no período selecionado
-            const receiptsNoPeriodo = receipts.filter(r => extrairMesAnoIso(r.receipt_date) === competenciaAtiva);
-            console.log(`[Comissões] Docs carregados: ${docs.length} | Receipts totais da empresa: ${receipts.length} | Receipts no período ${competenciaAtiva}: ${receiptsNoPeriodo.length}`);
-            if (receipts.length > 0) {
-                const mesesDistintos = [...new Set(receipts.map(r => extrairMesAnoIso(r.receipt_date)).filter(Boolean))].sort();
-                console.log(`[Comissões] Meses com receipts:`, mesesDistintos);
-            }
-            // Diagnóstico: docs com payment_date no período (fallback)
-            const docsComPaymentNoPeriodo = docs.filter(d => {
-                const docComTd = docsMapById.get(d.id) || d;
-                const td = docComTd.tax_details || {};
-                const dataRaw = td.payment_date || d.payment_date || d.receipt_date || null;
-                return extrairMesAnoIso(dataRaw) === competenciaAtiva;
-            });
-            console.log(`[Comissões] Docs com payment_date no período ${competenciaAtiva}: ${docsComPaymentNoPeriodo.length}`);
-
-            // Compilação de recebimentos — REGIME DE CAIXA PURO:
-            // Somente a DATA DE RECEBIMENTO (baixa) determina o período.
-            // A competência original do documento de faturamento é irrelevante.
-            const eventosRecebimento = [];
-            const docsProcessadosViaReceipts = new Set();
-
-            (receipts || []).forEach(r => {
-                // O faturamento vincula pelo external_id (id do billing_document)
-                const doc = docsMapById.get(r.external_id) || docsMapById.get(r.document_id) || null;
-                const mesRec = extrairMesAnoIso(r.receipt_date);
-
-                // Captura APENAS se a data de recebimento for do período selecionado
-                if (mesRec !== competenciaAtiva) return;
-
-                // contract_id: tenta no receipt, depois no documento vinculado
-                const contratoId = r.contract_id || (doc ? doc.contract_id : null);
-                if (!contratoId) return;
-
-                const valorCents = window.BpoMoney.toCents(r.gross_amount);
-                if (valorCents <= 0n) return;
-
-                if (doc) docsProcessadosViaReceipts.add(doc.id);
-
-                eventosRecebimento.push({
-                    origemId: `rec_${r.id}`,
-                    contract_id: contratoId,
-                    document_id: doc ? doc.id : (r.external_id || null),
-                    receipt_date: r.receipt_date,
-                    baseAmountCents: valorCents
-                });
-            });
-
-            // Resiliência: varre billing_documents que não passaram pela tabela receipts.
-            // Regime de Caixa Puro: usa APENAS a data de recebimento/pagamento registrada no documento.
-            // O payment_date pode estar em: tax_details (embutido na description), d.payment_date, ou d.receipt_date.
-            docs.forEach(d => {
-                if (docsProcessadosViaReceipts.has(d.id)) return;
-                // contract_id pode estar no documento ou ser inferido pelo contrato da empresa
-                // Aceita sem contract_id aqui; o filtro de contrato elegível ocorre depois
-
-                // tax_details já foi extraído e armazenado no mapa (linha de construção de docsMapById)
-                const docComTd = docsMapById.get(d.id) || d;
-                const td = docComTd.tax_details || {};
-                const dataRecRaw = td.payment_date || d.payment_date || d.receipt_date || null;
-                const dataRecIso = converterParaDataIso(dataRecRaw);
-                const mesRec = extrairMesAnoIso(dataRecRaw);
-
-                // Aceita APENAS se o recebimento ocorreu no período selecionado
-                if (mesRec !== competenciaAtiva) return;
-
-                // Considera pago se tem data de recebimento OU status indica pagamento
-                const isPago = !!dataRecRaw || d.status === 'paid' || d.status === 'partially_paid' || d.status === 'received';
-                if (!isPago) return;
-
-                // contract_id: usa do doc ou tenta encontrar pelos contratos da empresa
-                const contratoId = d.contract_id || null;
-                if (!contratoId) return;
-
-                const valorCents = window.BpoMoney.toCents(d.net_amount || d.gross_amount);
-                if (valorCents > 0n) {
-                    eventosRecebimento.push({
-                        origemId: `doc_${d.id}`,
-                        contract_id: contratoId,
-                        document_id: d.id,
-                        receipt_date: dataRecIso || d.issue_date,
-                        baseAmountCents: valorCents
-                    });
-                }
-            });
-
-            if (colaboradores.length === 0) {
-                alert('Cadastre colaboradores antes de processar as comissões.');
+            if (documentosDoMes.length === 0) {
+                alert(`Nenhum recebimento/faturamento com data de pagamento em ${competenciaAtiva} foi localizado.`);
                 return;
             }
 
-            const lotesComissoes = [];
+            const colabsAtivos = colaboradores.filter(c => c.active !== false);
+            if (colabsAtivos.length === 0) {
+                alert('Cadastre colaboradores ativos antes de processar.');
+                return;
+            }
 
-            // 5. Processa cada evento de recebimento no Regime de Caixa
-            for (const ev of eventosRecebimento) {
-                const contratoId = ev.contract_id;
-                const contrato = todosContratosMap.get(contratoId);
-                if (!contrato || !contrato.commission_eligible) continue;
+            const lotes = [];
 
-                const dataEvento = ev.receipt_date;
+            documentosDoMes.forEach(doc => {
+                const ctr = todosContratosEmpresa.find(c => c.id === doc.contract_id);
+                if (!ctr || !ctr.commission_eligible) return;
 
-                // Busca regras ativas deste contrato específico (com flexibilidade para valid_until se preenchido)
-                const regrasDoContrato = (regrasPorContrato.get(contratoId) || []).filter(reg => {
-                    const ate = !reg.valid_until || reg.valid_until >= dataEvento;
-                    return ate;
-                });
+                // Regras deste contrato
+                const regrasDoCtr = regrasContrato.filter(r => r.contract_id === ctr.id);
+                if (regrasDoCtr.length === 0) return;
 
-                if (regrasDoContrato.length === 0) continue;
+                const brutoCents = window.BpoMoney.toCents(doc.gross_amount);
+                const recebidoCents = window.BpoMoney.toCents(doc.net_amount || doc.gross_amount);
+                const impostosCents = calcularImpostosProporcionaisDoc(doc);
+                const liquidoCents = recebidoCents > impostosCents ? (recebidoCents - impostosCents) : recebidoCents;
 
-                for (const regra of regrasDoContrato) {
-                    const colabId = regra.collaborator_id;
-                    const percentual = parseFloat(regra.percentage) || 0;
-                    const capType = contrato.commission_cap_type || 'none';
-                    const capValue = contrato.commission_cap_value || 0;
+                regrasDoCtr.forEach(reg => {
+                    const colab = colabsAtivos.find(c => c.id === reg.collaborator_id);
+                    if (!colab) return;
+
+                    const baseUso = (reg.basis_override === 'gross_invoiced') ? brutoCents : liquidoCents;
+                    const pct = parseFloat(reg.percentage) || 0;
 
                     const res = window.BpoCommissionEngine.calcularComissao({
-                        baseAmount: ev.baseAmountCents,
-                        percentage: percentual,
-                        capType,
-                        capValue
+                        baseAmount: baseUso,
+                        percentage: pct,
+                        capType: ctr.commission_cap_type || 'none',
+                        capValue: ctr.commission_cap_value || 0
                     });
 
-                    const chaveIdempotente = `c_${competenciaAtiva}_${hashCurto(ev.origemId)}_${hashCurto(contratoId)}_${hashCurto(colabId)}`;
+                    const chaveIdempotente = `c_${competenciaAtiva}_${hashCurto(doc.id)}_${hashCurto(ctr.id)}_${hashCurto(colab.id)}`;
 
-                    lotesComissoes.push({
+                    lotes.push({
                         company_id: empresaAtiva.id,
-                        collaborator_id: colabId,
-                        contract_id: contratoId,
-                        document_id: ev.document_id,
+                        collaborator_id: colab.id,
+                        contract_id: ctr.id,
+                        document_id: doc.id,
                         competence_month: competenciaAtiva,
-                        event_date: dataEvento,
-                        base_amount: window.BpoMoney.toDecimalString(ev.baseAmountCents),
-                        percentage: percentual,
+                        event_date: doc.payment_date || doc.issue_date,
+                        base_amount: window.BpoMoney.toDecimalString(baseUso),
+                        percentage: pct,
                         commission_amount: window.BpoMoney.toDecimalString(res.comissaoCents),
                         status: 'pending',
                         idempotency_key: chaveIdempotente
                     });
-                }
-            }
+                });
+            });
 
-            if (lotesComissoes.length === 0) {
-                const totalRecebimentosMes = eventosRecebimento.length;
-                let detalheMsg = `Nenhum recebimento elegível com regra de comissão ativa foi encontrado para o período ${competenciaAtiva}.\n\n`;
-                detalheMsg += `• Recebimentos detectados com data no período ${competenciaAtiva}: ${totalRecebimentosMes}\n`;
-                if (totalRecebimentosMes > 0) {
-                    const ctrsComRec = [...new Set(eventosRecebimento.map(e => {
-                        const c = todosContratosMap.get(e.contract_id);
-                        return c ? `${c.code} (${c.name}) [Elegível: ${c.commission_eligible ? 'SIM' : 'NÃO'}]` : e.contract_id;
-                    }))];
-                    detalheMsg += `• Contratos dos recebimentos:\n  - ${ctrsComRec.join('\n  - ')}\n\n`;
-                    detalheMsg += `Certifique-se de que os contratos estão marcados como 'Elegível para Comissões' e que possuem uma regra cadastrada na seção 'Regras de Comissão por Contrato'.`;
-                } else {
-                    detalheMsg += `Nenhuma baixa/recebimento foi encontrada com data de recebimento em ${competenciaAtiva}. Verifique a data de recebimento das notas no módulo de faturamento.`;
-                }
-                alert(detalheMsg);
+            if (lotes.length === 0) {
+                alert(`Nenhum contrato com regras ativas de comissão encontrado para os recebimentos de ${competenciaAtiva}.`);
                 return;
             }
 
-            // Sincronização inteligente: limpa cálculos obsoletos que ainda estejam 'pending' neste período
-            // caso a data de recebimento de um documento tenha sido alterada ou o documento removido.
-            // Preserva comissões que já foram marcadas como 'paid' (liquidadas).
-            try {
-                const calculosAtuais = await window.BpoSupabase.request(
-                    `commission_calculations?company_id=eq.${empresaAtiva.id}&competence_month=eq.${competenciaAtiva}&select=id,idempotency_key,status`,
-                    { method: 'GET' }
-                ) || [];
-
-                const novasChaves = new Set(lotesComissoes.map(l => l.idempotency_key));
-                const obsoletosParaRemover = calculosAtuais.filter(c => c.status !== 'paid' && !novasChaves.has(c.idempotency_key));
-
-                for (const obs of obsoletosParaRemover) {
-                    await window.BpoSupabase.request(`commission_calculations?id=eq.${obs.id}`, {
-                        method: 'DELETE'
-                    });
-                }
-            } catch (syncErr) {
-                console.warn('[Comissões] Aviso ao sincronizar comissões obsoletas:', syncErr.message);
-            }
-
-            // Upsert em lote ignorando duplicatas existentes
+            // Upsert dos cálculos
             await window.BpoSupabase.request('commission_calculations?on_conflict=idempotency_key', {
                 method: 'POST',
                 prefer: 'resolution=ignore-duplicates,return=representation',
-                body: JSON.stringify(lotesComissoes)
+                body: JSON.stringify(lotes)
             });
 
             await carregarDadosComissoes();
-            alert(`Apuração concluída!\n${lotesComissoes.length} comissão(ões) calculada(s) para o período ${competenciaAtiva}.`);
+            alert(`Apuração concluída com sucesso!\n${lotes.length} comissões geradas para o período ${competenciaAtiva}.`);
 
         } catch (err) {
             alert('Erro ao processar comissões: ' + err.message);
         }
     }
 
-    window.quitarComissao = async function(id) {
-        if (!confirm('Deseja confirmar a quitação desta comissão?')) return;
-        try {
-            await window.BpoSupabase.request(`commission_calculations?id=eq.${id}`, {
-                method: 'PATCH',
-                body: JSON.stringify({ status: 'paid' })
-            });
-            await carregarDadosComissoes();
-            alert('Comissão quitada com sucesso!');
-        } catch (err) {
-            alert('Erro ao quitar: ' + err.message);
-        }
-    };
+    // =========================================================================
+    // UTILITÁRIOS
+    // =========================================================================
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
 
-    window.deletarColaborador = async function(id) {
-        if (!confirm('Tem certeza que deseja excluir este colaborador?')) return;
-        try {
-            await window.BpoSupabase.request(`collaborators?id=eq.${id}`, { method: 'DELETE' });
-            await carregarDadosComissoes();
-            alert('Colaborador excluído com sucesso.');
-        } catch (err) {
-            alert('Erro ao excluir colaborador: ' + err.message);
+    function formatarData(dataStr) {
+        if (!dataStr) return '-';
+        const s = String(dataStr).slice(0, 10);
+        const parts = s.split('-');
+        return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : s;
+    }
+
+    function extrairMesAnoIso(dataStr) {
+        if (!dataStr) return '';
+        const s = String(dataStr).trim();
+        if (/^\d{4}-\d{2}/.test(s)) return s.slice(0, 7);
+        const parts = s.split('/');
+        if (parts.length === 3) return `${parts[2]}-${parts[1].padStart(2, '0')}`;
+        return '';
+    }
+
+    function converterParaDataIso(dataStr) {
+        if (!dataStr) return '';
+        const s = String(dataStr).trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+        const parts = s.split('/');
+        if (parts.length === 3) return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+        return s;
+    }
+
+    function hashCurto(str) {
+        if (!str) return '00000000';
+        let hash = 0;
+        const s = String(str);
+        for (let i = 0; i < s.length; i++) {
+            hash = ((hash << 5) - hash) + s.charCodeAt(i);
+            hash |= 0;
         }
-    };
+        return Math.abs(hash).toString(36).padStart(6, '0');
+    }
 })();

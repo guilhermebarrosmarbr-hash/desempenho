@@ -3,11 +3,127 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Módulo 06 — Controle de Comissões</title>
+    <title>Módulo 06 — Demonstrativo de Comissões</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        /* Estilos específicos do novo layout do demonstrativo de comissões */
+        .btn-gear {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #f1f5f9;
+            width: 38px;
+            height: 38px;
+            border-radius: 8px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.15rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .btn-gear:hover {
+            background: rgba(245, 158, 11, 0.2);
+            border-color: #f59e0b;
+            color: #f59e0b;
+            transform: rotate(30deg);
+        }
+
+        /* Banner amarelo dourado idêntico à planilha oficial */
+        .sheet-banner {
+            background: linear-gradient(180deg, #f59e0b 0%, #d97706 100%);
+            color: #111827;
+            font-weight: 800;
+            font-size: 1rem;
+            text-align: center;
+            padding: 10px 16px;
+            border-radius: 8px 8px 0 0;
+            letter-spacing: 0.3px;
+            border-bottom: 2px solid #b45309;
+        }
+
+        /* Tabela estilo planilha */
+        .table-sheet {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.84rem;
+        }
+        .table-sheet thead th {
+            background: #d97706;
+            color: #111827;
+            font-weight: 700;
+            text-align: center;
+            padding: 8px 10px;
+            border: 1px solid #b45309;
+            font-size: 0.8rem;
+            white-space: nowrap;
+        }
+        .table-sheet thead tr.sub-header th {
+            background: #f59e0b;
+            color: #111827;
+            font-weight: 600;
+            font-size: 0.75rem;
+        }
+        .table-sheet tbody td {
+            padding: 8px 10px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(15, 23, 42, 0.6);
+            color: #e2e8f0;
+            white-space: nowrap;
+        }
+        .table-sheet tbody tr:nth-child(even) td {
+            background: rgba(30, 41, 59, 0.5);
+        }
+        .table-sheet tbody tr:hover td {
+            background: rgba(245, 158, 11, 0.12);
+        }
+        .table-sheet tfoot td {
+            background: #d97706;
+            color: #111827;
+            font-weight: 800;
+            padding: 10px 10px;
+            border: 1px solid #b45309;
+            font-size: 0.85rem;
+            white-space: nowrap;
+        }
+
+        /* Abas do Modal de Configurações */
+        .tabs-header {
+            display: flex;
+            gap: 6px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+            margin-bottom: 20px;
+            overflow-x: auto;
+            padding-bottom: 2px;
+        }
+        .tab-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            padding: 10px 16px;
+            font-size: 0.88rem;
+            font-weight: 600;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+        .tab-btn:hover {
+            color: #f1f5f9;
+        }
+        .tab-btn.active {
+            color: #f59e0b;
+            border-bottom: 2px solid #f59e0b;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+    </style>
 </head>
 <body>
     <!-- Top Navbar -->
@@ -17,12 +133,12 @@
                 <div class="brand-logo" style="background: linear-gradient(135deg, #f59e0b, #d97706);">06</div>
                 <div>
                     <h1 class="brand-title">Controle de Comissões</h1>
-                    <div class="brand-subtitle">Apuração por Colaborador • Regras Contratuais • Liquidação</div>
+                    <div class="brand-subtitle">Demonstrativo por Colaborador • Regras Contratuais • Regime de Caixa</div>
                 </div>
             </a>
         </div>
 
-        <div class="company-selector-bar">
+        <div class="company-selector-bar" style="display: flex; align-items: flex-end; gap: 12px;">
             <div>
                 <label for="selectEmpresa" style="font-size: 0.75rem; color: var(--text-muted); display: block;">Empresa:</label>
                 <select id="selectEmpresa" class="select-control">
@@ -35,12 +151,15 @@
                 <input type="month" id="inputCompetencia" class="select-control" style="color-scheme: dark;">
             </div>
 
-            <button class="btn btn-primary btn-sm" id="btnNovoColaborador">+ Novo Colaborador</button>
+            <!-- Botão em forma de Engrenagem substituindo o antigo "+ Novo Colaborador" -->
+            <button class="btn-gear" id="btnConfiguracoesComissoes" title="Configurações: Regras por Contrato, Colaboradores e Gerenciamento de Contratos">
+                ⚙️
+            </button>
         </div>
     </header>
 
     <main class="layout-container">
-        <!-- Métricas -->
+        <!-- Métricas Rápidas -->
         <section class="metrics-grid">
             <div class="metric-card primary">
                 <div class="metric-label">Base Elegível no Mês</div>
@@ -60,146 +179,235 @@
             </div>
         </section>
 
-        <!-- Ações e Gerador de Apuração -->
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-            <div style="display: flex; gap: 12px;">
+        <!-- Ações do Período -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <div style="display: flex; gap: 12px; align-items: center;">
                 <button class="btn btn-primary" id="btnCalcularComissoes">⚡ Processar Apuração do Período</button>
-                <button class="btn btn-secondary" id="btnRegrasContrato">Vincular Regra a Contrato</button>
+                <button class="btn btn-secondary btn-sm" id="btnAbrirRegrasRapido">⚙️ Configurar Regras e Contratos</button>
             </div>
-            <a href="intermediacao.html" class="btn btn-secondary btn-sm">Módulo 07: Intermediação &rarr;</a>
+            <div style="display: flex; gap: 8px;">
+                <a href="faturamento.html" class="btn btn-secondary btn-sm">&larr; Módulo 04: Faturamento</a>
+                <a href="impostos.html" class="btn btn-secondary btn-sm">Módulo 05: Impostos</a>
+                <a href="intermediacao.html" class="btn btn-secondary btn-sm">Módulo 07: Intermediação &rarr;</a>
+            </div>
         </div>
 
-        <!-- Tabela de Comissões da Competência -->
-        <section class="finance-card">
-            <div class="card-header">
-                <div>
-                    <h2 class="card-title">Extrato de Comissões</h2>
-                    <p class="card-subtitle">Detalhamento dos valores apurados por colaborador e contrato</p>
-                </div>
+        <!-- NOVO LAYOUT: DEMONSTRATIVO DE COMISSÕES (Conforme Planilha Oficial) -->
+        <section class="finance-card" style="padding: 0; overflow: hidden; border: 1px solid rgba(245, 158, 11, 0.4); margin-bottom: 24px;">
+            <div class="sheet-banner" id="tituloDemonstrativo">
+                Demonstrativo de comissões - Mar Brasil - Setembro/2026
             </div>
 
-            <div class="table-responsive">
-                <table class="table-custom">
-                    <thead>
+            <div class="table-responsive" style="max-height: 70vh;">
+                <table class="table-sheet" id="tabelaDemonstrativo">
+                    <thead id="theadDemonstrativo">
+                        <!-- Cabeçalho dinâmico com colunas fixas e 1 coluna para cada colaborador ativo -->
                         <tr>
-                            <th>Colaborador</th>
-                            <th>Contrato / Documento</th>
-                            <th>Data Evento</th>
-                            <th>Base de Cálculo</th>
-                            <th>Alíquota (%)</th>
-                            <th>Valor Comissão</th>
-                            <th>Status</th>
-                            <th>Ações</th>
+                            <th>Carregando estrutura...</th>
                         </tr>
                     </thead>
-                    <tbody id="listaComissoesBody">
+                    <tbody id="tbodyDemonstrativo">
                         <tr>
-                            <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 32px;">
-                                Nenhuma comissão gerada para esta competência.
+                            <td colspan="10" style="text-align: center; color: var(--text-muted); padding: 32px;">
+                                Carregando demonstrativo do período...
                             </td>
                         </tr>
                     </tbody>
-                </table>
-            </div>
-        </section>
-
-        <!-- Regras de Comissão Vigentes -->
-        <section class="finance-card" style="margin-bottom: 24px;">
-            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <h2 class="card-title">Regras de Comissão por Contrato</h2>
-                    <p class="card-subtitle">Configurações de percentual e base de cálculo ativas por contrato elegível</p>
-                </div>
-                <button class="btn btn-primary btn-sm" id="btnNovaRegraCard">+ Nova Regra</button>
-            </div>
-
-            <div class="table-responsive">
-                <table class="table-custom">
-                    <thead>
-                        <tr>
-                            <th>Contrato</th>
-                            <th>Colaborador</th>
-                            <th>Percentual (%)</th>
-                            <th>Base de Cálculo</th>
-                            <th>Vigência</th>
-                            <th>Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody id="listaRegrasBody">
-                        <tr>
-                            <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;">
-                                Nenhuma regra de comissão cadastrada.
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </section>
-
-        <!-- Colaboradores Ativos -->
-        <section class="finance-card">
-            <div class="card-header">
-                <div>
-                    <h2 class="card-title">Colaboradores Cadastrados</h2>
-                    <p class="card-subtitle">Vendedores e consultores habilitados a comissionamento</p>
-                </div>
-            </div>
-
-            <div class="table-responsive">
-                <table class="table-custom">
-                    <thead>
-                        <tr>
-                            <th>Nome</th>
-                            <th>Documento (CPF)</th>
-                            <th>E-mail</th>
-                            <th>Função</th>
-                            <th>Status</th>
-                            <th>Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody id="listaColaboradoresBody">
-                        <tr>
-                            <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;">
-                                Nenhum colaborador cadastrado.
-                            </td>
-                        </tr>
-                    </tbody>
+                    <tfoot id="tfootDemonstrativo">
+                        <!-- Linha de Totais da Planilha -->
+                    </tfoot>
                 </table>
             </div>
         </section>
     </main>
 
-    <!-- Modal Novo / Editar Colaborador -->
-    <div class="modal-overlay" id="modalColaborador">
-        <div class="modal-card">
+    <!-- ========================================================================= -->
+    <!-- MODAL PRINCIPAL DE CONFIGURAÇÕES (ENGRENAGEM): ABAS CONTRATOS E COLABORADORES -->
+    <!-- ========================================================================= -->
+    <div class="modal-overlay" id="modalConfiguracoes" style="display: none;">
+        <div class="modal-card" style="max-width: 960px; width: 95%;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <div>
+                    <h2 class="card-title" style="margin-bottom: 4px;">Configurações de Comissões</h2>
+                    <p class="card-subtitle">Regras por contrato, colaboradores elegíveis e gerenciamento de base de comissão</p>
+                </div>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="fecharModais()">✕ Fechar</button>
+            </div>
+
+            <!-- Abas do Modal -->
+            <div class="tabs-header">
+                <button class="tab-btn active" id="tabBtnRegras" onclick="alternarAbaModal('regras')">📜 Regras por Contrato</button>
+                <button class="tab-btn" id="tabBtnContratos" onclick="alternarAbaModal('contratos')">📑 Gerenciamento de Contratos</button>
+                <button class="tab-btn" id="tabBtnColaboradores" onclick="alternarAbaModal('colaboradores')">👥 Colaboradores</button>
+            </div>
+
+            <!-- ABA 1: REGRAS DE COMISSÃO (Separadas por Contrato) -->
+            <div class="tab-content active" id="tabConteudoRegras">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <label for="filtroContratoRegras" style="font-size: 0.82rem; color: var(--text-muted);">Contrato:</label>
+                        <select id="filtroContratoRegras" class="select-control" style="min-width: 250px;">
+                            <option value="all">Todos os Contratos</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-primary btn-sm" id="btnNovaRegraAba">+ Nova Regra</button>
+                </div>
+
+                <div class="table-responsive" style="max-height: 400px;">
+                    <table class="table-custom">
+                        <thead>
+                            <tr>
+                                <th>Contrato</th>
+                                <th>Colaborador</th>
+                                <th>Setor</th>
+                                <th>Percentual (%)</th>
+                                <th>Base de Cálculo</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="listaRegrasModalBody">
+                            <tr>
+                                <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;">
+                                    Nenhuma regra cadastrada.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ABA 2: GERENCIAMENTO DE CONTRATOS (Definição de Base / Aditivos) -->
+            <div class="tab-content" id="tabConteudoContratos">
+                <div style="margin-bottom: 14px; font-size: 0.82rem; color: var(--text-secondary); background: rgba(255,255,255,0.03); padding: 10px 14px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08);">
+                    💡 <strong>Como funciona o comissionamento por contrato:</strong><br>
+                    Você pode habilitar/desabilitar a elegibilidade de comissão de cada contrato e definir o modo de cálculo do valor devido.
+                    Para contratos com <strong>aditivos</strong> (ex.: contrato original sem comissão, mas aditivo 1 e aditivo 2 comissionados), defina o tipo de base comissionada abaixo.
+                </div>
+
+                <div class="table-responsive" style="max-height: 400px;">
+                    <table class="table-custom">
+                        <thead>
+                            <tr>
+                                <th>Código</th>
+                                <th>Nome do Contrato</th>
+                                <th>Cliente</th>
+                                <th>Valor Referência</th>
+                                <th>Elegível?</th>
+                                <th>Modo de Comissão</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="listaGerenciarContratosBody">
+                            <tr>
+                                <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 24px;">
+                                    Carregando contratos...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ABA 3: COLABORADORES -->
+            <div class="tab-content" id="tabConteudoColaboradores">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                    <span style="font-size: 0.85rem; color: var(--text-muted);">Gerencie os colaboradores ativos, setores, vigência e percentuais</span>
+                    <button class="btn btn-primary btn-sm" id="btnNovoColaboradorModal">+ Novo Colaborador</button>
+                </div>
+
+                <div class="table-responsive" style="max-height: 400px;">
+                    <table class="table-custom">
+                        <thead>
+                            <tr>
+                                <th>Nome</th>
+                                <th>Setor</th>
+                                <th>Função</th>
+                                <th>CPF</th>
+                                <th>Status</th>
+                                <th>Início Vigência</th>
+                                <th>Fim Vigência</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="listaColaboradoresModalBody">
+                            <tr>
+                                <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">
+                                    Carregando colaboradores...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: CADASTRAR / EDITAR COLABORADOR (Com Setor, Status, Vigência) -->
+    <div class="modal-overlay" id="modalColaborador" style="display: none; z-index: 1050;">
+        <div class="modal-card" style="max-width: 600px;">
             <h2 class="card-title" id="modalColaboradorTitulo" style="margin-bottom: 8px;">Cadastrar Colaborador</h2>
-            <p class="card-subtitle" style="margin-bottom: 20px;">Vendedor ou consultor elegível a comissão comercial.</p>
+            <p class="card-subtitle" style="margin-bottom: 20px;">Preencha os dados do colaborador, setor e período de vigência.</p>
 
             <form id="formColaborador">
                 <input type="hidden" id="colabId" value="">
-                <div style="margin-bottom: 16px;">
+                
+                <div style="margin-bottom: 14px;">
                     <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Nome Completo *</label>
-                    <input type="text" id="colabNome" required class="select-control" style="width: 100%;" placeholder="Ex: Carlos Oliveira">
+                    <input type="text" id="colabNome" required class="select-control" style="width: 100%;" placeholder="Ex: Carlos Eduardo Romero Vicente">
                 </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Setor *</label>
+                        <select id="colabSetor" class="select-control" style="width: 100%;">
+                            <option value="Licitações">Licitações</option>
+                            <option value="Jurídico">Jurídico</option>
+                            <option value="Comercial">Comercial</option>
+                            <option value="Operacional">Operacional</option>
+                            <option value="Diretoria">Diretoria</option>
+                            <option value="Outro">Outro</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Função</label>
+                        <input type="text" id="colabFuncao" class="select-control" style="width: 100%;" placeholder="Ex: Gestor de Licitações" value="Gestor de Licitações">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
                     <div>
                         <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">CPF</label>
                         <input type="text" id="colabCpf" class="select-control" style="width: 100%;" placeholder="000.000.000-00">
                     </div>
                     <div>
-                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Função</label>
-                        <input type="text" id="colabFuncao" class="select-control" style="width: 100%;" value="Vendedor Técnico">
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">E-mail</label>
+                        <input type="email" id="colabEmail" class="select-control" style="width: 100%;" placeholder="colaborador@marbrasil.com.br">
                     </div>
                 </div>
-                <div style="margin-bottom: 16px;">
-                    <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">E-mail</label>
-                    <input type="email" id="colabEmail" class="select-control" style="width: 100%;" placeholder="carlos@marbrasil.com.br">
+
+                <!-- Status Ativo / Inativo e Vigência -->
+                <div style="display: grid; grid-template-columns: 1fr 1.2fr 1.2fr; gap: 14px; margin-bottom: 16px; align-items: end; padding: 12px; background: rgba(255,255,255,0.02); border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Status</label>
+                        <select id="colabStatus" class="select-control" style="width: 100%;">
+                            <option value="active" selected>Ativo</option>
+                            <option value="inactive">Inativo</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Início da Vigência *</label>
+                        <input type="date" id="colabInicioVigencia" required class="select-control" style="width: 100%; color-scheme: dark;">
+                    </div>
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Fim da Vigência</label>
+                        <input type="date" id="colabFimVigencia" class="select-control" style="width: 100%; color-scheme: dark;" disabled title="Habilitado apenas se o colaborador estiver inativo">
+                    </div>
                 </div>
 
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px;">
-                    <button type="button" class="btn btn-danger btn-sm" id="btnExcluirColaborador" style="display: none;" onclick="window.deletarColaboradorModal()">🗑️ Excluir Colaborador</button>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px;">
+                    <button type="button" class="btn btn-danger btn-sm" id="btnExcluirColaborador" style="display: none;" onclick="window.deletarColaboradorModal()">🗑️ Excluir</button>
                     <div style="display: flex; gap: 12px; margin-left: auto;">
-                        <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
+                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('modalColaborador').style.display='none'">Cancelar</button>
                         <button type="submit" class="btn btn-primary">Salvar Colaborador</button>
                     </div>
                 </div>
@@ -207,44 +415,49 @@
         </div>
     </div>
 
-    <!-- Modal Lançar Regra em Contrato -->
-    <div class="modal-overlay" id="modalRegra">
-        <div class="modal-card">
-            <h2 class="card-title" style="margin-bottom: 8px;">Regra de Comissão por Contrato</h2>
-            <p class="card-subtitle" style="margin-bottom: 20px;">Defina o percentual de comissão de um colaborador em um contrato.</p>
+    <!-- MODAL: VINCULAR / EDITAR REGRA DE COMISSÃO (Com precisão decimal ampla) -->
+    <div class="modal-overlay" id="modalRegra" style="display: none; z-index: 1050;">
+        <div class="modal-card" style="max-width: 580px;">
+            <h2 class="card-title" id="modalRegraTitulo" style="margin-bottom: 8px;">Regra de Comissão por Contrato</h2>
+            <p class="card-subtitle" style="margin-bottom: 20px;">Defina a porcentagem precisa (ex: 0.5%, 0.225%, 0.135%, 0.09%) e a base do contrato.</p>
 
             <form id="formRegra">
                 <input type="hidden" id="regraId" value="">
-                <div style="margin-bottom: 16px;">
+
+                <div style="margin-bottom: 14px;">
                     <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Contrato *</label>
                     <select id="regraContrato" required class="select-control" style="width: 100%;">
                         <option value="">Carregando contratos...</option>
                     </select>
                 </div>
-                <div style="margin-bottom: 16px;">
+
+                <div style="margin-bottom: 14px;">
                     <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Colaborador *</label>
                     <select id="regraColaborador" required class="select-control" style="width: 100%;">
                         <option value="">Carregando colaboradores...</option>
                     </select>
                 </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px;">
                     <div>
-                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Percentual (%) *</label>
-                        <input type="number" step="0.1" id="regraPercentual" required class="select-control" style="width: 100%;" placeholder="Ex: 5.0" value="5.0">
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Porcentagem (%) *</label>
+                        <!-- Suporta casas decimais livres: 0.5, 0.225, 0.135, etc. -->
+                        <input type="number" step="any" min="0" max="100" id="regraPercentual" required class="select-control" style="width: 100%; font-weight: 700; color: #f59e0b;" placeholder="Ex: 0.5, 0.225, 0.09" value="0.5">
                     </div>
                     <div>
                         <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Base de Cálculo</label>
                         <select id="regraBase" class="select-control" style="width: 100%;">
-                            <option value="gross_invoiced">Faturamento Emitido (Bruto)</option>
-                            <option value="net_proportional">Líquido Recebido</option>
+                            <option value="net_proportional" selected>Valor Líquido (Recebido s/ Impostos)</option>
+                            <option value="gross_invoiced">Valor Bruto Faturado</option>
+                            <option value="gross_liquidated">Valor Recebido (Bruto)</option>
                         </select>
                     </div>
                 </div>
 
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px;">
                     <button type="button" class="btn btn-danger btn-sm" id="btnExcluirRegraModal" style="display: none;" onclick="window.deletarRegraModal()">🗑️ Excluir Regra</button>
                     <div style="display: flex; gap: 12px; margin-left: auto;">
-                        <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
+                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('modalRegra').style.display='none'">Cancelar</button>
                         <button type="submit" class="btn btn-primary">Salvar Regra</button>
                     </div>
                 </div>
@@ -252,10 +465,60 @@
         </div>
     </div>
 
-    <script src="js/utils.js?v=20261103_2"></script>
-    <script src="js/supabase.js?v=20261103_2"></script>
-    <script src="js/money.js?v=20261103_2"></script>
-    <script src="js/commissions.js?v=20261103_2"></script>
-    <script src="js/comissoes.js?v=20261103_2"></script>
+    <!-- MODAL: EDITAR CONFIGURAÇÃO DE COMISSÃO DO CONTRATO (Aditivos / Base Due) -->
+    <div class="modal-overlay" id="modalConfigContrato" style="display: none; z-index: 1050;">
+        <div class="modal-card" style="max-width: 620px;">
+            <h2 class="card-title" id="modalConfigContratoTitulo" style="margin-bottom: 8px;">Configurar Comissão do Contrato</h2>
+            <p class="card-subtitle" style="margin-bottom: 18px;">Defina quais partes ou aditivos do contrato são comissionados.</p>
+
+            <form id="formConfigContrato">
+                <input type="hidden" id="cfgContratoId" value="">
+                
+                <div style="margin-bottom: 14px;">
+                    <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Identificação do Contrato</label>
+                    <input type="text" id="cfgContratoNome" readonly class="select-control" style="width: 100%; opacity: 0.7;">
+                </div>
+
+                <div style="margin-bottom: 14px;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem;">
+                        <input type="checkbox" id="cfgContratoElegivel" style="width: 18px; height: 18px; accent-color: #f59e0b;">
+                        <span>Contrato elegível para pagamento de comissões</span>
+                    </label>
+                </div>
+
+                <div style="margin-bottom: 14px;">
+                    <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Regra de Escopo Comissionado</label>
+                    <select id="cfgContratoEscopo" class="select-control" style="width: 100%;">
+                        <option value="total">Valor Total do Contrato (Faturas e Aditivos)</option>
+                        <option value="aditivos_only">Apenas Aditivos (Valor base isento de comissão)</option>
+                        <option value="base_only">Apenas Valor Base Original (Aditivos não comissionados)</option>
+                        <option value="custom">Percentual customizado sobre a fatura</option>
+                    </select>
+                </div>
+
+                <div id="boxCfgContratoCustom" style="display: none; margin-bottom: 14px;">
+                    <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Parcela do Faturamento Sujeita a Comissão (%)</label>
+                    <input type="number" step="any" min="0" max="100" id="cfgContratoPctFaturamento" class="select-control" style="width: 100%;" placeholder="Ex: 50">
+                </div>
+
+                <div style="margin-bottom: 16px;">
+                    <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Observações / Regras Específicas do Contrato</label>
+                    <textarea id="cfgContratoObs" class="select-control" style="width: 100%; min-height: 70px;" placeholder="Ex: Contrato recebeu aditivo 1 e 2; comissão devida somente sobre os aditivos."></textarea>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px;">
+                    <button type="button" class="btn btn-secondary" onclick="document.getElementById('modalConfigContrato').style.display='none'">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Salvar Parâmetros</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Scripts da aplicação -->
+    <script src="js/utils.js?v=20261109_3"></script>
+    <script src="js/supabase.js?v=20261109_3"></script>
+    <script src="js/money.js?v=20261109_3"></script>
+    <script src="js/commissions.js?v=20261109_3"></script>
+    <script src="js/comissoes.js?v=20261109_3"></script>
 </body>
 </html>
