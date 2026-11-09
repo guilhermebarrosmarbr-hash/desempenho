@@ -506,7 +506,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 let somaCsll = 0n;
                 let somaTributos = 0n;
                 let somaRetencoes = 0n;
-                let somaSaldo = 0n;
+                let somaLiquido = 0n;
 
                 const rowsDocs = docsParaTabela.map(doc => {
                     const emp = companiesMap.get(doc.company_id);
@@ -531,7 +531,9 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     let irpjCents = 0n;
                     let csllCents = 0n;
                     let tributosCents = 0n;
-                    let saldoCents = 0n;
+                    let liquidoDocCents = doc.net_amount !== undefined && doc.net_amount !== null
+                        ? window.BpoMoney.toCents(doc.net_amount)
+                        : (fatTotalCents > retCents ? fatTotalCents - retCents : 0n);
                     let issIsento = false;
 
                     if (isLP) {
@@ -574,9 +576,6 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                         irpjCents = irpjBrutoCents > irrfDocCents ? (irpjBrutoCents - irrfDocCents) : 0n;
 
                         tributosCents = pisCents + cofinsCents + issCents + irpjCents + csllCents;
-                        const issRecolher = issRetido ? 0n : issCents;
-                        const aRecolherBase = pisCents + cofinsCents + issRecolher + irpjCents + csllCents;
-                        saldoCents = aRecolherBase;
                     } else {
                         // Simples Nacional: DZM / Ybox
                         const anexoKey = (taxDetails && taxDetails.das_anexo) ? taxDetails.das_anexo : 'anexo_iii';
@@ -635,7 +634,6 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                         } else {
                             tributosCents = BigInt(Math.round(fatTotalNum * aliqDasEfetiva * 100));
                         }
-                        saldoCents = tributosCents;
                     }
 
                     somaBruto += fatTotalCents;
@@ -646,7 +644,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     somaCsll += csllCents;
                     somaTributos += tributosCents;
                     somaRetencoes += retCents;
-                    somaSaldo += saldoCents;
+                    somaLiquido += liquidoDocCents;
 
                     const ctr = contratosMap.get(doc.contract_id);
                     const cliDesc = (ctr && ctr._clientName) 
@@ -685,7 +683,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                             <td style="text-align:right; color:#f59e0b;">${window.BpoMoney.formatBRL(csllCents)}</td>
                             <td style="text-align:right; font-weight:700; color:#f59e0b;">${window.BpoMoney.formatBRL(tributosCents)}</td>
                             <td style="text-align:right; color:var(--color-danger);">${window.BpoMoney.formatBRL(retCents)}</td>
-                            <td style="text-align:right; font-weight:700; color:var(--color-success);">${window.BpoMoney.formatBRL(saldoCents)}</td>
+                            <td style="text-align:right; font-weight:700; color:var(--color-success);">${window.BpoMoney.formatBRL(liquidoDocCents)}</td>
                         </tr>
                     `;
                 }).join('');
@@ -704,7 +702,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                             <td style="text-align:right; color:#f59e0b;">${window.BpoMoney.formatBRL(somaCsll)}</td>
                             <td style="text-align:right; color:#f59e0b;">${window.BpoMoney.formatBRL(somaTributos)}</td>
                             <td style="text-align:right; color:var(--color-danger);">${window.BpoMoney.formatBRL(somaRetencoes)}</td>
-                            <td style="text-align:right; color:var(--color-success);">${window.BpoMoney.formatBRL(somaSaldo)}</td>
+                            <td style="text-align:right; color:var(--color-success);">${window.BpoMoney.formatBRL(somaLiquido)}</td>
                         </tr>
                     `;
                 }
