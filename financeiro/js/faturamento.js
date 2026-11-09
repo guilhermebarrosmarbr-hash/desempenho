@@ -610,10 +610,19 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 impostosAtrib = window.BpoMoney.formatBRL(doc.tax_details.total_tax);
             } else if (doc.tax_details && window.BpoTaxEngine && emp) {
                 const bNum = Number(window.BpoMoney.toCents(doc.gross_amount)) / 100;
+                // Busca faturamento mensal total da empresa na competência para aplicar alíquota exata da planilha
+                let recMensalTotal = 0;
+                if (documentos && documentos.length > 0) {
+                    recMensalTotal = documentos
+                        .filter(d => d.company_id === doc.company_id && d.status !== 'cancelled')
+                        .reduce((acc, d) => acc + (Number(window.BpoMoney.toCents(d.gross_amount)) / 100), 0);
+                }
+
                 const p = window.BpoTaxEngine.calcularPreviaNota({
                     gross_amount: bNum,
                     company_tax_regime: emp.tax_regime,
                     item_type: doc.tax_details.item_type || 'servico',
+                    receitaMensalTotal: recMensalTotal > 0 ? recMensalTotal : bNum,
                     temIrrf: !!doc.tax_details.has_irrf,
                     aliquotaIrrf: doc.tax_details.irrf_aliq,
                     temInss: !!doc.tax_details.has_inss,
@@ -833,11 +842,23 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         if (inpAliqCofins) inpAliqCofins.addEventListener('input', () => dispararPreviaImpostos('aliq_cofins'));
         if (inpValorCofins) inpValorCofins.addEventListener('input', () => dispararPreviaImpostos('valor_cofins'));
 
-        if (inpAliqIrpj) inpAliqIrpj.addEventListener('input', () => dispararPreviaImpostos('aliq_irpj'));
-        if (inpValorIrpj) inpValorIrpj.addEventListener('input', () => dispararPreviaImpostos('valor_irpj'));
+        if (inpAliqIrpj) inpAliqIrpj.addEventListener('input', () => {
+            inpAliqIrpj.dataset.userModified = 'true';
+            dispararPreviaImpostos('aliq_irpj');
+        });
+        if (inpValorIrpj) inpValorIrpj.addEventListener('input', () => {
+            if (inpAliqIrpj) inpAliqIrpj.dataset.userModified = 'true';
+            dispararPreviaImpostos('valor_irpj');
+        });
 
-        if (inpAliqCsll) inpAliqCsll.addEventListener('input', () => dispararPreviaImpostos('aliq_csll'));
-        if (inpValorCsll) inpValorCsll.addEventListener('input', () => dispararPreviaImpostos('valor_csll'));
+        if (inpAliqCsll) inpAliqCsll.addEventListener('input', () => {
+            inpAliqCsll.dataset.userModified = 'true';
+            dispararPreviaImpostos('aliq_csll');
+        });
+        if (inpValorCsll) inpValorCsll.addEventListener('input', () => {
+            if (inpAliqCsll) inpAliqCsll.dataset.userModified = 'true';
+            dispararPreviaImpostos('valor_csll');
+        });
 
         // Eventos do Simples Nacional
         if (selAnexoSimples) selAnexoSimples.addEventListener('change', () => dispararPreviaImpostos('simples_anexo'));
@@ -1069,12 +1090,42 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             const elValorCsll = document.getElementById('inpValorCsll');
             const elBadgeRegime = document.getElementById('badgePreviaRegime');
 
-            // Se trocou de empresa ou tipo de documento, ajusta defaults de alíquotas
-            if (origem === 'empresa_ou_tipo') {
+            // Se trocou de empresa ou tipo de documento, ou faturamento novo, ajusta defaults de alíquotas com base no total do mês
+            let aliqIrpjSugerida = itemTipo === 'servico' ? '4.80' : '1.20';
+            let aliqCsllSugerida = itemTipo === 'servico' ? '2.88' : '1.08';
+
+            // Calcula a alíquota efetiva dinâmica oficial da planilha
+            if (itemTipo === 'servico') {
+                let recMes = brutoNum;
+                if (documentos && documentos.length > 0) {
+                    const somaOutros = documentos
+                        .filter(d => d.company_id === companyId && d.status !== 'cancelled' && d.id !== docEmEdicaoId)
+                        .reduce((acc, d) => acc + (Number(window.BpoMoney.toCents(d.gross_amount)) / 100), 0);
+                    recMes = somaOutros + brutoNum;
+                }
+                if (recMes > 0) {
+                    const L_m = 1250000 / 3;
+                    const B0_m = 400000 / 3;
+                    const base_m = Math.max(0, ((recMes - L_m) * 0.352) + B0_m);
+                    const irpj_tot = (base_m * 0.15) + Math.max(0, (base_m - 20000) * 0.10);
+                    const csll_tot = base_m * 0.09;
+                    aliqIrpjSugerida = (irpj_tot / recMes * 100).toFixed(2);
+                    aliqCsllSugerida = (csll_tot / recMes * 100).toFixed(2);
+                }
+            }
+
+            if (origem === 'empresa_ou_tipo' || origem === 'novo') {
                 if (elAliqPis) elAliqPis.value = '0.65';
                 if (elAliqCofins) elAliqCofins.value = '3.00';
-                if (elAliqIrpj) elAliqIrpj.value = itemTipo === 'servico' ? '4.80' : '1.20';
-                if (elAliqCsll) elAliqCsll.value = itemTipo === 'servico' ? '2.88' : '1.08';
+                if (elAliqIrpj) elAliqIrpj.value = aliqIrpjSugerida;
+                if (elAliqCsll) elAliqCsll.value = aliqCsllSugerida;
+            } else if (origem === 'valores' || origem === 'geral') {
+                if (elAliqIrpj && (!docEmEdicaoId || elAliqIrpj.dataset.userModified !== 'true')) {
+                    elAliqIrpj.value = aliqIrpjSugerida;
+                }
+                if (elAliqCsll && (!docEmEdicaoId || elAliqCsll.dataset.userModified !== 'true')) {
+                    elAliqCsll.value = aliqCsllSugerida;
+                }
             }
 
             // 1. PIS

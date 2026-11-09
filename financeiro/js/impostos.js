@@ -248,59 +248,37 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                         `${ano}-${String((numTrimestre - 1) * 3 + 3).padStart(2, '0')}`
                     ];
 
-                    let docsTrimestreEmp = [];
-                    for (const m of mesesTrimestre) {
-                        if (m === competenciaAtiva) {
-                            docsTrimestreEmp.push(...docsEmp);
-                        } else {
-                            try {
-                                const docsOutros = await window.BpoSupabase.request(
-                                    `billing_documents?company_id=eq.${emp.id}&competence_month=eq.${m}&status=neq.cancelled`,
-                                    { method: 'GET' }
-                                );
-                                if (docsOutros && docsOutros.length > 0) {
-                                    docsTrimestreEmp.push(...docsOutros);
-                                }
-                            } catch (e) {}
-                        }
-                    }
-
-                    let servicosTrimCents = 0n;
-                    let produtosTrimCents = 0n;
-                    let irrfRetidoTrimCents = 0n;
-
-                    docsTrimestreEmp.forEach(d => {
+                    let irrfRetidoMesCents = 0n;
+                    docsEmp.forEach(d => {
                         const td = d.tax_details || window.BpoFiscalUtils.extrairTaxDetails(d);
                         const val = calcularFaturamentoTotalDoc(d, td);
-                        const tipo = (td && td.item_type) || 'servico';
-                        if (tipo === 'produto') produtosTrimCents += val;
-                        else servicosTrimCents += val;
-
                         if (td && td.has_irrf) {
                             const aliq = (td.irrf_aliq !== undefined && td.irrf_aliq !== null) ? td.irrf_aliq : 4.8;
-                            irrfRetidoTrimCents += BigInt(Math.round((Number(val) / 100) * (aliq / 100) * 100));
+                            irrfRetidoMesCents += BigInt(Math.round((Number(val) / 100) * (aliq / 100) * 100));
                         }
                     });
 
-                    const apuracaoTrimestral = window.BpoTaxEngine.apurarLucroPresumidoTrimestral(
-                        Number(servicosTrimCents) / 100,
-                        Number(produtosTrimCents) / 100,
+                    // Apuração oficial conforme fórmula da planilha (Opção A: modo mensal com faixas proporcionais)
+                    const apuracaoMensalLP = window.BpoTaxEngine.apurarLucroPresumidoTrimestral(
+                        Number(servicosCents) / 100,
+                        Number(produtosCents) / 100,
                         { 
                             ano: ano, 
                             trimestre: numTrimestre, 
-                            irrfRetidoTrimestre: Number(irrfRetidoTrimCents) / 100 
+                            isMensal: true,
+                            irrfRetidoTrimestre: Number(irrfRetidoMesCents) / 100 
                         }
                     );
 
                     apuracoesTrimestraisPorEmpresa.set(emp.id, {
-                        ...apuracaoTrimestral,
-                        servicosTrimCents,
-                        produtosTrimCents,
-                        irrfRetidoTrimCents,
+                        ...apuracaoMensalLP,
+                        servicosTrimCents: servicosCents,
+                        produtosTrimCents: produtosCents,
+                        irrfRetidoTrimCents: irrfRetidoMesCents,
                         numTrimestre,
                         ano,
-                        mesesTrimestre,
-                        docsTrimestreEmp
+                        mesesTrimestre: [competenciaAtiva],
+                        docsTrimestreEmp: docsEmp
                     });
 
                     // PIS/COFINS mensais
@@ -314,16 +292,16 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     const cofinsCents = BigInt(Math.round(apuracaoLP.impostosMensais.cofins.value * 100));
                     const issCents = BigInt(Math.round(apuracaoLP.impostosMensais.iss.value * 100));
 
-                    // Provisão IRPJ e CSLL variáveis da competência usando as alíquotas efetivas globais do trimestre
-                    const irpjProvCents = BigInt(Math.round(Number(fatEmpCents) / 100 * apuracaoTrimestral.aliqEfetivaIRPJ * 100));
-                    const csllProvCents = BigInt(Math.round(Number(fatEmpCents) / 100 * apuracaoTrimestral.aliqEfetivaCSLL * 100));
+                    // Provisão IRPJ e CSLL da competência com a alíquota efetiva calculada pela fórmula oficial
+                    const irpjProvCents = BigInt(Math.round(Number(fatEmpCents) / 100 * apuracaoMensalLP.aliqEfetivaIRPJ * 100));
+                    const csllProvCents = BigInt(Math.round(Number(fatEmpCents) / 100 * apuracaoMensalLP.aliqEfetivaCSLL * 100));
 
                     impostoApuradoEmpCents = pisCents + cofinsCents + issCents + irpjProvCents + csllProvCents;
                     saldoRecolherEmpCents = impostoApuradoEmpCents > retEmpCents ? impostoApuradoEmpCents - retEmpCents : 0n;
 
-                    const aliqIrpjPercent = (apuracaoTrimestral.aliqEfetivaIRPJ * 100).toFixed(2);
-                    const aliqCsllPercent = (apuracaoTrimestral.aliqEfetivaCSLL * 100).toFixed(2);
-                    const temAdicional = apuracaoTrimestral.IRPJ_adicional > 0;
+                    const aliqIrpjPercent = (apuracaoMensalLP.aliqEfetivaIRPJ * 100).toFixed(2);
+                    const aliqCsllPercent = (apuracaoMensalLP.aliqEfetivaCSLL * 100).toFixed(2);
+                    const temAdicional = apuracaoMensalLP.IRPJ_adicional > 0;
 
                     detalheCardHtml = `
                         <div style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 16px; border: 1px solid rgba(255,255,255,0.05);">
@@ -335,8 +313,8 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                                 <div><span style="color:var(--text-muted);">PIS (0,65%):</span> <strong>${window.BpoMoney.formatBRL(pisCents)}</strong></div>
                                 <div><span style="color:var(--text-muted);">COFINS (3,00%):</span> <strong>${window.BpoMoney.formatBRL(cofinsCents)}</strong></div>
                                 <div><span style="color:var(--text-muted);">ISS Municipal (5,00%):</span> <strong>${window.BpoMoney.formatBRL(issCents)}</strong></div>
-                                <div><span style="color:var(--text-muted);">IRPJ Variável (${aliqIrpjPercent}% Tri${temAdicional ? ' com +10%' : ''}):</span> <strong style="color:#f59e0b;">${window.BpoMoney.formatBRL(irpjProvCents)}</strong></div>
-                                <div><span style="color:var(--text-muted);">CSLL Variável (${aliqCsllPercent}% Tri):</span> <strong style="color:#f59e0b;">${window.BpoMoney.formatBRL(csllProvCents)}</strong></div>
+                                <div><span style="color:var(--text-muted);">IRPJ Variável (${aliqIrpjPercent}%${temAdicional ? ' com +10%' : ''}):</span> <strong style="color:#f59e0b;">${window.BpoMoney.formatBRL(irpjProvCents)}</strong></div>
+                                <div><span style="color:var(--text-muted);">CSLL Variável (${aliqCsllPercent}%):</span> <strong style="color:#f59e0b;">${window.BpoMoney.formatBRL(csllProvCents)}</strong></div>
                                 <div><span style="color:var(--text-muted);">Retenções a Compensar:</span> <strong style="color:var(--color-danger);">${window.BpoMoney.formatBRL(retEmpCents)}</strong></div>
                             </div>
                             <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between;">
@@ -567,17 +545,32 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                             issCents = 0n;
                         }
 
-                        // IRPJ e CSLL calculados de modo variável com base em todo o faturamento da empresa no trimestre
+                        // IRPJ e CSLL calculados conforme a fórmula da planilha (Opção A)
+                        // A coluna IRPJ na planilha reflete o IRPJ devido líquido (já abatendo o IRRF retido na fonte do documento)
                         const infoTri = apuracoesTrimestraisPorEmpresa.get(doc.company_id);
                         const aliqIrpjVar = infoTri ? infoTri.aliqEfetivaIRPJ : (itemType === 'servico' ? 0.048 : 0.012);
                         const aliqCsllVar = infoTri ? infoTri.aliqEfetivaCSLL : (itemType === 'servico' ? 0.0288 : 0.0108);
 
-                        irpjCents = BigInt(Math.round(fatTotalNum * aliqIrpjVar * 100));
+                        const irpjBrutoCents = BigInt(Math.round(fatTotalNum * aliqIrpjVar * 100));
                         csllCents = BigInt(Math.round(fatTotalNum * aliqCsllVar * 100));
+
+                        // O IR retido deste documento (IRRF)
+                        let irrfDocCents = 0n;
+                        if (taxDetails && taxDetails.has_irrf) {
+                            const aliqIrrf = (taxDetails.irrf_aliq !== undefined && taxDetails.irrf_aliq !== null) ? taxDetails.irrf_aliq : 4.8;
+                            irrfDocCents = BigInt(Math.round(fatTotalNum * (aliqIrrf / 100) * 100));
+                        } else if (retCents > 0n && !issRetido) {
+                            // Se tem retenção e não é ISS retido, deduz como IRRF
+                            irrfDocCents = retCents;
+                        }
+
+                        // Conforme a planilha oficial: a coluna IRPJ exibe o valor após deduzir o IRRF retido do documento
+                        irpjCents = irpjBrutoCents > irrfDocCents ? (irpjBrutoCents - irrfDocCents) : 0n;
+
                         tributosCents = pisCents + cofinsCents + issCents + irpjCents + csllCents;
                         const issRecolher = issRetido ? 0n : issCents;
                         const aRecolherBase = pisCents + cofinsCents + issRecolher + irpjCents + csllCents;
-                        saldoCents = aRecolherBase > retCents ? (aRecolherBase - retCents) : 0n;
+                        saldoCents = aRecolherBase;
                     } else {
                         // Simples Nacional: DZM / Ybox
                         const anexoKey = (taxDetails && taxDetails.das_anexo) ? taxDetails.das_anexo : 'anexo_iii';

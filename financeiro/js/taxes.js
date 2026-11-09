@@ -303,13 +303,9 @@
         }
 
         /**
-         * Motor Trimestral Oficial de IRPJ e CSLL (Lucro Presumido)
+         * Motor de IRPJ e CSLL (Lucro Presumido)
          * Implementa: Lei 9.249/1995 com Majoração da Redução de Benefícios
-         * Parâmetros do Trimestre Completo:
-         * Limite Trimestral de Presunção (L): R$ 1.250.000,00
-         * Limite do Adicional de IRPJ: R$ 60.000,00 (R$ 20.000,00 / mês)
-         * Presunção Padrão: Serviço 32%, Produto 8% (IRPJ) e 12% (CSLL)
-         * Presunção Majorada (acima de L): Serviço 35.2%, Produto 8.8% (IRPJ) e 13.2% (CSLL)
+         * Suporta modo mensal (com divisão proporcional por 3 das faixas trimestrais) e modo trimestral.
          */
         static apurarLucroPresumidoTrimestral(receitaServicoTrimestre, receitaProdutoTrimestre, options = {}) {
             const S = parseToNumber(receitaServicoTrimestre);
@@ -318,14 +314,18 @@
 
             const ano = options.ano || 2026;
             const trimestre = options.trimestre || 1; // 1, 2, 3 ou 4
+            const isMensal = options.isMensal !== undefined ? Boolean(options.isMensal) : false;
 
-            // Limite trimestral de referência
-            const L = options.limiteTrimestral !== undefined ? parseToNumber(options.limiteTrimestral) : 1250000;
-            const limiteAdicional = options.limiteAdicional !== undefined ? parseToNumber(options.limiteAdicional) : 60000;
+            // Limites de referência: se mensal, divide por 3 conforme fórmula oficial da planilha
+            // Trimestral: L = 1.250.000, Adicional = 60.000
+            // Mensal: L = 1.250.000 / 3 (416.666,67), Adicional = 20.000 (60.000 / 3)
+            const divisor = isMensal ? 3.0 : 1.0;
+            const L = options.limiteTrimestral !== undefined ? parseToNumber(options.limiteTrimestral) : (1250000 / divisor);
+            const limiteAdicional = options.limiteAdicional !== undefined ? parseToNumber(options.limiteAdicional) : (60000 / divisor);
 
             // Vigências da majoração:
             // IRPJ majora a partir de 2026 T1
-            // CSLL majora a partir de 2026 T2 (no T1 de 2026, vigência CSLL usa regra normal 32% e 12%)
+            // CSLL majora a partir de 2026 T2
             const aplicaMajoracaoIRPJ = options.aplicaMajoracaoIRPJ !== undefined 
                 ? Boolean(options.aplicaMajoracaoIRPJ)
                 : (ano > 2026 || (ano === 2026 && trimestre >= 1));
@@ -334,7 +334,7 @@
                 ? Boolean(options.aplicaMajoracaoCSLL)
                 : (ano > 2026 || (ano === 2026 && trimestre >= 2));
 
-            // Excedente total trimestral
+            // Excedente total
             const excedente = Math.max(R - L, 0);
 
             let excedente_servicos = 0;
@@ -376,12 +376,12 @@
             const IRPJ_devido = IRPJ_regular + IRPJ_adicional;
             const CSLL_devida = base_CSLL * 0.09;
 
-            // Dedução legal de IRRF retido na fonte pelos tomadores no trimestre
+            // Dedução legal de IRRF retido na fonte pelos tomadores
             const irrfRetidoTrimestre = parseToNumber(options.irrfRetidoTrimestre || 0);
             const IRPJ_a_recolher = Math.max(roundCents(IRPJ_devido - irrfRetidoTrimestre), 0);
             const creditoIRRFExcedente = Math.max(roundCents(irrfRetidoTrimestre - IRPJ_devido), 0);
 
-            // Alíquotas efetivas globais do trimestre
+            // Alíquotas efetivas globais
             const aliqEfetivaIRPJ = R > 0 ? (IRPJ_devido / R) : 0.048;
             const aliqEfetivaCSLL = R > 0 ? (CSLL_devida / R) : 0.0288;
 
@@ -389,6 +389,7 @@
                 trimestre: `${ano}-T${trimestre}`,
                 ano: ano,
                 numTrimestre: trimestre,
+                isMensal: isMensal,
                 receitaTotalTrimestre: R,
                 receitaServicoTrimestre: S,
                 receitaProdutoTrimestre: P,
@@ -566,12 +567,32 @@
                 const retencaoInss = (tipoItem === 'service' && temInss) ? roundCents(valorBruto * (aliquotaInss / 100)) : 0;
                 const totalRetencoes = retencaoIrrf + retencaoInss + issRetidoValor;
 
-                // Provisão IRPJ / CSLL (trimestre em andamento)
-                const basePresIRPJ = tipoItem === 'service' ? 0.32 : 0.08;
-                const basePresCSLL = tipoItem === 'service' ? 0.32 : 0.12;
+                // Provisão IRPJ / CSLL (Fórmula Oficial da Planilha / Opção A)
+                // Se a receita total mensal for informada via params.receitaMensalTotal, usa as alíquotas efetivas exatas da planilha
+                let aliqEfetivaIrpjNota = 0.048;
+                let aliqEfetivaCsllNota = 0.0288;
 
-                const provisaoIRPJ = roundCents(valorBruto * basePresIRPJ * 0.15);
-                const provisaoCSLL = roundCents(valorBruto * basePresCSLL * 0.09);
+                if (params.receitaMensalTotal && parseToNumber(params.receitaMensalTotal) > 0) {
+                    const R_mes = parseToNumber(params.receitaMensalTotal);
+                    const L_m = 1250000 / 3;
+                    const B0_m = 400000 / 3;
+                    const base_m = Math.max(0, ((R_mes - L_m) * 0.352) + B0_m);
+                    const irpj_tot_m = (base_m * 0.15) + Math.max(0, (base_m - 20000) * 0.10);
+                    const csll_tot_m = base_m * 0.09;
+                    aliqEfetivaIrpjNota = irpj_tot_m / R_mes;
+                    aliqEfetivaCsllNota = csll_tot_m / R_mes;
+                } else if (params.aliqIrpjEfetiva && params.aliqCsllEfetiva) {
+                    aliqEfetivaIrpjNota = parseToNumber(params.aliqIrpjEfetiva);
+                    aliqEfetivaCsllNota = parseToNumber(params.aliqCsllEfetiva);
+                } else {
+                    const basePresIRPJ = tipoItem === 'service' ? 0.32 : 0.08;
+                    const basePresCSLL = tipoItem === 'service' ? 0.32 : 0.12;
+                    aliqEfetivaIrpjNota = basePresIRPJ * 0.15;
+                    aliqEfetivaCsllNota = basePresCSLL * 0.09;
+                }
+
+                const provisaoIRPJ = roundCents(valorBruto * aliqEfetivaIrpjNota);
+                const provisaoCSLL = roundCents(valorBruto * aliqEfetivaCsllNota);
 
                 // Compensação: IRRF compensável abaterá o IRPJ devido
                 const irpjSaldoARecolher = Math.max(roundCents(provisaoIRPJ - retencaoIrrf), 0);
@@ -597,7 +618,9 @@
                         irpjSaldoARecolher: irpjSaldoARecolher,
                         creditoIrrfExcedente: creditoIrrfExcedente,
                         csllProvisao: provisaoCSLL,
-                        nota: 'Provisão — trimestre em andamento (apurada definitivamente no encerramento trimestral)'
+                        aliqEfetivaIrpj: aliqEfetivaIrpjNota,
+                        aliqEfetivaCsll: aliqEfetivaCsllNota,
+                        nota: 'Provisão — apurada mensalmente conforme fórmula oficial do Lucro Presumido'
                     },
                     retencoes: {
                         irrf: { ativo: temIrrf, valor: retencaoIrrf, taxa: aliquotaIrrf, compensavel: true },
