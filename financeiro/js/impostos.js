@@ -531,9 +531,6 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     let irpjCents = 0n;
                     let csllCents = 0n;
                     let tributosCents = 0n;
-                    let liquidoDocCents = doc.net_amount !== undefined && doc.net_amount !== null
-                        ? window.BpoMoney.toCents(doc.net_amount)
-                        : (fatTotalCents > retCents ? fatTotalCents - retCents : 0n);
                     let issIsento = false;
 
                     if (isLP) {
@@ -635,6 +632,16 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                             tributosCents = BigInt(Math.round(fatTotalNum * aliqDasEfetiva * 100));
                         }
                     }
+
+                    // =========================================================================
+                    // VALOR LÍQUIDO DO MÓDULO DE IMPOSTOS
+                    // Valor Líquido = Valor Bruto descontado de todos os impostos
+                    // (PIS, COFINS, IRPJ estimado, CSLL estimado, ISS) e do que foi retido
+                    // =========================================================================
+                    const deducoesTotaisCents = tributosCents + retCents;
+                    const liquidoDocCents = fatTotalCents > deducoesTotaisCents
+                        ? (fatTotalCents - deducoesTotaisCents)
+                        : 0n;
 
                     somaBruto += fatTotalCents;
                     somaPis += pisCents;
