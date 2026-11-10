@@ -469,7 +469,16 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     const reg = regras.find(r => r.collaborator_id === colab.id);
                     if (reg) {
                         const pct = parseFloat(reg.percentage) || 0;
-                        const baseUso = (reg.basis_override === 'gross_invoiced') ? brutoCents : liquidoCents;
+                        // Aplica fator de base comissionada (ComissaoEscopo custom)
+                        const notesCtrd = ctr.notes || '';
+                        let pctBaseComissionada = 1.0;
+                        const mEscopoDin = notesCtrd.match(/\[ComissaoEscopo:\s*(.*?)\]/);
+                        const mPctCustDin = notesCtrd.match(/\[ComissaoPctCustom:\s*(.*?)\]/);
+                        if (mEscopoDin && mEscopoDin[1].trim() === 'custom' && mPctCustDin) {
+                            pctBaseComissionada = (parseFloat(mPctCustDin[1]) || 100) / 100;
+                        }
+                        const baseRaw = (reg.basis_override === 'gross_invoiced') ? brutoCents : liquidoCents;
+                        const baseUso = BigInt(Math.round(Number(baseRaw) * pctBaseComissionada));
                         const cNum = (Number(baseUso) / 100) * (pct / 100);
                         comissoesColabs[colab.id] = BigInt(Math.round(cNum * 100));
                     } else {
@@ -1012,11 +1021,22 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 const impostosCents = calcularImpostosProporcionaisDoc(doc);
                 const liquidoCents = recebidoCents > impostosCents ? (recebidoCents - impostosCents) : recebidoCents;
 
+                // Lê configuração de escopo de comissão do campo notes do contrato
+                const notesContrato = ctr.notes || '';
+                let pctBaseComissionada = 1.0; // padrão = 100% da base
+                const mEscopo = notesContrato.match(/\[ComissaoEscopo:\s*(.*?)\]/);
+                const mPctCustom = notesContrato.match(/\[ComissaoPctCustom:\s*(.*?)\]/);
+                if (mEscopo && mEscopo[1].trim() === 'custom' && mPctCustom) {
+                    pctBaseComissionada = (parseFloat(mPctCustom[1]) || 100) / 100;
+                }
+
                 regrasDoCtr.forEach(reg => {
                     const colab = colabsAtivos.find(c => c.id === reg.collaborator_id);
                     if (!colab) return;
 
-                    const baseUso = (reg.basis_override === 'gross_invoiced') ? brutoCents : liquidoCents;
+                    const baseRaw = (reg.basis_override === 'gross_invoiced') ? brutoCents : liquidoCents;
+                    // Aplica fator de base comissionada (ex: apenas 24,9895% do líquido para aditivos)
+                    const baseUso = BigInt(Math.round(Number(baseRaw) * pctBaseComissionada));
                     const pct = parseFloat(reg.percentage) || 0;
 
                     const res = window.BpoCommissionEngine.calcularComissao({
@@ -1049,10 +1069,28 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 return;
             }
 
-            // Upsert dos cálculos
-            await window.BpoSupabase.request('commission_calculations?on_conflict=idempotency_key', {
+            // Deleta registros 'pending' existentes para o período antes de reinserir,
+            // garantindo que re-apurações sempre reflitam as configurações mais recentes.
+            // Registros com status 'paid' nunca são tocados.
+            try {
+                const calcsExistentes = await window.BpoSupabase.request(
+                    `commission_calculations?company_id=eq.${empresaAtiva.id}&competence_month=eq.${competenciaAtiva}&status=eq.pending`,
+                    { method: 'GET' }
+                ) || [];
+                for (const c of calcsExistentes) {
+                    await window.BpoSupabase.request(
+                        `commission_calculations?id=eq.${c.id}`,
+                        { method: 'DELETE' }
+                    );
+                }
+            } catch (delErr) {
+                console.warn('Aviso: não foi possível limpar registros anteriores:', delErr.message);
+            }
+
+            // Insere os novos cálculos (sem conflito, pois os pending foram deletados)
+            await window.BpoSupabase.request('commission_calculations', {
                 method: 'POST',
-                prefer: 'resolution=ignore-duplicates,return=representation',
+                prefer: 'return=representation',
                 body: JSON.stringify(lotes)
             });
 
