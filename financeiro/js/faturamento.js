@@ -44,6 +44,8 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
     let documentos = [];
     let contratos = [];
     let companiesMap = new Map();
+    // RBT12 real por empresa (Simples Nacional): populado a cada carregamento de competência
+    let rbt12PorEmpresaFat = new Map();
 
     // Elementos DOM
     const selectEmpresa = document.getElementById('selectEmpresa');
@@ -418,6 +420,44 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
 
             atualizarDropdownFiltroContratos();
             renderizarMetricas();
+
+            // Calcula RBT12 real das empresas Simples Nacional (12 meses anteriores à competência)
+            // para uso correto no cálculo do Valor Líquido da tabela de lançamentos
+            rbt12PorEmpresaFat = new Map();
+            try {
+                if (competenciaAtiva && competenciaAtiva.includes('-')) {
+                    const [anoStr, mesStr] = competenciaAtiva.split('-');
+                    let a = parseInt(anoStr, 10);
+                    let m = parseInt(mesStr, 10);
+                    const meses12 = [];
+                    for (let i = 1; i <= 12; i++) {
+                        m--;
+                        if (m === 0) { m = 12; a--; }
+                        meses12.push(`${a}-${String(m).padStart(2, '0')}`);
+                    }
+                    const inQuery = meses12.join(',');
+                    // Identifica empresas Simples Nacional presentes nos documentos
+                    const empresasSN = [...companiesMap.values()].filter(e => e.tax_regime === 'simples_nacional');
+                    for (const empSN of empresasSN) {
+                        try {
+                            const docs12 = await window.BpoSupabase.request(
+                                `billing_documents?company_id=eq.${empSN.id}&competence_month=in.(${inQuery})&status=neq.cancelled`,
+                                { method: 'GET' }
+                            );
+                            let totalCents = 0n;
+                            (docs12 || []).forEach(d => {
+                                totalCents += window.BpoMoney.toCents(d.gross_amount);
+                            });
+                            rbt12PorEmpresaFat.set(empSN.id, Number(totalCents) / 100);
+                        } catch (e) {
+                            console.warn('RBT12 faturamento: erro empresa', empSN.id, e);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn('RBT12 faturamento: erro geral', e);
+            }
+
             renderizarDocumentos();
             renderizarContratos();
 
@@ -620,12 +660,28 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             const deducoesTotais = pisCents + cofinsCents + irpjBrutoCents + csllCents + issProprioDevidoCents + retCents;
             return fatTotalCents > deducoesTotais ? (fatTotalCents - deducoesTotais) : 0n;
         } else {
-            // Simples Nacional: DAS substitui todos os tributos
+            // Simples Nacional: DAS calculado sempre pelo RBT12 real (nunca usa das_valor/das_aliq desatualizados)
+            const rbt12Real = rbt12PorEmpresaFat.get(doc.company_id) || 0;
+            const rbt12Num = rbt12Real > 0
+                ? rbt12Real
+                : ((taxDetails && taxDetails.das_rbt12)
+                    ? Number(window.BpoMoney.toCents(taxDetails.das_rbt12)) / 100
+                    : 180000);
+            const anexoKey = (taxDetails && taxDetails.das_anexo) || 'anexo_iii';
+            const issIsento = isLocacao || !!(taxDetails && taxDetails.iss_isento_simples);
+
             let tributosCents = 0n;
-            if (taxDetails && taxDetails.das_valor != null) {
-                tributosCents = window.BpoMoney.toCents(taxDetails.das_valor);
-            } else if (taxDetails && taxDetails.das_aliq != null) {
-                tributosCents = BigInt(Math.round(fatTotalNum * (Number(taxDetails.das_aliq) / 100) * 100));
+            if (window.BpoTaxEngine) {
+                try {
+                    const apuracao = window.BpoTaxEngine.apurarSimplesNacional(rbt12Num, fatTotalNum, anexoKey, {
+                        issRetidoTomador: issRetido,
+                        issIsento: issIsento
+                    });
+                    // tributosCents = DAS proporcional ao documento
+                    tributosCents = BigInt(Math.round(fatTotalNum * (apuracao.aliquotaEfetivaNumero || 0.06) * 100));
+                } catch (e) {
+                    tributosCents = BigInt(Math.round(fatTotalNum * 0.06 * 100));
+                }
             } else {
                 tributosCents = BigInt(Math.round(fatTotalNum * 0.06 * 100));
             }
