@@ -332,8 +332,6 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     let anexoEmp = 'anexo_iii';
                     let rbt12Emp = rbt12Calculado > 0 ? rbt12Calculado : 180000;
                     let temIsencaoIssEmp = false;
-                    let somaDasLancamentosCents = 0n;
-                    let temDasGravado = false;
 
                     docsEmp.forEach(d => {
                         const td = d.tax_details || window.BpoFiscalUtils.extrairTaxDetails(d);
@@ -343,10 +341,6 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                                 rbt12Emp = Number(window.BpoMoney.toCents(td.das_rbt12)) / 100;
                             }
                             if (td.iss_isento_simples) temIsencaoIssEmp = true;
-                            if (td.das_valor) {
-                                somaDasLancamentosCents += window.BpoMoney.toCents(td.das_valor);
-                                temDasGravado = true;
-                            }
                         }
                     });
 
@@ -360,11 +354,8 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     });
                     aliqEfetivaNum = apuracaoSN.aliquotaEfetivaNumero || 0.06;
 
-                    if (temDasGravado && somaDasLancamentosCents > 0n) {
-                        dasCents = somaDasLancamentosCents;
-                    } else {
-                        dasCents = BigInt(Math.round(apuracaoSN.valorDas * 100));
-                    }
+                    // Sempre usa cálculo oficial pelo RBT12 real; das_valor dos lançamentos serve apenas como referência histórica
+                    dasCents = BigInt(Math.round(apuracaoSN.valorDas * 100));
 
                     impostoApuradoEmpCents = dasCents;
                     saldoRecolherEmpCents = dasCents;
@@ -588,16 +579,9 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                                 ? Number(window.BpoMoney.toCents(taxDetails.das_rbt12)) / 100 
                                 : 180000);
 
-                        // Se o operador já salvou alíquota/valor do DAS no lançamento, respeita o valor gravado
-                        let valorDasGravadoCents = null;
-                        if (taxDetails && taxDetails.das_valor !== undefined && taxDetails.das_valor !== null) {
-                            valorDasGravadoCents = window.BpoMoney.toCents(taxDetails.das_valor);
-                        }
-
+                        // Sempre recalcula alíquota pelo RBT12 real via BpoTaxEngine (ignora das_aliq e das_valor salvos nos lançamentos, que podem estar desatualizados)
                         let aliqDasEfetiva = 0.06;
-                        if (taxDetails && taxDetails.das_aliq !== undefined && taxDetails.das_aliq !== null && Number(taxDetails.das_aliq) > 0) {
-                            aliqDasEfetiva = Number(taxDetails.das_aliq) / 100;
-                        } else if (window.BpoTaxEngine) {
+                        if (window.BpoTaxEngine) {
                             const previaSN = window.BpoTaxEngine.apurarSimplesNacional(rbt12Num, fatTotalNum, anexoKey, {
                                 issRetidoTomador: issRetido,
                                 issIsento: issIsento
@@ -627,11 +611,8 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                         pisCents    = BigInt(Math.round(fatTotalNum * aliqDasEfetiva * rep.pis * 100));
                         issCents    = issIsento ? 0n : BigInt(Math.round(fatTotalNum * aliqDasEfetiva * rep.iss * 100));
 
-                        if (valorDasGravadoCents !== null && valorDasGravadoCents > 0n) {
-                            tributosCents = valorDasGravadoCents;
-                        } else {
-                            tributosCents = BigInt(Math.round(fatTotalNum * aliqDasEfetiva * 100));
-                        }
+                        // Sempre recalcula tributos pelo RBT12 real
+                        tributosCents = BigInt(Math.round(fatTotalNum * aliqDasEfetiva * 100));
                     }
 
                     // =========================================================================

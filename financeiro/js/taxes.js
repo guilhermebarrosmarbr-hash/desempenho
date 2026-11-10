@@ -187,10 +187,34 @@
 
             // Repartição de tributos do DAS
             const reparticaoFaixas = REPARTICAO_SIMPLES[anexoKey] || REPARTICAO_SIMPLES.anexo_iii;
-            let repFaixa = reparticaoFaixas[`faixa${faixa.faixaIdx}`] || reparticaoFaixas.faixa1;
+            let repFaixa = { ...(reparticaoFaixas[`faixa${faixa.faixaIdx}`] || reparticaoFaixas.faixa1) };
 
-            // Alíquota do componente ISS dentro do DAS
-            const aliquotaEfetivaIss = aliquotaEfetiva * repFaixa.iss;
+            // Regra do teto máximo do ISS (5,00%) - LC 123/2006, art. 18, § 5º-B
+            // Na 5ª faixa do Anexo III, quando a alíquota efetiva for superior a 14,92537%,
+            // o ISS é limitado a 5,00% e a diferença é redistribuída proporcionalmente aos tributos federais:
+            // IRPJ: 6,02%, CSLL: 5,26%, Cofins: 19,28%, PIS/Pasep: 4,18%, CPP: 65,26%
+            let aliquotaEfetivaIss = aliquotaEfetiva * repFaixa.iss;
+            let aliquotaEfetivaFederal = aliquotaEfetiva;
+            let repFederal = null;
+
+            if (anexoKey === 'anexo_iii' && faixa.faixaIdx === 5 && aliquotaEfetiva > 0.1492537) {
+                aliquotaEfetivaIss = 0.05;
+                aliquotaEfetivaFederal = Math.max(aliquotaEfetiva - 0.05, 0);
+                repFederal = { irpj: 0.0602, csll: 0.0526, cofins: 0.1928, pis: 0.0418, inss: 0.6526 };
+            } else if (aliquotaEfetivaIss > 0.05) {
+                aliquotaEfetivaIss = 0.05;
+                aliquotaEfetivaFederal = Math.max(aliquotaEfetiva - 0.05, 0);
+                const somaFederais = (repFaixa.irpj || 0) + (repFaixa.csll || 0) + (repFaixa.cofins || 0) + (repFaixa.pis || 0) + (repFaixa.inss || 0);
+                if (somaFederais > 0) {
+                    repFederal = {
+                        irpj: (repFaixa.irpj || 0) / somaFederais,
+                        csll: (repFaixa.csll || 0) / somaFederais,
+                        cofins: (repFaixa.cofins || 0) / somaFederais,
+                        pis: (repFaixa.pis || 0) / somaFederais,
+                        inss: (repFaixa.inss || 0) / somaFederais
+                    };
+                }
+            }
 
             // Se o ISS foi retido pelo tomador ou é isento, o componente de ISS é segregado e NÃO cobrado no DAS
             const aliquotaDasFinal = (issRetidoTomador || issIsento)
@@ -200,9 +224,30 @@
             const valorDas = roundCents(fat * aliquotaDasFinal);
 
             // Detalhamento dos componentes do DAS
-            // Se isento de ISS, redistribui as proporções dos demais tributos ou zera o ISS
             let componentes = {};
-            if (issIsento && repFaixa.iss > 0) {
+            if (repFederal) {
+                // Quando há teto de 5% de ISS excedente
+                if (issIsento) {
+                    // Sem ISS no DAS
+                    componentes = {
+                        irpj: roundCents(fat * aliquotaEfetivaFederal * repFederal.irpj),
+                        csll: roundCents(fat * aliquotaEfetivaFederal * repFederal.csll),
+                        cofins: roundCents(fat * aliquotaEfetivaFederal * repFederal.cofins),
+                        pis: roundCents(fat * aliquotaEfetivaFederal * repFederal.pis),
+                        inss: roundCents(fat * aliquotaEfetivaFederal * repFederal.inss),
+                        iss: 0
+                    };
+                } else {
+                    componentes = {
+                        irpj: roundCents(fat * aliquotaEfetivaFederal * repFederal.irpj),
+                        csll: roundCents(fat * aliquotaEfetivaFederal * repFederal.csll),
+                        cofins: roundCents(fat * aliquotaEfetivaFederal * repFederal.cofins),
+                        pis: roundCents(fat * aliquotaEfetivaFederal * repFederal.pis),
+                        inss: roundCents(fat * aliquotaEfetivaFederal * repFederal.inss),
+                        iss: issRetidoTomador ? 0 : roundCents(fat * aliquotaEfetivaIss)
+                    };
+                }
+            } else if (issIsento && repFaixa.iss > 0) {
                 const outrosTotal = 1 - repFaixa.iss;
                 const fator = outrosTotal > 0 ? (1 / outrosTotal) : 1;
                 componentes = {
