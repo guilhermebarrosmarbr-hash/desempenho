@@ -564,6 +564,76 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         valAReceber.textContent = window.BpoMoney.formatBRL(aReceber);
     }
 
+    // Calcula o Valor Líquido Econômico de um documento para exibição na tabela.
+    // Deduz todos os tributos (PIS, COFINS, IRPJ, CSLL, ISS próprio, DAS) + retenções,
+    // sem duplicar o ISS quando este for retido pelo tomador.
+    // Retorna BigInt em centavos. NÃO altera net_amount no banco.
+    function calcularLiquidoEconomicoDoc(doc, emp) {
+        const taxDetails = (doc.tax_details && typeof doc.tax_details === 'object')
+            ? doc.tax_details
+            : window.BpoFiscalUtils.extrairTaxDetails(doc);
+        const isLP = emp && emp.tax_regime === 'lucro_presumido';
+
+        // Faturamento total = bruto + extras - descontos
+        const bCents = window.BpoMoney.toCents(doc.gross_amount);
+        const dCents = (taxDetails && taxDetails.desconto != null)
+            ? window.BpoMoney.toCents(taxDetails.desconto)
+            : (doc.discounts ? window.BpoMoney.toCents(doc.discounts) : 0n);
+        const eCents = (taxDetails && taxDetails.extras != null)
+            ? window.BpoMoney.toCents(taxDetails.extras)
+            : 0n;
+        const fatTotalCents = (bCents + eCents) > dCents ? (bCents + eCents - dCents) : 0n;
+        const fatTotalNum = Number(fatTotalCents) / 100;
+
+        const retCents = window.BpoMoney.toCents(doc.retentions);
+        const isLocacao = (doc.document_type === 'locacao') || !!(taxDetails && taxDetails.is_locacao);
+        const itemType = (taxDetails && taxDetails.item_type) || 'servico';
+        const issRetido = !!(taxDetails && taxDetails.iss_retained);
+        const aliqIss = (taxDetails && taxDetails.iss_aliq != null) ? Number(taxDetails.iss_aliq) : 5.0;
+
+        if (isLP) {
+            // PIS e COFINS: usa valor salvo ou calcula pelas alíquotas padrão
+            const pisCents = (taxDetails && taxDetails.pis_valor != null)
+                ? window.BpoMoney.toCents(taxDetails.pis_valor)
+                : BigInt(Math.round(fatTotalNum * 0.0065 * 100));
+            const cofinsCents = (taxDetails && taxDetails.cofins_valor != null)
+                ? window.BpoMoney.toCents(taxDetails.cofins_valor)
+                : BigInt(Math.round(fatTotalNum * 0.03 * 100));
+
+            // ISS (zerado para locação ou não-serviço)
+            const issCents = (itemType === 'servico' && !isLocacao)
+                ? BigInt(Math.round(fatTotalNum * (aliqIss / 100) * 100))
+                : 0n;
+
+            // IRPJ bruto: usa alíquota para evitar discrepância com valor salvo pós-IRRF
+            const aliqIrpj = (taxDetails && taxDetails.irpj_aliq != null)
+                ? Number(taxDetails.irpj_aliq) / 100
+                : (itemType === 'servico' ? 0.048 : 0.012);
+            const aliqCsll = (taxDetails && taxDetails.csll_aliq != null)
+                ? Number(taxDetails.csll_aliq) / 100
+                : (itemType === 'servico' ? 0.0288 : 0.0108);
+            const irpjBrutoCents = BigInt(Math.round(fatTotalNum * aliqIrpj * 100));
+            const csllCents = BigInt(Math.round(fatTotalNum * aliqCsll * 100));
+
+            // Anti-duplicação ISS: se retido, já está em retCents; não somar como guia própria
+            const issProprioDevidoCents = issRetido ? 0n : issCents;
+            const deducoesTotais = pisCents + cofinsCents + irpjBrutoCents + csllCents + issProprioDevidoCents + retCents;
+            return fatTotalCents > deducoesTotais ? (fatTotalCents - deducoesTotais) : 0n;
+        } else {
+            // Simples Nacional: DAS substitui todos os tributos
+            let tributosCents = 0n;
+            if (taxDetails && taxDetails.das_valor != null) {
+                tributosCents = window.BpoMoney.toCents(taxDetails.das_valor);
+            } else if (taxDetails && taxDetails.das_aliq != null) {
+                tributosCents = BigInt(Math.round(fatTotalNum * (Number(taxDetails.das_aliq) / 100) * 100));
+            } else {
+                tributosCents = BigInt(Math.round(fatTotalNum * 0.06 * 100));
+            }
+            const deducoesTotais = tributosCents + retCents;
+            return fatTotalCents > deducoesTotais ? (fatTotalCents - deducoesTotais) : 0n;
+        }
+    }
+
     function renderizarDocumentos() {
         const docsExibicao = getDocumentosFiltrados();
 
@@ -637,6 +707,9 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 }
             }
 
+            // Valor Líquido Econômico: bruto - todos tributos - retenções (sem duplicar ISS retido)
+            const liquidoEconomicoRealCents = calcularLiquidoEconomicoDoc(doc, emp);
+
             return `
                 <tr>
                     <td>${empBadge}</td>
@@ -654,7 +727,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     <td>${escapeHtml(window.BpoMoney.formatBRL(doc.gross_amount))}</td>
                     <td style="color: #f59e0b;">${impostosAtrib}</td>
                     <td style="color: var(--color-danger);">${escapeHtml(window.BpoMoney.formatBRL(doc.retentions))}</td>
-                    <td style="font-weight: 700; color: #fff;">${escapeHtml(window.BpoMoney.formatBRL(doc.net_amount))}</td>
+                    <td style="font-weight: 700; color: #fff;">${window.BpoMoney.formatBRL(liquidoEconomicoRealCents)}</td>
                     <td>${statusBadge}</td>
                     <td style="white-space: nowrap;">
                         <button class="btn btn-primary btn-sm btn-editar-documento" data-id="${escapeHtml(doc.id)}">
@@ -964,6 +1037,9 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
 
         let retTotalCents = 0n;
         let totalImpostosCents = 0n;
+        // Variáveis para cálculo do líquido econômico (LP): preenchidas no bloco else abaixo
+        let _lpPisCents = 0n, _lpCofinsCents = 0n, _lpIrpjCents = 0n, _lpCsllCents = 0n;
+        let _lpIssProprioDevido = 0n;
 
         if (isSimples) {
             // =========================================================================
@@ -1252,6 +1328,14 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
 
             totalImpostosCents = curPisCents + curCofinsCents + issCalcCents + curIrpjCents + curCsllCents;
 
+            // Alimenta variáveis externas para cálculo do líquido econômico fora do bloco
+            _lpPisCents = curPisCents;
+            _lpCofinsCents = curCofinsCents;
+            _lpIrpjCents = curIrpjCents;
+            _lpCsllCents = curCsllCents;
+            // ISS próprio devido: 0 se retido (já está em retTotalCents via issRetidoCents)
+            _lpIssProprioDevido = (!isLocacao && chkIssRetido && itemTipo === 'servico') ? 0n : issCalcCents;
+
             // Valores de retenção nas tags
             document.getElementById('valIrrfPreview').textContent = window.BpoMoney.toDecimalString(irrfCents);
             document.getElementById('valInssPreview').textContent = window.BpoMoney.toDecimalString(inssCents);
@@ -1264,7 +1348,20 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         const subtotalCents = brutoCents + multaCents + jurosCents + extrasCents;
         const deducoesCents = descontoCents + retTotalCents;
         const liquidoRecebCents = subtotalCents > deducoesCents ? (subtotalCents - deducoesCents) : 0n;
-        const liquidoEcoCents = subtotalCents > (totalImpostosCents + descontoCents) ? (subtotalCents - totalImpostosCents - descontoCents) : 0n;
+
+        // Líquido Econômico: deduz todos os tributos + retenções, sem duplicar ISS retido.
+        // Para LP: _lpPisCents/_lpCofinsCents/_lpIrpjCents/_lpCsllCents/_lpIssProprioDevido
+        //          são preenchidos no bloco LP acima com anti-duplicação de ISS retido.
+        // Para Simples: totalImpostosCents = DAS (sem retenções adicionais no Simples).
+        let liquidoEcoCents;
+        if (isSimples) {
+            const deducoesEco = totalImpostosCents + descontoCents;
+            liquidoEcoCents = subtotalCents > deducoesEco ? (subtotalCents - deducoesEco) : 0n;
+        } else {
+            // Lucro Presumido: usa variáveis preenchidas no bloco LP acima
+            const deducoesEco = _lpPisCents + _lpCofinsCents + _lpIrpjCents + _lpCsllCents + _lpIssProprioDevido + descontoCents + retTotalCents;
+            liquidoEcoCents = subtotalCents > deducoesEco ? (subtotalCents - deducoesEco) : 0n;
+        }
 
         // Atualiza campos de saída na tela
         document.getElementById('docRetencoes').value = window.BpoMoney.toDecimalString(retTotalCents);
