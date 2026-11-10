@@ -216,8 +216,46 @@
                 }
             }
 
-            // Se o ISS foi retido pelo tomador ou é isento, o componente de ISS é segregado e NÃO cobrado no DAS
-            const aliquotaDasFinal = (issRetidoTomador || issIsento)
+            // Se a operação for COM ISENÇÃO DE ISS (ex.: atividade com isenção municipal/legal no PGDAS):
+            // Não incide ISS e os tributos federais mantêm suas alíquotas originais da faixa (sem redistribuição de excedente de ISS)
+            if (issIsento) {
+                const aliquotaDasIsento = aliquotaEfetiva * (1 - (repFaixa.iss || 0));
+                const irpjC = roundCents(fat * aliquotaEfetiva * (repFaixa.irpj || 0));
+                const csllC = roundCents(fat * aliquotaEfetiva * (repFaixa.csll || 0));
+                const cofinsC = roundCents(fat * aliquotaEfetiva * (repFaixa.cofins || 0));
+                const pisC = roundCents(fat * aliquotaEfetiva * (repFaixa.pis || 0));
+                const inssC = roundCents(fat * aliquotaEfetiva * (repFaixa.inss || 0));
+                const valorDas = roundCents(irpjC + csllC + cofinsC + pisC + inssC);
+
+                return {
+                    rbt12: rbt,
+                    faturamentoMes: fat,
+                    anexo: anexoKey,
+                    faixa: faixa.faixa,
+                    aliquotaNominal: faixa.aliq,
+                    parcelaDeduzir: faixa.ded,
+                    aliquotaEfetivaNumero: aliquotaDasIsento,
+                    aliquotaEfetivaFormatada: (aliquotaDasIsento * 100).toFixed(2) + '%',
+                    valorDas: valorDas,
+                    componentes: {
+                        irpj: irpjC,
+                        csll: csllC,
+                        cofins: cofinsC,
+                        pis: pisC,
+                        inss: inssC,
+                        iss: 0
+                    },
+                    issRetidoTomador: false,
+                    issIsento: true,
+                    valorIssRetido: 0,
+                    aliquotaRetencaoIss: 0,
+                    pendencia: null
+                };
+            }
+
+            // Operação NORMAL (Sem Isenção de ISS):
+            // Se o ISS foi retido pelo tomador, o componente de ISS é segregado e NÃO cobrado no DAS
+            const aliquotaDasFinal = issRetidoTomador
                 ? Math.max(aliquotaEfetiva - aliquotaEfetivaIss, 0)
                 : aliquotaEfetiva;
 
@@ -227,36 +265,13 @@
             let componentes = {};
             if (repFederal) {
                 // Quando há teto de 5% de ISS excedente
-                if (issIsento) {
-                    // Sem ISS no DAS
-                    componentes = {
-                        irpj: roundCents(fat * aliquotaEfetivaFederal * repFederal.irpj),
-                        csll: roundCents(fat * aliquotaEfetivaFederal * repFederal.csll),
-                        cofins: roundCents(fat * aliquotaEfetivaFederal * repFederal.cofins),
-                        pis: roundCents(fat * aliquotaEfetivaFederal * repFederal.pis),
-                        inss: roundCents(fat * aliquotaEfetivaFederal * repFederal.inss),
-                        iss: 0
-                    };
-                } else {
-                    componentes = {
-                        irpj: roundCents(fat * aliquotaEfetivaFederal * repFederal.irpj),
-                        csll: roundCents(fat * aliquotaEfetivaFederal * repFederal.csll),
-                        cofins: roundCents(fat * aliquotaEfetivaFederal * repFederal.cofins),
-                        pis: roundCents(fat * aliquotaEfetivaFederal * repFederal.pis),
-                        inss: roundCents(fat * aliquotaEfetivaFederal * repFederal.inss),
-                        iss: issRetidoTomador ? 0 : roundCents(fat * aliquotaEfetivaIss)
-                    };
-                }
-            } else if (issIsento && repFaixa.iss > 0) {
-                const outrosTotal = 1 - repFaixa.iss;
-                const fator = outrosTotal > 0 ? (1 / outrosTotal) : 1;
                 componentes = {
-                    irpj: roundCents(fat * aliquotaDasFinal * repFaixa.irpj * fator),
-                    csll: roundCents(fat * aliquotaDasFinal * repFaixa.csll * fator),
-                    cofins: roundCents(fat * aliquotaDasFinal * repFaixa.cofins * fator),
-                    pis: roundCents(fat * aliquotaDasFinal * repFaixa.pis * fator),
-                    inss: roundCents(fat * aliquotaDasFinal * repFaixa.inss * fator),
-                    iss: 0
+                    irpj: roundCents(fat * aliquotaEfetivaFederal * repFederal.irpj),
+                    csll: roundCents(fat * aliquotaEfetivaFederal * repFederal.csll),
+                    cofins: roundCents(fat * aliquotaEfetivaFederal * repFederal.cofins),
+                    pis: roundCents(fat * aliquotaEfetivaFederal * repFederal.pis),
+                    inss: roundCents(fat * aliquotaEfetivaFederal * repFederal.inss),
+                    iss: issRetidoTomador ? 0 : roundCents(fat * aliquotaEfetivaIss)
                 };
             } else {
                 componentes = {

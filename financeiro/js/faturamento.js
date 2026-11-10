@@ -668,7 +668,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     ? Number(window.BpoMoney.toCents(taxDetails.das_rbt12)) / 100
                     : 180000);
             const anexoKey = (taxDetails && taxDetails.das_anexo) || 'anexo_iii';
-            const issIsento = isLocacao;
+            const issIsento = isLocacao || !!(taxDetails && taxDetails.iss_isento_simples);
 
             let tributosCents = 0n;
             if (window.BpoTaxEngine) {

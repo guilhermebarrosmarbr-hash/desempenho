@@ -328,12 +328,14 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     // 1. Calcula o RBT12 real das 12 competências anteriores da empresa
                     const rbt12Calculado = await calcularRbt12RealEmpresa(emp.id, competenciaAtiva);
 
-                    // 2. Verifica anexo e segrega faturamento por tipo (serviços sujeitos a ISS vs locação isenta de ISS)
+                    // 2. Verifica anexo e segrega faturamento por tipo conforme PGDAS:
+                    // Linha 1: Anexo III - Serviço (Sem isenção ISS)
+                    // Linha 2: Anexo III - Serviço (Com isenção ISS) / Locação
                     let anexoEmp = 'anexo_iii';
                     let rbt12Emp = rbt12Calculado > 0 ? rbt12Calculado : 180000;
 
-                    let fatServicosCents = 0n;
-                    let fatLocacaoCents = 0n;
+                    let fatSemIsencaoIssCents = 0n;
+                    let fatComIsencaoIssCents = 0n;
 
                     docsEmp.forEach(d => {
                         const td = d.tax_details || window.BpoFiscalUtils.extrairTaxDetails(d);
@@ -344,45 +346,46 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                             }
                         }
                         const isLoc = (d.document_type === 'locacao') || !!(td && td.is_locacao);
+                        const isIsentoIss = isLoc || !!(td && td.iss_isento_simples);
                         const valDoc = calcularFaturamentoTotalDoc(d, td);
-                        if (isLoc) {
-                            fatLocacaoCents += valDoc;
+                        if (isIsentoIss) {
+                            fatComIsencaoIssCents += valDoc;
                         } else {
-                            fatServicosCents += valDoc;
+                            fatSemIsencaoIssCents += valDoc;
                         }
                     });
 
-                    const fatServicosNum = Number(fatServicosCents) / 100;
-                    const fatLocacaoNum = Number(fatLocacaoCents) / 100;
+                    const fatSemIsencaoNum = Number(fatSemIsencaoIssCents) / 100;
+                    const fatComIsencaoNum = Number(fatComIsencaoIssCents) / 100;
 
-                    // Apuração oficial para serviços normais (com ISS)
-                    const apuracaoServicos = window.BpoTaxEngine.apurarSimplesNacional(rbt12Emp, fatServicosNum, anexoEmp, {
+                    // Apuração oficial para serviços sem isenção de ISS (alíquota cheia com teto de 5% de ISS)
+                    const apuracaoSemIsencao = window.BpoTaxEngine.apurarSimplesNacional(rbt12Emp, fatSemIsencaoNum, anexoEmp, {
                         issIsento: false
                     });
 
-                    // Apuração oficial para locação (sem ISS por imunidade legal)
-                    const apuracaoLocacao = fatLocacaoNum > 0
-                        ? window.BpoTaxEngine.apurarSimplesNacional(rbt12Emp, fatLocacaoNum, anexoEmp, { issIsento: true })
+                    // Apuração oficial para serviços com isenção de ISS (tributos federais com alíquota proporcional oficial)
+                    const apuracaoComIsencao = fatComIsencaoNum > 0
+                        ? window.BpoTaxEngine.apurarSimplesNacional(rbt12Emp, fatComIsencaoNum, anexoEmp, { issIsento: true })
                         : { valorDas: 0, componentes: {} };
 
-                    const dasServicosCents = BigInt(Math.round(apuracaoServicos.valorDas * 100));
-                    const dasLocacaoCents = BigInt(Math.round(apuracaoLocacao.valorDas * 100));
-                    const dasCents = dasServicosCents + dasLocacaoCents;
+                    const dasSemIsencaoCents = BigInt(Math.round(apuracaoSemIsencao.valorDas * 100));
+                    const dasComIsencaoCents = BigInt(Math.round(apuracaoComIsencao.valorDas * 100));
+                    const dasCents = dasSemIsencaoCents + dasComIsencaoCents;
 
-                    // Alíquota efetiva do Anexo III baseada no faturamento de serviços (ou média ponderada)
-                    const aliqEfetivaNum = apuracaoServicos.aliquotaEfetivaNumero || 0.06;
+                    // Alíquota efetiva de referência do Anexo III (15,62% na 5ª faixa)
+                    const aliqEfetivaNum = apuracaoSemIsencao.aliquotaEfetivaNumero || 0.06;
 
                     impostoApuradoEmpCents = dasCents;
                     saldoRecolherEmpCents = dasCents;
 
                     // Componentes consolidados oficiais
-                    const compServ = apuracaoServicos.componentes || {};
-                    const compLoc = apuracaoLocacao.componentes || {};
-                    const cppCents = BigInt(Math.round(((compServ.inss || 0) + (compLoc.inss || 0)) * 100));
-                    const issSNCents = BigInt(Math.round((compServ.iss || 0) * 100));
-                    const pisSNCents = BigInt(Math.round(((compServ.pis || 0) + (compLoc.pis || 0)) * 100));
-                    const cofinsSNCents = BigInt(Math.round(((compServ.cofins || 0) + (compLoc.cofins || 0)) * 100));
-                    const irpjCsllSNCents = BigInt(Math.round((((compServ.irpj || 0) + (compLoc.irpj || 0)) + ((compServ.csll || 0) + (compLoc.csll || 0))) * 100));
+                    const compSem = apuracaoSemIsencao.componentes || {};
+                    const compCom = apuracaoComIsencao.componentes || {};
+                    const cppCents = BigInt(Math.round(((compSem.inss || 0) + (compCom.inss || 0)) * 100));
+                    const issSNCents = BigInt(Math.round((compSem.iss || 0) * 100));
+                    const pisSNCents = BigInt(Math.round(((compSem.pis || 0) + (compCom.pis || 0)) * 100));
+                    const cofinsSNCents = BigInt(Math.round(((compSem.cofins || 0) + (compCom.cofins || 0)) * 100));
+                    const irpjCsllSNCents = BigInt(Math.round((((compSem.irpj || 0) + (compCom.irpj || 0)) + ((compSem.csll || 0) + (compCom.csll || 0))) * 100));
 
                     const anexoNome = anexoEmp.replace('_', ' ').toUpperCase();
                     const rbt12Formatado = window.BpoMoney.formatBRL(BigInt(Math.round(rbt12Emp * 100)));
@@ -405,7 +408,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                                 <div><span style="color:var(--text-muted);">Parcela IRPJ/CSLL:</span> <strong>${window.BpoMoney.formatBRL(irpjCsllSNCents)}</strong></div>
                             </div>
                             <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between;">
-                                <span style="font-size:0.82rem; color:var(--text-muted);">* Tributos apurados com RBT12 real das competências de faturamento${fatLocacaoCents > 0n ? ' (segregação legal: serviços com ISS e locação isenta)' : ''}</span>
+                                <span style="font-size:0.82rem; color:var(--text-muted);">* Tributos apurados com RBT12 real das competências de faturamento (com segregação oficial de receitas com/sem isenção de ISS)</span>
                                 <span style="color:#f59e0b; font-weight:700;">DAS Estimado a Recolher: ${window.BpoMoney.formatBRL(impostoApuradoEmpCents)}</span>
                             </div>
                         </div>
@@ -582,8 +585,8 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     } else {
                         // Simples Nacional: DZM / Ybox
                         const anexoKey = (taxDetails && taxDetails.das_anexo) ? taxDetails.das_anexo : 'anexo_iii';
-                        // Locação isenta de ISS em qualquer regime (STJ Súmula 31; LC 116/2003)
-                        issIsento = isLocacao;
+                        // Isenção de ISS conforme enquadramento do documento (locação ou isenção municipal)
+                        issIsento = isLocacao || !!(taxDetails && taxDetails.iss_isento_simples);
                         
                         // RBT12 real calculado a partir das 12 competências anteriores da empresa
                         const rbt12Real = rbt12PorEmpresaMap.get(doc.company_id) || 0;
