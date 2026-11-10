@@ -529,6 +529,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     let cofinsCents = 0n;
                     let issCents = 0n;
                     let irpjCents = 0n;
+                    let irpjBrutoCents = 0n;
                     let csllCents = 0n;
                     let tributosCents = 0n;
                     let issIsento = false;
@@ -556,7 +557,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                         const aliqIrpjVar = infoTri ? infoTri.aliqEfetivaIRPJ : (itemType === 'servico' ? 0.048 : 0.012);
                         const aliqCsllVar = infoTri ? infoTri.aliqEfetivaCSLL : (itemType === 'servico' ? 0.0288 : 0.0108);
 
-                        const irpjBrutoCents = BigInt(Math.round(fatTotalNum * aliqIrpjVar * 100));
+                        irpjBrutoCents = BigInt(Math.round(fatTotalNum * aliqIrpjVar * 100));
                         csllCents = BigInt(Math.round(fatTotalNum * aliqCsllVar * 100));
 
                         // O IR retido deste documento (IRRF)
