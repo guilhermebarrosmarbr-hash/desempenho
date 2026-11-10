@@ -635,10 +635,15 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
 
                     // =========================================================================
                     // VALOR LÍQUIDO DO MÓDULO DE IMPOSTOS
-                    // Valor Líquido = Valor Bruto descontado de todos os impostos
-                    // (PIS, COFINS, IRPJ estimado, CSLL estimado, ISS) e do que foi retido
+                    // Valor Líquido = Valor Bruto descontado de todos os impostos e retenções:
+                    // PIS + COFINS + IRPJ estimado + CSLL estimado + ISS próprio devido + Retenções
+                    // Quando o ISS é retido na fonte, ele já está embutido em retCents (Retenções),
+                    // não devendo ser duplicado como guia própria a pagar.
                     // =========================================================================
-                    const deducoesTotaisCents = tributosCents + retCents;
+                    const issProprioDevidoCents = issRetido ? 0n : issCents;
+                    const deducoesTotaisCents = isLP
+                        ? (pisCents + cofinsCents + irpjBrutoCents + csllCents + issProprioDevidoCents + retCents)
+                        : (tributosCents + retCents);
                     const liquidoDocCents = fatTotalCents > deducoesTotaisCents
                         ? (fatTotalCents - deducoesTotaisCents)
                         : 0n;
