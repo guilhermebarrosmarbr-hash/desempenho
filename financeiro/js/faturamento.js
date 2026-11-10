@@ -923,6 +923,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         requestIdPrevia++;
         const currentReq = requestIdPrevia;
 
+        const docEmEdicaoId = document.getElementById('docId')?.value || null;
         const companyId = document.getElementById('docEmpresaId').value;
         const brutoStr = document.getElementById('docValorBruto').value;
         const brutoCents = window.BpoMoney.toCents(brutoStr);
