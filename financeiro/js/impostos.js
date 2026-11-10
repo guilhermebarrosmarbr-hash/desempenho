@@ -580,38 +580,26 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                                 : 180000);
 
                         // Sempre recalcula alíquota pelo RBT12 real via BpoTaxEngine (ignora das_aliq e das_valor salvos nos lançamentos, que podem estar desatualizados)
+                        // Nota: NÃO passamos issRetidoTomador aqui — o DAS do Simples Nacional é calculado sobre o faturamento total,
+                        // independente de o ISS ser retido pelo tomador. A retenção aparece na coluna "Retenções", não deduz o DAS.
                         let aliqDasEfetiva = 0.06;
+                        let compSN = {};
                         if (window.BpoTaxEngine) {
                             const previaSN = window.BpoTaxEngine.apurarSimplesNacional(rbt12Num, fatTotalNum, anexoKey, {
-                                issRetidoTomador: issRetido,
                                 issIsento: issIsento
                             });
                             aliqDasEfetiva = previaSN.aliquotaEfetivaNumero || 0.06;
+                            compSN = previaSN.componentes || {};
                         }
 
-                        // Partilha dos 5 anexos
-                        let rep = REPARTICAO_SIMPLES_PADRAO[anexoKey] || REPARTICAO_SIMPLES_PADRAO.anexo_iii;
-                        if (issIsento && rep.iss > 0) {
-                            const issShare = rep.iss;
-                            const outrosTotal = 1 - issShare;
-                            const fator = outrosTotal > 0 ? (1 / outrosTotal) : 1;
-                            rep = {
-                                irpj:   rep.irpj   * fator,
-                                csll:   rep.csll   * fator,
-                                cofins: rep.cofins * fator,
-                                pis:    rep.pis    * fator,
-                                inss:   rep.inss   * fator,
-                                iss:    0
-                            };
-                        }
+                        // Usa componentes oficiais do motor (faixa e repartição corretas para o RBT12)
+                        irpjCents   = BigInt(Math.round((compSN.irpj   || 0) * 100));
+                        csllCents   = BigInt(Math.round((compSN.csll   || 0) * 100));
+                        cofinsCents = BigInt(Math.round((compSN.cofins || 0) * 100));
+                        pisCents    = BigInt(Math.round((compSN.pis    || 0) * 100));
+                        issCents    = issIsento ? 0n : BigInt(Math.round((compSN.iss || 0) * 100));
 
-                        irpjCents   = BigInt(Math.round(fatTotalNum * aliqDasEfetiva * rep.irpj * 100));
-                        csllCents   = BigInt(Math.round(fatTotalNum * aliqDasEfetiva * rep.csll * 100));
-                        cofinsCents = BigInt(Math.round(fatTotalNum * aliqDasEfetiva * rep.cofins * 100));
-                        pisCents    = BigInt(Math.round(fatTotalNum * aliqDasEfetiva * rep.pis * 100));
-                        issCents    = issIsento ? 0n : BigInt(Math.round(fatTotalNum * aliqDasEfetiva * rep.iss * 100));
-
-                        // Sempre recalcula tributos pelo RBT12 real
+                        // Sempre recalcula tributos (DAS proporcional ao documento) pelo RBT12 real
                         tributosCents = BigInt(Math.round(fatTotalNum * aliqDasEfetiva * 100));
                     }
 
