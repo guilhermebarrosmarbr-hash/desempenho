@@ -21,8 +21,9 @@
     const valTotalApurado = document.getElementById('valTotalApurado');
     const valRepassesLiquidados = document.getElementById('valRepassesLiquidados');
 
-    // Modal
+    // Modais
     const modalAcordo = document.getElementById('modalAcordo');
+    const modalRepasseManual = document.getElementById('modalRepasseManual');
 
     window.addEventListener('DOMContentLoaded', async () => {
         const hoje = new Date();
@@ -46,10 +47,16 @@
         document.getElementById('btnNovoAcordo').addEventListener('click', abrirModalAcordo);
         document.getElementById('btnProcessarIntermediacao').addEventListener('click', processarRepasses);
         document.getElementById('formAcordo').addEventListener('submit', salvarAcordo);
+
+        const btnNovoRepasseManual = document.getElementById('btnNovoRepasseManual');
+        if (btnNovoRepasseManual) btnNovoRepasseManual.addEventListener('click', abrirModalRepasseManual);
+        const formRepasseManual = document.getElementById('formRepasseManual');
+        if (formRepasseManual) formRepasseManual.addEventListener('submit', salvarRepasseManual);
     });
 
     window.fecharModais = function() {
-        modalAcordo.style.display = 'none';
+        if (modalAcordo) modalAcordo.style.display = 'none';
+        if (modalRepasseManual) modalRepasseManual.style.display = 'none';
     };
 
     async function carregarEmpresas() {
@@ -82,17 +89,25 @@
         if (!empresaPagadoraAtiva) return;
 
         try {
-            // 1. Acordos onde a empresa selecionada é pagadora
-            acordos = await window.BpoSupabase.request(
-                `intermediation_agreements?payer_company_id=eq.${empresaPagadoraAtiva.id}`,
+            // 1. Acordos cadastrados
+            const todosAcordos = await window.BpoSupabase.request(
+                'intermediation_agreements',
                 { method: 'GET' }
             );
 
-            // 2. Repasses calculados da competência filtrados pela empresa pagadora
-            repasses = await window.BpoSupabase.request(
-                `intermediation_calculations?company_id=eq.${empresaPagadoraAtiva.id}&competence_month=eq.${competenciaAtiva}&order=created_at.desc`,
+            // Filtra acordos onde a empresa selecionada é a pagadora (faturadora do contrato)
+            acordos = (todosAcordos || []).filter(a => a.payer_company_id === empresaPagadoraAtiva.id);
+
+            // 2. Repasses calculados da competência
+            // Não filtra por company_id na query direta para evitar erro PGRST204 se a coluna não existir
+            const repassesCompetencia = await window.BpoSupabase.request(
+                `intermediation_calculations?competence_month=eq.${competenciaAtiva}&order=created_at.desc`,
                 { method: 'GET' }
             );
+
+            // Filtra os repasses pertencentes aos acordos da empresa pagadora ativa
+            const idsAcordosPagadora = new Set(acordos.map(a => a.id));
+            repasses = (repassesCompetencia || []).filter(r => idsAcordosPagadora.has(r.agreement_id));
 
             renderizarMetricas();
             renderizarExtrato();
@@ -119,7 +134,7 @@
             }
         });
 
-        // Calcula taxa média ponderada de verdade
+        // Calcula taxa média ponderada
         let taxaMediaStr = '0.00%';
         if (baseTotal > 0n) {
             const taxaMediaNum = Number(apuradoTotal * 10000n / baseTotal) / 100;
@@ -139,7 +154,7 @@
             listaIntermediacaoBody.innerHTML = `
                 <tr>
                     <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 32px;">
-                        Nenhum repasse intercompany apurado na competência ${escapeHtml(competenciaAtiva)}. Clique em "Processar Repasses".
+                        Nenhum repasse intercompany apurado na competência ${escapeHtml(competenciaAtiva)}. Clique em "Processar Repasses" ou "+ Novo Repasse Manual".
                     </td>
                 </tr>
             `;
@@ -158,25 +173,25 @@
 
             return `
                 <tr>
-                    <td style="font-weight: 700; color: #fff;">${escapeHtml(r.competence_month)}</td>
-                    <td>${escapeHtml(empresaPagadoraAtiva.name)}</td>
-                    <td>${nomeRecebedora}</td>
-                    <td>${escapeHtml(window.BpoMoney.formatBRL(r.base_amount))}</td>
-                    <td style="color: var(--color-warning);">${escapeHtml(r.rate)}%</td>
-                    <td style="font-weight: 700; color: #fff;">${escapeHtml(window.BpoMoney.formatBRL(r.intermediation_amount))}</td>
+                    <td style="font-weight: 600; color: #fff;">${escapeHtml(empresaPagadoraAtiva.name)}</td>
+                    <td style="font-weight: 600; color: var(--color-primary);">${nomeRecebedora}</td>
+                    <td>${escapeHtml(r.competence_month)}</td>
+                    <td>${window.BpoMoney.formatBRL(r.base_amount)}</td>
+                    <td style="color: var(--color-warning); font-weight: 600;">${escapeHtml(r.rate)}%</td>
+                    <td style="font-weight: 700; color: #fff;">${window.BpoMoney.formatBRL(r.intermediation_amount)}</td>
                     <td>${statusBadge}</td>
                     <td>
                         ${r.status !== 'paid' ? `
-                            <button class="btn btn-secondary btn-sm btn-quitar-repasse" data-id="${escapeHtml(r.id)}">
+                            <button class="btn btn-secondary btn-sm btn-quitar" data-id="${r.id}" title="Marcar como Liquidado">
                                 Quitar Repasse
                             </button>
-                        ` : '<span style="color: var(--text-muted); font-size: 0.8rem;">Concluído</span>'}
+                        ` : '<span style="color: var(--color-success); font-size: 0.85rem;">Concluído</span>'}
                     </td>
                 </tr>
             `;
         }).join('');
 
-        listaIntermediacaoBody.querySelectorAll('.btn-quitar-repasse').forEach(btn => {
+        document.querySelectorAll('.btn-quitar').forEach(btn => {
             btn.addEventListener('click', () => window.quitarRepasse(btn.dataset.id));
         });
     }
@@ -195,12 +210,16 @@
 
         listaAcordosBody.innerHTML = acordos.map(a => {
             const rec = empresas.find(e => e.id === a.receiver_company_id) || { name: 'Empresa Parceira' };
+            let gatilhoLabel = 'Emissão de NFS-e';
+            if (a.event_trigger === 'receipt') gatilhoLabel = 'Liquidação no Caixa';
+            else if (a.event_trigger === 'manual') gatilhoLabel = 'Lançamento Manual';
+
             return `
                 <tr>
                     <td style="font-weight: 600; color: #fff;">${escapeHtml(empresaPagadoraAtiva.name)}</td>
                     <td>${escapeHtml(rec.name)}</td>
                     <td style="color: var(--color-warning); font-weight: 700;">${escapeHtml(a.rate)}%</td>
-                    <td>${a.event_trigger === 'billing' ? 'Emissão de NFS-e' : 'Liquidação no Caixa'}</td>
+                    <td>${gatilhoLabel}</td>
                     <td>Desde ${escapeHtml(a.valid_from)}</td>
                     <td><span class="badge badge-success">Vigente</span></td>
                 </tr>
@@ -217,6 +236,8 @@
 
         if (empresaPagadoraAtiva) {
             selPag.value = empresaPagadoraAtiva.id;
+            const outra = empresas.find(e => e.id !== empresaPagadoraAtiva.id);
+            if (outra) selRec.value = outra.id;
         }
 
         modalAcordo.style.display = 'flex';
@@ -247,43 +268,140 @@
             });
 
             fecharModais();
+            // Sincroniza o seletor da empresa ativa para a empresa pagadora do acordo salvo
+            empresaPagadoraAtiva = empresas.find(e => e.id === pag) || empresaPagadoraAtiva;
+            selectEmpresaPagadora.value = empresaPagadoraAtiva.id;
+
             await carregarDadosIntermediacao();
-            alert('Acordo de intermediação gravado com sucesso!');
+            alert('Acordo de intermediação cadastrado com sucesso!');
+
         } catch (err) {
-            alert('Erro ao gravar acordo: ' + err.message);
+            console.error('Erro ao salvar acordo:', err);
+            alert('Erro ao salvar acordo: ' + err.message);
+        }
+    }
+
+    function abrirModalRepasseManual() {
+        const selPag = document.getElementById('repasseManualPagadora');
+        const selRec = document.getElementById('repasseManualRecebedora');
+        const inputComp = document.getElementById('repasseManualCompetencia');
+        const inputValor = document.getElementById('repasseManualValor');
+
+        selPag.innerHTML = empresas.map(e => `<option value="${escapeHtml(e.id)}">${escapeHtml(e.name)}</option>`).join('');
+        selRec.innerHTML = empresas.map(e => `<option value="${escapeHtml(e.id)}">${escapeHtml(e.name)}</option>`).join('');
+
+        if (empresaPagadoraAtiva) {
+            selPag.value = empresaPagadoraAtiva.id;
+            const outra = empresas.find(e => e.id !== empresaPagadoraAtiva.id);
+            if (outra) selRec.value = outra.id;
+        }
+
+        inputComp.value = competenciaAtiva;
+        inputValor.value = '';
+        modalRepasseManual.style.display = 'flex';
+    }
+
+    async function salvarRepasseManual(e) {
+        e.preventDefault();
+        const pag = document.getElementById('repasseManualPagadora').value;
+        const rec = document.getElementById('repasseManualRecebedora').value;
+        const valorRaw = document.getElementById('repasseManualValor').value;
+        const comp = document.getElementById('repasseManualCompetencia').value;
+
+        if (pag === rec) {
+            alert('A empresa pagadora e a recebedora não podem ser a mesma.');
+            return;
+        }
+
+        const valorCents = window.BpoMoney.toCents(valorRaw);
+        if (valorCents <= 0n) {
+            alert('Informe um valor de repasse válido maior que zero.');
+            return;
+        }
+
+        try {
+            // Busca se já existe acordo prévio entre as empresas
+            const todosAcordos = await window.BpoSupabase.request(
+                `intermediation_agreements?payer_company_id=eq.${pag}&receiver_company_id=eq.${rec}`,
+                { method: 'GET' }
+            );
+
+            let acordo = (todosAcordos && todosAcordos.length > 0) ? todosAcordos[0] : null;
+
+            // Se não houver, cadastra automaticamente o acordo intercompany para manter a integridade referencial
+            if (!acordo) {
+                const novoAcordo = await window.BpoSupabase.request('intermediation_agreements', {
+                    method: 'POST',
+                    prefer: 'return=representation',
+                    body: JSON.stringify({
+                        payer_company_id: pag,
+                        receiver_company_id: rec,
+                        rate: 100.0,
+                        event_trigger: 'manual',
+                        valid_from: new Date().toISOString().split('T')[0]
+                    })
+                });
+                acordo = Array.isArray(novoAcordo) ? novoAcordo[0] : novoAcordo;
+            }
+
+            const idempotencyKey = `manual_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+            const valorDecimal = window.BpoMoney.toDecimalString(valorCents);
+
+            // Grava o cálculo sem o campo company_id
+            await window.BpoSupabase.request('intermediation_calculations', {
+                method: 'POST',
+                body: JSON.stringify({
+                    agreement_id: acordo.id,
+                    contract_id: null,
+                    document_id: null,
+                    competence_month: comp,
+                    base_amount: valorDecimal,
+                    rate: acordo.rate || 100.0,
+                    intermediation_amount: valorDecimal,
+                    status: 'pending',
+                    idempotency_key: idempotencyKey
+                })
+            });
+
+            fecharModais();
+            empresaPagadoraAtiva = empresas.find(e => e.id === pag) || empresaPagadoraAtiva;
+            selectEmpresaPagadora.value = empresaPagadoraAtiva.id;
+            competenciaAtiva = comp;
+            inputCompetencia.value = comp;
+
+            await carregarDadosIntermediacao();
+            alert('Repasse manual registrado com sucesso!');
+
+        } catch (err) {
+            console.error('Erro ao salvar repasse manual:', err);
+            alert('Erro ao registrar repasse manual: ' + err.message);
         }
     }
 
     async function processarRepasses() {
-        if (!empresaPagadoraAtiva) return;
+        if (!empresaPagadoraAtiva) {
+            alert('Selecione uma empresa pagadora primeiro.');
+            return;
+        }
+
+        if (acordos.length === 0) {
+            alert('Não há nenhum acordo cadastrado para esta empresa como pagadora.');
+            return;
+        }
 
         try {
-            // Busca faturamento emitido no mês
+            // Busca os documentos de faturamento da empresa faturadora emitidos na competência
             const docs = await window.BpoSupabase.request(
                 `billing_documents?company_id=eq.${empresaPagadoraAtiva.id}&competence_month=eq.${competenciaAtiva}`,
                 { method: 'GET' }
             );
 
-            if (docs.length === 0) {
-                alert('Não há documentos faturados nesta competência.');
+            if (!docs || docs.length === 0) {
+                alert(`Nenhum documento de faturamento encontrado para a competência ${competenciaAtiva}.`);
                 return;
             }
 
-            // Seleciona acordos vigentes na competência (valid_from <= fim do mês e valid_until >= início do mês)
-            const hoje = new Date().toISOString().split('T')[0];
-            const acordosVigentes = acordos.filter(a => {
-                const validoDe = a.valid_from <= hoje;
-                const validoAte = !a.valid_until || a.valid_until >= hoje;
-                return validoDe && validoAte;
-            });
-
-            if (acordosVigentes.length === 0) {
-                alert('Nenhum acordo de intermediação vigente para esta empresa.');
-                abrirModalAcordo();
-                return;
-            }
-
-            const acordo = acordosVigentes[0];
+            const acordo = acordos[0]; // Acordo vigente
             const taxa = parseFloat(acordo.rate);
             const lotesCalculos = [];
 
@@ -304,7 +422,6 @@
                 const idempotencyKey = `inter_${d.id}_${acordo.id}`;
 
                 lotesCalculos.push({
-                    company_id: empresaPagadoraAtiva.id,
                     agreement_id: acordo.id,
                     contract_id: d.contract_id || null,
                     document_id: d.id,
