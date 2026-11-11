@@ -264,13 +264,22 @@
             // Filtra acordos onde a empresa selecionada é a pagadora (faturadora do contrato)
             acordos = (todosAcordos || []).filter(a => a.payer_company_id === empresaPagadoraAtiva.id);
 
-            // 2. Carrega todos os contratos
+            // 2. Carrega todos os contratos e clientes
             try {
-                const contratosDb = await window.BpoSupabase.request(
-                    'contracts',
-                    { method: 'GET' }
-                );
-                contratosMap = new Map((contratosDb || []).map(c => [c.id, c]));
+                const contratosDb = await window.BpoSupabase.request('contracts', { method: 'GET' });
+                let clientesMap = new Map();
+                try {
+                    const clientesDb = await window.BpoSupabase.request('people', { method: 'GET' });
+                    clientesMap = new Map((clientesDb || []).map(c => [c.id, c]));
+                } catch (pe) {}
+
+                contratosMap = new Map((contratosDb || []).map(c => {
+                    const cli = c.client_id ? clientesMap.get(c.client_id) : null;
+                    return [c.id, {
+                        ...c,
+                        _clientName: cli ? cli.name : ''
+                    }];
+                }));
             } catch (e) {
                 console.warn('Aviso ao carregar contratos:', e);
             }
@@ -384,12 +393,12 @@
             const contratoId = r.contract_id || (doc ? doc.contract_id : null);
             const contrato = contratoId ? contratosMap.get(contratoId) : null;
 
-            // 1. Valor Base do Contrato: reference_value do contrato (ou gross_amount / base_amount se avulso)
+            // 1. Valor Base: Valor faturado do lançamento (gross_amount / faturamento total da competência)
             let valorBaseContratoCents = 0n;
-            if (contrato && contrato.reference_value) {
+            if (doc) {
+                valorBaseContratoCents = calcularFaturamentoTotalDoc(doc);
+            } else if (contrato && contrato.reference_value) {
                 valorBaseContratoCents = window.BpoMoney.toCents(contrato.reference_value);
-            } else if (doc && doc.gross_amount) {
-                valorBaseContratoCents = window.BpoMoney.toCents(doc.gross_amount);
             } else {
                 valorBaseContratoCents = window.BpoMoney.toCents(r.base_amount);
             }
@@ -416,10 +425,11 @@
                 valorRepassarCents = repasseCalc.intermediacaoCents;
             }
 
-            // Nome do contrato (ou indicação se for avulso/manual)
+            // Identificação do Contrato / Cliente igual ao Módulo de Faturamento
             let nomeContrato = '<span style="color: var(--text-muted); font-size: 0.85rem;">Avulso</span>';
-            if (contrato && contrato.name) {
-                nomeContrato = escapeHtml(contrato.name);
+            if (contrato) {
+                const desc = contrato._clientName || contrato.name || contrato.code;
+                nomeContrato = escapeHtml(desc);
             } else if (doc && doc.description) {
                 nomeContrato = escapeHtml(window.BpoFiscalUtils ? window.BpoFiscalUtils.limparDescricao(doc.description) : doc.description);
             }
@@ -713,10 +723,10 @@
                 return;
             }
 
-            // Upsert em lote com on_conflict=idempotency_key e ignore-duplicates
+            // Upsert em lote atualizando base_amount e intermediation_amount
             await window.BpoSupabase.request('intermediation_calculations?on_conflict=idempotency_key', {
                 method: 'POST',
-                prefer: 'resolution=ignore-duplicates,return=representation',
+                prefer: 'resolution=merge-duplicates,return=representation',
                 body: JSON.stringify(lotesCalculos)
             });
 
