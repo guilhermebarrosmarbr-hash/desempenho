@@ -689,10 +689,7 @@
             for (const d of docs) {
                 if (d.status === 'cancelled') continue;
 
-                // Respeita event_trigger: se for 'receipt', só processa documentos pagos ou parcialmente pagos
-                if (acordo.event_trigger === 'receipt' && d.status !== 'paid' && d.status !== 'partially_paid') {
-                    continue;
-                }
+                // Processa todos os documentos faturados e emitidos na competência (inclusive notas pendentes de recebimento como SMSU e CRSN)
 
                 // O valor líquido do faturamento (deduzidos os impostos fiscais do módulo de tributos)
                 const valorLiquidoCents = calcularValorLiquidoDoc(d, empresaPagadoraAtiva, docs, rbt12Pagadora);
