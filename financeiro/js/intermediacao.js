@@ -222,9 +222,18 @@
                     <td>${gatilhoLabel}</td>
                     <td>Desde ${escapeHtml(a.valid_from)}</td>
                     <td><span class="badge badge-success">Vigente</span></td>
+                    <td style="text-align: right;">
+                        <button class="btn btn-secondary btn-sm btn-excluir-acordo" data-id="${a.id}" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.3);" title="Excluir Acordo">
+                            Excluir
+                        </button>
+                    </td>
                 </tr>
             `;
         }).join('');
+
+        document.querySelectorAll('.btn-excluir-acordo').forEach(btn => {
+            btn.addEventListener('click', () => window.excluirAcordo(btn.dataset.id));
+        });
     }
 
     function abrirModalAcordo() {
