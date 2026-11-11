@@ -629,7 +629,9 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         const isLocacao = (doc.document_type === 'locacao') || !!(taxDetails && taxDetails.is_locacao);
         const itemType = (taxDetails && taxDetails.item_type) || 'servico';
         const issRetido = !!(taxDetails && taxDetails.iss_retained);
-        const aliqIss = (taxDetails && taxDetails.iss_aliq != null) ? Number(taxDetails.iss_aliq) : 5.0;
+        const aliqIss = (taxDetails && taxDetails.iss_aliq != null)
+            ? Number(taxDetails.iss_aliq)
+            : (isLP ? 3.0 : 5.0);
 
         if (isLP) {
             // PIS e COFINS: usa valor salvo ou calcula pelas alíquotas padrão
@@ -645,19 +647,44 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 ? BigInt(Math.round(fatTotalNum * (aliqIss / 100) * 100))
                 : 0n;
 
-            // IRPJ bruto: usa alíquota para evitar discrepância com valor salvo pós-IRRF
-            const aliqIrpj = (taxDetails && taxDetails.irpj_aliq != null)
-                ? Number(taxDetails.irpj_aliq) / 100
-                : (itemType === 'servico' ? 0.048 : 0.012);
-            const aliqCsll = (taxDetails && taxDetails.csll_aliq != null)
-                ? Number(taxDetails.csll_aliq) / 100
-                : (itemType === 'servico' ? 0.0288 : 0.0108);
+            // IRPJ e CSLL variáveis da competência calculados pela fórmula oficial
+            let aliqIrpj = (taxDetails && taxDetails.irpj_aliq != null) ? Number(taxDetails.irpj_aliq) / 100 : 0.07951;
+            let aliqCsll = (taxDetails && taxDetails.csll_aliq != null) ? Number(taxDetails.csll_aliq) / 100 : 0.02977;
+
+            if (window.BpoTaxEngine && documentos && documentos.length > 0) {
+                const docsEmpMes = documentos.filter(d => d.company_id === doc.company_id && d.status !== 'cancelled');
+                let recTotalMes = 0;
+                docsEmpMes.forEach(d => {
+                    recTotalMes += Number(window.BpoMoney.toCents(d.gross_amount)) / 100;
+                });
+                if (recTotalMes > 0) {
+                    const ap = window.BpoTaxEngine.apurarLucroPresumidoTrimestral(recTotalMes, 0, { isMensal: true });
+                    if (ap) {
+                        aliqIrpj = ap.aliqEfetivaIRPJ || aliqIrpj;
+                        aliqCsll = ap.aliqEfetivaCSLL || aliqCsll;
+                    }
+                }
+            }
+
             const irpjBrutoCents = BigInt(Math.round(fatTotalNum * aliqIrpj * 100));
             const csllCents = BigInt(Math.round(fatTotalNum * aliqCsll * 100));
 
-            // Anti-duplicação ISS: se retido, já está em retCents; não somar como guia própria
-            const issProprioDevidoCents = issRetido ? 0n : issCents;
-            const deducoesTotais = pisCents + cofinsCents + irpjBrutoCents + csllCents + issProprioDevidoCents + retCents;
+            // IRRF retido do documento
+            let irrfDocCents = 0n;
+            if (taxDetails && taxDetails.has_irrf) {
+                const aliqIrrf = (taxDetails.irrf_aliq != null) ? Number(taxDetails.irrf_aliq) : 4.8;
+                irrfDocCents = BigInt(Math.round(fatTotalNum * (aliqIrrf / 100) * 100));
+            } else if (retCents > 0n && !issRetido) {
+                irrfDocCents = retCents;
+            } else if (retCents > 0n && issRetido) {
+                irrfDocCents = retCents > issCents ? (retCents - issCents) : 0n;
+            }
+
+            const irpjLiqCents = irpjBrutoCents > irrfDocCents ? (irpjBrutoCents - irrfDocCents) : 0n;
+
+            // Anti-duplicação (OBS 2): Faturamento Total - Soma de todos os impostos devidos da linha
+            // Tributos = PIS + COFINS + ISS + IRPJ Líquido + CSLL + Retenções (IRRF)
+            const deducoesTotais = pisCents + cofinsCents + issCents + irpjLiqCents + csllCents + irrfDocCents;
             return fatTotalCents > deducoesTotais ? (fatTotalCents - deducoesTotais) : 0n;
         } else {
             // Simples Nacional: DAS calculado sempre pelo RBT12 real (nunca usa das_valor/das_aliq desatualizados)
