@@ -8,6 +8,9 @@
     let competenciaAtiva = '';
     let acordos = [];
     let repasses = [];
+    let contratosMap = new Map();
+    let documentosMap = new Map();
+    let rbt12PorEmpresaMap = new Map();
 
     // DOM
     const selectEmpresaPagadora = document.getElementById('selectEmpresaPagadora');
@@ -59,6 +62,169 @@
         if (modalRepasseManual) modalRepasseManual.style.display = 'none';
     };
 
+    
+    function calcularFaturamentoTotalDoc(doc, taxDetails) {
+        const bCents = window.BpoMoney.toCents(doc.gross_amount);
+        const td = taxDetails || doc.tax_details || (window.BpoFiscalUtils && window.BpoFiscalUtils.extrairTaxDetails(doc));
+        const dCents = (td && td.desconto) 
+            ? window.BpoMoney.toCents(td.desconto) 
+            : (doc.discounts ? window.BpoMoney.toCents(doc.discounts) : 0n);
+        const eCents = (td && td.extras) 
+            ? window.BpoMoney.toCents(td.extras) 
+            : 0n;
+        return (bCents + eCents) > dCents ? (bCents + eCents - dCents) : 0n;
+    }
+
+    function obterMesesRbt12(competencia) {
+        if (!competencia || !competencia.includes('-')) return [];
+        const [anoStr, mesStr] = competencia.split('-');
+        let a = parseInt(anoStr, 10);
+        let m = parseInt(mesStr, 10);
+
+        const meses = [];
+        for (let i = 1; i <= 12; i++) {
+            m--;
+            if (m === 0) {
+                m = 12;
+                a--;
+            }
+            meses.unshift(`${a}-${String(m).padStart(2, '0')}`);
+        }
+        return meses;
+    }
+
+    async function calcularRbt12RealEmpresa(companyId, competencia) {
+        const meses12 = obterMesesRbt12(competencia);
+        if (meses12.length === 0) return 0;
+
+        let totalRbt12Cents = 0n;
+        try {
+            const inQuery = meses12.join(',');
+            const docs12 = await window.BpoSupabase.request(
+                `billing_documents?company_id=eq.${companyId}&competence_month=in.(${inQuery})&status=neq.cancelled`,
+                { method: 'GET' }
+            );
+
+            if (docs12 && docs12.length > 0) {
+                docs12.forEach(d => {
+                    const td = d.tax_details || (window.BpoFiscalUtils && window.BpoFiscalUtils.extrairTaxDetails(d));
+                    totalRbt12Cents += calcularFaturamentoTotalDoc(d, td);
+                });
+            }
+        } catch (e) {
+            console.warn(`Aviso ao calcular RBT12 real da empresa ${companyId}:`, e);
+        }
+
+        return Number(totalRbt12Cents) / 100;
+    }
+
+    function calcularValorLiquidoDoc(doc, empresa, docsCompetenciaEmpresa, rbt12Empresa) {
+        if (!doc) return 0n;
+        const taxDetails = doc.tax_details || (window.BpoFiscalUtils && window.BpoFiscalUtils.extrairTaxDetails(doc));
+        const itemType = (taxDetails && taxDetails.item_type) || 'servico';
+        const isLocacao = (doc.document_type === 'locacao') || !!(taxDetails && taxDetails.is_locacao);
+        const isLP = empresa && empresa.tax_regime === 'lucro_presumido';
+        const fatTotalCents = calcularFaturamentoTotalDoc(doc, taxDetails);
+        const fatTotalNum = Number(fatTotalCents) / 100;
+        const retCents = window.BpoMoney.toCents(doc.retentions);
+
+        if (isLP) {
+            // Lucro Presumido
+            const aliqIss = (taxDetails && taxDetails.iss_aliq !== undefined && taxDetails.iss_aliq !== null)
+                ? Number(taxDetails.iss_aliq)
+                : 3.0;
+            const issRetido = !!(taxDetails && taxDetails.iss_retained);
+
+            const pisCents = (taxDetails && taxDetails.pis_valor !== undefined && taxDetails.pis_valor !== null)
+                ? window.BpoMoney.toCents(taxDetails.pis_valor)
+                : BigInt(Math.round(fatTotalNum * 0.0065 * 100));
+
+            const cofinsCents = (taxDetails && taxDetails.cofins_valor !== undefined && taxDetails.cofins_valor !== null)
+                ? window.BpoMoney.toCents(taxDetails.cofins_valor)
+                : BigInt(Math.round(fatTotalNum * 0.03 * 100));
+
+            let issCents = 0n;
+            if (itemType === 'servico' && !isLocacao) {
+                issCents = BigInt(Math.round(fatTotalNum * (aliqIss / 100) * 100));
+            }
+
+            // Trimestral / Mensal LP
+            let servicosCents = 0n;
+            let produtosCents = 0n;
+            let irrfRetidoMesCents = 0n;
+            (docsCompetenciaEmpresa || []).forEach(d => {
+                const td = d.tax_details || (window.BpoFiscalUtils && window.BpoFiscalUtils.extrairTaxDetails(d));
+                const v = calcularFaturamentoTotalDoc(d, td);
+                const it = (td && td.item_type) || 'servico';
+                if (it === 'produto') produtosCents += v;
+                else servicosCents += v;
+
+                const vNum = Number(v) / 100;
+                if (td && td.has_irrf) {
+                    const aliq = (td.irrf_aliq !== undefined && td.irrf_aliq !== null) ? td.irrf_aliq : 4.8;
+                    irrfRetidoMesCents += BigInt(Math.round(vNum * (aliq / 100) * 100));
+                } else {
+                    const r = window.BpoMoney.toCents(d.retentions);
+                    const issR = !!(td && td.iss_retained);
+                    if (r > 0n && !issR) irrfRetidoMesCents += r;
+                }
+            });
+
+            const [anoStr, mesStr] = competenciaAtiva.split('-');
+            const ano = parseInt(anoStr, 10);
+            const mes = parseInt(mesStr, 10);
+            const numTrimestre = Math.ceil(mes / 3);
+
+            let aliqIrpjVar = 0.048;
+            let aliqCsllVar = 0.0288;
+            if (window.BpoTaxEngine && window.BpoTaxEngine.apurarLucroPresumidoTrimestral) {
+                const apuracaoLP = window.BpoTaxEngine.apurarLucroPresumidoTrimestral(
+                    Number(servicosCents) / 100,
+                    Number(produtosCents) / 100,
+                    { ano, trimestre: numTrimestre, isMensal: true, irrfRetidoTrimestre: Number(irrfRetidoMesCents) / 100 }
+                );
+                if (apuracaoLP) {
+                    aliqIrpjVar = apuracaoLP.aliqEfetivaIRPJ;
+                    aliqCsllVar = apuracaoLP.aliqEfetivaCSLL;
+                }
+            }
+
+            const irpjBrutoCents = BigInt(Math.round(fatTotalNum * aliqIrpjVar * 100));
+            const csllCents = BigInt(Math.round(fatTotalNum * aliqCsllVar * 100));
+
+            let irrfDocCents = 0n;
+            if (taxDetails && taxDetails.has_irrf) {
+                const aliqIrrf = (taxDetails.irrf_aliq !== undefined && taxDetails.irrf_aliq !== null) ? taxDetails.irrf_aliq : 4.8;
+                irrfDocCents = BigInt(Math.round(fatTotalNum * (aliqIrrf / 100) * 100));
+            } else if (retCents > 0n && !issRetido) {
+                irrfDocCents = retCents;
+            } else if (retCents > 0n && issRetido) {
+                irrfDocCents = retCents > issCents ? (retCents - issCents) : 0n;
+            }
+
+            const irpjLiquidoCents = irpjBrutoCents > irrfDocCents ? (irpjBrutoCents - irrfDocCents) : 0n;
+            const tributosCents = pisCents + cofinsCents + issCents + irpjLiquidoCents + csllCents + irrfDocCents;
+
+            return fatTotalCents > tributosCents ? (fatTotalCents - tributosCents) : 0n;
+
+        } else {
+            // Simples Nacional
+            const anexoKey = (taxDetails && taxDetails.das_anexo) ? taxDetails.das_anexo : 'anexo_iii';
+            const issIsento = isLocacao || !!(taxDetails && taxDetails.iss_isento_simples);
+            const rbt12Num = rbt12Empresa > 0 ? rbt12Empresa : 180000;
+
+            let aliqDasEfetiva = 0.06;
+            if (window.BpoTaxEngine && window.BpoTaxEngine.apurarSimplesNacional) {
+                const previaSN = window.BpoTaxEngine.apurarSimplesNacional(rbt12Num, fatTotalNum, anexoKey, { issIsento });
+                aliqDasEfetiva = previaSN.aliquotaEfetivaNumero || 0.06;
+            }
+
+            const tributosCents = BigInt(Math.round(fatTotalNum * aliqDasEfetiva * 100));
+            const deducoes = tributosCents + retCents;
+            return fatTotalCents > deducoes ? (fatTotalCents - deducoes) : 0n;
+        }
+    }
+
     async function carregarEmpresas() {
         try {
             empresas = await window.BpoSupabase.request('companies?order=name.asc', { method: 'GET' });
@@ -98,8 +264,36 @@
             // Filtra acordos onde a empresa selecionada é a pagadora (faturadora do contrato)
             acordos = (todosAcordos || []).filter(a => a.payer_company_id === empresaPagadoraAtiva.id);
 
-            // 2. Repasses calculados da competência
-            // Não filtra por company_id na query direta para evitar erro PGRST204 se a coluna não existir
+            // 2. Carrega contratos da empresa pagadora
+            try {
+                const contratosDb = await window.BpoSupabase.request(
+                    `contracts?company_id=eq.${empresaPagadoraAtiva.id}`,
+                    { method: 'GET' }
+                );
+                contratosMap = new Map((contratosDb || []).map(c => [c.id, c]));
+            } catch (e) {
+                console.warn('Aviso ao carregar contratos:', e);
+            }
+
+            // 3. Carrega documentos de faturamento da competência
+            let docsCompetencia = [];
+            try {
+                docsCompetencia = await window.BpoSupabase.request(
+                    `billing_documents?company_id=eq.${empresaPagadoraAtiva.id}&competence_month=eq.${competenciaAtiva}&status=neq.cancelled`,
+                    { method: 'GET' }
+                );
+                documentosMap = new Map((docsCompetencia || []).map(d => [d.id, d]));
+            } catch (e) {
+                console.warn('Aviso ao carregar billing_documents:', e);
+            }
+
+            // 4. RBT12 real se for Simples Nacional
+            if (empresaPagadoraAtiva.tax_regime === 'simples_nacional') {
+                const rbt = await calcularRbt12RealEmpresa(empresaPagadoraAtiva.id, competenciaAtiva);
+                rbt12PorEmpresaMap.set(empresaPagadoraAtiva.id, rbt);
+            }
+
+            // 5. Repasses calculados da competência
             const repassesCompetencia = await window.BpoSupabase.request(
                 `intermediation_calculations?competence_month=eq.${competenciaAtiva}&order=created_at.desc`,
                 { method: 'GET' }
@@ -171,12 +365,38 @@
             const empresaRecebedora = acordo ? empresas.find(e => e.id === acordo.receiver_company_id) : null;
             const nomeRecebedora = empresaRecebedora ? escapeHtml(empresaRecebedora.name) : 'Empresa Parceira';
 
+            // Obtém documento e contrato associados
+            const doc = r.document_id ? documentosMap.get(r.document_id) : null;
+            const contratoId = r.contract_id || (doc ? doc.contract_id : null);
+            const contrato = contratoId ? contratosMap.get(contratoId) : null;
+
+            // 1. Valor Base do Contrato: reference_value do contrato (ou gross_amount / base_amount se avulso)
+            let valorBaseContratoCents = 0n;
+            if (contrato && contrato.reference_value) {
+                valorBaseContratoCents = window.BpoMoney.toCents(contrato.reference_value);
+            } else if (doc && doc.gross_amount) {
+                valorBaseContratoCents = window.BpoMoney.toCents(doc.gross_amount);
+            } else {
+                valorBaseContratoCents = window.BpoMoney.toCents(r.base_amount);
+            }
+
+            // 2. Valor Líquido com a mesma lógica do módulo de impostos
+            let valorLiquidoCents = 0n;
+            if (doc) {
+                const docsEmp = Array.from(documentosMap.values());
+                const rbt12 = rbt12PorEmpresaMap.get(empresaPagadoraAtiva.id) || 0;
+                valorLiquidoCents = calcularValorLiquidoDoc(doc, empresaPagadoraAtiva, docsEmp, rbt12);
+            } else {
+                // Para lançamentos manuais ou sem doc vinculado, exibe o base_amount cadastrado
+                valorLiquidoCents = window.BpoMoney.toCents(r.base_amount);
+            }
+
             return `
                 <tr>
-                    <td style="font-weight: 600; color: #fff;">${escapeHtml(empresaPagadoraAtiva.name)}</td>
-                    <td style="font-weight: 600; color: var(--color-primary);">${nomeRecebedora}</td>
-                    <td>${escapeHtml(r.competence_month)}</td>
-                    <td>${window.BpoMoney.formatBRL(r.base_amount)}</td>
+                    <td style="font-weight: 600; color: #fff;">${escapeHtml(r.competence_month)}</td>
+                    <td style="font-weight: 600; color: #93c5fd;">${escapeHtml(empresaPagadoraAtiva.name)}</td>
+                    <td style="font-weight: 600; color: #fff;">${window.BpoMoney.formatBRL(valorBaseContratoCents)}</td>
+                    <td style="font-weight: 700; color: var(--color-success);">${window.BpoMoney.formatBRL(valorLiquidoCents)}</td>
                     <td style="color: var(--color-warning); font-weight: 600;">${escapeHtml(r.rate)}%</td>
                     <td style="font-weight: 700; color: #fff;">${window.BpoMoney.formatBRL(r.intermediation_amount)}</td>
                     <td>${statusBadge}</td>
