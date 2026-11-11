@@ -264,10 +264,10 @@
             // Filtra acordos onde a empresa selecionada é a pagadora (faturadora do contrato)
             acordos = (todosAcordos || []).filter(a => a.payer_company_id === empresaPagadoraAtiva.id);
 
-            // 2. Carrega contratos da empresa pagadora
+            // 2. Carrega todos os contratos
             try {
                 const contratosDb = await window.BpoSupabase.request(
-                    `contracts?company_id=eq.${empresaPagadoraAtiva.id}`,
+                    'contracts',
                     { method: 'GET' }
                 );
                 contratosMap = new Map((contratosDb || []).map(c => [c.id, c]));
@@ -416,10 +416,19 @@
                 valorRepassarCents = repasseCalc.intermediacaoCents;
             }
 
+            // Nome do contrato (ou indicação se for avulso/manual)
+            let nomeContrato = '<span style="color: var(--text-muted); font-size: 0.85rem;">Avulso</span>';
+            if (contrato && contrato.name) {
+                nomeContrato = escapeHtml(contrato.name);
+            } else if (doc && doc.description) {
+                nomeContrato = escapeHtml(window.BpoFiscalUtils ? window.BpoFiscalUtils.limparDescricao(doc.description) : doc.description);
+            }
+
             return `
                 <tr>
                     <td style="font-weight: 600; color: #fff;">${escapeHtml(r.competence_month)}</td>
                     <td style="font-weight: 600; color: #93c5fd;">${escapeHtml(empresaPagadoraAtiva.name)}</td>
+                    <td style="font-weight: 600; color: #fff;">${nomeContrato}</td>
                     <td style="font-weight: 600; color: #fff;">${window.BpoMoney.formatBRL(valorBaseContratoCents)}</td>
                     <td style="font-weight: 700; color: var(--color-success);">${window.BpoMoney.formatBRL(valorLiquidoCents)}</td>
                     <td style="color: var(--color-warning); font-weight: 600;">${escapeHtml(r.rate)}%</td>
@@ -718,6 +727,31 @@
             alert('Erro ao processar repasses: ' + err.message);
         }
     }
+
+    
+    window.excluirAcordo = async function(id) {
+        if (!confirm('Deseja realmente excluir este acordo de intermediação? Repasses já calculados com base nele também poderão ser afetados.')) {
+            return;
+        }
+
+        try {
+            // Remove primeiramente cálculos associados se houver (respeitando chave estrangeira)
+            await window.BpoSupabase.request(`intermediation_calculations?agreement_id=eq.${id}`, {
+                method: 'DELETE'
+            });
+
+            // Exclui o acordo
+            await window.BpoSupabase.request(`intermediation_agreements?id=eq.${id}`, {
+                method: 'DELETE'
+            });
+
+            await carregarDadosIntermediacao();
+            alert('Acordo de intermediação excluído com sucesso!');
+        } catch (err) {
+            console.error('Erro ao excluir acordo:', err);
+            alert('Erro ao excluir acordo: ' + err.message);
+        }
+    };
 
     window.quitarRepasse = async function(id) {
         if (!confirm('Deseja confirmar a quitação deste repasse intercompany?')) return;
