@@ -318,8 +318,22 @@
         let liquidadoTotal = 0n;
 
         repasses.forEach(r => {
-            const bCents = window.BpoMoney.toCents(r.base_amount);
-            const aCents = window.BpoMoney.toCents(r.intermediation_amount);
+            const doc = r.document_id ? documentosMap.get(r.document_id) : null;
+            let bCents = window.BpoMoney.toCents(r.base_amount);
+            let aCents = window.BpoMoney.toCents(r.intermediation_amount);
+
+            if (doc) {
+                const docsEmp = Array.from(documentosMap.values());
+                const rbt12 = rbt12PorEmpresaMap.get(empresaPagadoraAtiva.id) || 0;
+                bCents = calcularValorLiquidoDoc(doc, empresaPagadoraAtiva, docsEmp, rbt12);
+                const taxaNum = parseFloat(r.rate) || 10.0;
+                const calc = window.BpoCommissionEngine.calcularIntermediacao({
+                    baseAmount: bCents,
+                    ratePercentage: taxaNum
+                });
+                aCents = calc.intermediacaoCents;
+            }
+
             baseTotal += bCents;
             apuradoTotal += aCents;
 
@@ -391,6 +405,17 @@
                 valorLiquidoCents = window.BpoMoney.toCents(r.base_amount);
             }
 
+            // O valor a repassar é calculado como a taxa (ex: 10%) sobre o valor líquido
+            let valorRepassarCents = window.BpoMoney.toCents(r.intermediation_amount);
+            if (doc && valorLiquidoCents > 0n) {
+                const taxaNum = parseFloat(r.rate) || 10.0;
+                const repasseCalc = window.BpoCommissionEngine.calcularIntermediacao({
+                    baseAmount: valorLiquidoCents,
+                    ratePercentage: taxaNum
+                });
+                valorRepassarCents = repasseCalc.intermediacaoCents;
+            }
+
             return `
                 <tr>
                     <td style="font-weight: 600; color: #fff;">${escapeHtml(r.competence_month)}</td>
@@ -398,7 +423,7 @@
                     <td style="font-weight: 600; color: #fff;">${window.BpoMoney.formatBRL(valorBaseContratoCents)}</td>
                     <td style="font-weight: 700; color: var(--color-success);">${window.BpoMoney.formatBRL(valorLiquidoCents)}</td>
                     <td style="color: var(--color-warning); font-weight: 600;">${escapeHtml(r.rate)}%</td>
-                    <td style="font-weight: 700; color: #fff;">${window.BpoMoney.formatBRL(r.intermediation_amount)}</td>
+                    <td style="font-weight: 700; color: #fff;">${window.BpoMoney.formatBRL(valorRepassarCents)}</td>
                     <td>${statusBadge}</td>
                     <td>
                         ${r.status !== 'paid' ? `
@@ -575,6 +600,11 @@
 
             const idempotencyKey = `manual_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
             const valorDecimal = window.BpoMoney.toDecimalString(valorCents);
+            const taxaAcordo = acordo.rate ? parseFloat(acordo.rate) : 10.0;
+            // Para lançamento manual direto de valor, se a taxa for menor que 100%, calcula a fração ou mantém o valor direto
+            const valorRepasseCents = (acordo.event_trigger === 'manual' && taxaAcordo === 100.0)
+                ? valorCents
+                : window.BpoCommissionEngine.calcularIntermediacao({ baseAmount: valorCents, ratePercentage: taxaAcordo }).intermediacaoCents;
 
             // Grava o cálculo sem o campo company_id
             await window.BpoSupabase.request('intermediation_calculations', {
@@ -585,8 +615,8 @@
                     document_id: null,
                     competence_month: comp,
                     base_amount: valorDecimal,
-                    rate: acordo.rate || 100.0,
-                    intermediation_amount: valorDecimal,
+                    rate: taxaAcordo,
+                    intermediation_amount: window.BpoMoney.toDecimalString(valorRepasseCents),
                     status: 'pending',
                     idempotency_key: idempotencyKey
                 })
@@ -634,6 +664,9 @@
             const taxa = parseFloat(acordo.rate);
             const lotesCalculos = [];
 
+            // RBT12 real da empresa pagadora se for Simples Nacional
+            const rbt12Pagadora = rbt12PorEmpresaMap.get(empresaPagadoraAtiva.id) || 0;
+
             for (const d of docs) {
                 if (d.status === 'cancelled') continue;
 
@@ -642,9 +675,12 @@
                     continue;
                 }
 
-                const baseCents = window.BpoMoney.toCents(d.net_amount);
+                // O valor líquido do faturamento (deduzidos os impostos fiscais do módulo de tributos)
+                const valorLiquidoCents = calcularValorLiquidoDoc(d, empresaPagadoraAtiva, docs, rbt12Pagadora);
+
+                // O valor a repassar é a taxa acordada (ex: 10%) sobre o valor líquido
                 const res = window.BpoCommissionEngine.calcularIntermediacao({
-                    baseAmount: baseCents,
+                    baseAmount: valorLiquidoCents,
                     ratePercentage: taxa
                 });
 
@@ -655,7 +691,7 @@
                     contract_id: d.contract_id || null,
                     document_id: d.id,
                     competence_month: competenciaAtiva,
-                    base_amount: window.BpoMoney.toDecimalString(baseCents),
+                    base_amount: window.BpoMoney.toDecimalString(valorLiquidoCents),
                     rate: taxa,
                     intermediation_amount: window.BpoMoney.toDecimalString(res.intermediacaoCents),
                     status: 'pending',
