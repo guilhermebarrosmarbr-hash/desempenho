@@ -327,20 +327,18 @@
         let liquidadoTotal = 0n;
 
         repasses.forEach(r => {
-            const doc = r.document_id ? documentosMap.get(r.document_id) : null;
-            let bCents = window.BpoMoney.toCents(r.base_amount);
-            let aCents = window.BpoMoney.toCents(r.intermediation_amount);
-
-            if (doc) {
-                const docsEmp = Array.from(documentosMap.values());
-                const rbt12 = rbt12PorEmpresaMap.get(empresaPagadoraAtiva.id) || 0;
-                bCents = calcularValorLiquidoDoc(doc, empresaPagadoraAtiva, docsEmp, rbt12);
-                const taxaNum = parseFloat(r.rate) || 10.0;
+            // Usa os valores já calculados e armazenados pelo processarRepasses (mesma lógica do módulo de impostos)
+            const bCents = window.BpoMoney.toCents(r.base_amount);
+            const taxaNum = parseFloat(r.rate) || 10.0;
+            let aCents;
+            if (bCents > 0n) {
                 const calc = window.BpoCommissionEngine.calcularIntermediacao({
                     baseAmount: bCents,
                     ratePercentage: taxaNum
                 });
                 aCents = calc.intermediacaoCents;
+            } else {
+                aCents = window.BpoMoney.toCents(r.intermediation_amount);
             }
 
             baseTotal += bCents;
@@ -403,27 +401,16 @@
                 valorBaseContratoCents = window.BpoMoney.toCents(r.base_amount);
             }
 
-            // 2. Valor Líquido com a mesma lógica do módulo de impostos
-            let valorLiquidoCents = 0n;
-            if (doc) {
-                const docsEmp = Array.from(documentosMap.values());
-                const rbt12 = rbt12PorEmpresaMap.get(empresaPagadoraAtiva.id) || 0;
-                valorLiquidoCents = calcularValorLiquidoDoc(doc, empresaPagadoraAtiva, docsEmp, rbt12);
-            } else {
-                // Para lançamentos manuais ou sem doc vinculado, exibe o base_amount cadastrado
-                valorLiquidoCents = window.BpoMoney.toCents(r.base_amount);
-            }
+            // 2. Valor Líquido: lido diretamente do banco (salvo pelo processarRepasses com a lógica exata do módulo de impostos)
+            const valorLiquidoCents = window.BpoMoney.toCents(r.base_amount);
 
-            // O valor a repassar é calculado como a taxa (ex: 10%) sobre o valor líquido
-            let valorRepassarCents = window.BpoMoney.toCents(r.intermediation_amount);
-            if (doc && valorLiquidoCents > 0n) {
-                const taxaNum = parseFloat(r.rate) || 10.0;
-                const repasseCalc = window.BpoCommissionEngine.calcularIntermediacao({
-                    baseAmount: valorLiquidoCents,
-                    ratePercentage: taxaNum
-                });
-                valorRepassarCents = repasseCalc.intermediacaoCents;
-            }
+            // O valor a repassar é a taxa sobre o valor líquido armazenado
+            const taxaNum = parseFloat(r.rate) || 10.0;
+            const repasseCalc = window.BpoCommissionEngine.calcularIntermediacao({
+                baseAmount: valorLiquidoCents,
+                ratePercentage: taxaNum
+            });
+            const valorRepassarCents = valorLiquidoCents > 0n ? repasseCalc.intermediacaoCents : window.BpoMoney.toCents(r.intermediation_amount);
 
             // Identificação do Contrato / Cliente igual ao Módulo de Faturamento
             let nomeContrato = '<span style="color: var(--text-muted); font-size: 0.85rem;">Avulso</span>';
