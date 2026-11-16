@@ -8,6 +8,14 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        /* Layout expandido para widescreen (98% da horizontalidade) */
+        .layout-container {
+            max-width: 98% !important;
+            width: 98% !important;
+            padding: 24px 16px !important;
+        }
+    </style>
 </head>
 <body>
     <header class="top-navbar">
@@ -42,20 +50,20 @@
         <!-- Métricas Rápidas -->
         <section class="metrics-grid">
             <div class="metric-card primary">
+                <div class="metric-label">Faturamento Bruto</div>
+                <div class="metric-value" id="valFaturamentoBrutoInter">R$ 0,00</div>
+            </div>
+            <div class="metric-card info">
                 <div class="metric-label">Base Faturada Elegível</div>
                 <div class="metric-value" id="valBaseIntermediacao">R$ 0,00</div>
             </div>
-            <div class="metric-card info">
-                <div class="metric-label">Taxa Média de Intermediação</div>
-                <div class="metric-value" id="valTaxaMedia">0,00%</div>
-            </div>
             <div class="metric-card warning">
-                <div class="metric-label">Total Apurado Intercompany</div>
+                <div class="metric-label">Total Apurado</div>
                 <div class="metric-value" id="valTotalApurado">R$ 0,00</div>
             </div>
             <div class="metric-card success">
-                <div class="metric-label">Repasses Liquidados</div>
-                <div class="metric-value" id="valRepassesLiquidados">R$ 0,00</div>
+                <div class="metric-label">Taxa de Intermediação</div>
+                <div class="metric-value" id="valTaxaMedia">0,00%</div>
             </div>
         </section>
 

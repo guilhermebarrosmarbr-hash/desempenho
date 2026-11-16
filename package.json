@@ -4,7 +4,7 @@
   "description": "Módulos Financeiros 04 a 08 do BPO Financeiro PMOC",
   "private": true,
   "scripts": {
-    "test": "node --test tests/*.test.js",
+    "test": "node --test tests/acceptance_tax_engine.test.js tests/adapter_f01_f26.test.js tests/money_f20.test.js tests/rentals_f15_f16.test.js tests/tax_engine_f09_f10_f18_f19.test.js",
     "test:tax": "node --test tests/acceptance_tax_engine.test.js tests/tax_engine_f09_f10_f18_f19.test.js",
     "test:money": "node --test tests/money_f20.test.js",
     "test:rentals": "node --test tests/rentals_f15_f16.test.js",

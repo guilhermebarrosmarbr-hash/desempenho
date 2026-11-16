@@ -19,6 +19,7 @@
     const listaAcordosBody = document.getElementById('listaAcordosBody');
 
     // Métricas
+    const valFaturamentoBrutoInter = document.getElementById('valFaturamentoBrutoInter');
     const valBaseIntermediacao = document.getElementById('valBaseIntermediacao');
     const valTaxaMedia = document.getElementById('valTaxaMedia');
     const valTotalApurado = document.getElementById('valTotalApurado');
@@ -326,6 +327,13 @@
         let apuradoTotal = 0n;
         let liquidadoTotal = 0n;
 
+        // Faturamento Bruto da competência
+        let totalBrutoCents = 0n;
+        documentosMap.forEach(doc => {
+            const taxDetails = doc.tax_details || window.BpoFiscalUtils.extrairTaxDetails(doc);
+            totalBrutoCents += calcularFaturamentoTotalDoc(doc, taxDetails);
+        });
+
         repasses.forEach(r => {
             // Usa os valores já calculados e armazenados pelo processarRepasses (mesma lógica do módulo de impostos)
             const bCents = window.BpoMoney.toCents(r.base_amount);
@@ -349,8 +357,8 @@
             }
         });
 
-        // Calcula taxa média ponderada
-        let taxaMediaStr = '0.00%';
+        // Calcula taxa de intermediação (taxa média ponderada ou taxa do acordo ativo)
+        let taxaMediaStr = '0,00%';
         if (baseTotal > 0n) {
             const taxaMediaNum = Number(apuradoTotal * 10000n / baseTotal) / 100;
             taxaMediaStr = `${taxaMediaNum.toFixed(2)}%`;
@@ -358,10 +366,11 @@
             taxaMediaStr = `${parseFloat(acordos[0].rate).toFixed(2)}%`;
         }
 
-        valBaseIntermediacao.textContent = window.BpoMoney.formatBRL(baseTotal);
-        valTotalApurado.textContent = window.BpoMoney.formatBRL(apuradoTotal);
-        valRepassesLiquidados.textContent = window.BpoMoney.formatBRL(liquidadoTotal);
-        valTaxaMedia.textContent = taxaMediaStr;
+        if (valFaturamentoBrutoInter) valFaturamentoBrutoInter.textContent = window.BpoMoney.formatBRL(totalBrutoCents);
+        if (valBaseIntermediacao) valBaseIntermediacao.textContent = window.BpoMoney.formatBRL(baseTotal);
+        if (valTotalApurado) valTotalApurado.textContent = window.BpoMoney.formatBRL(apuradoTotal);
+        if (valRepassesLiquidados) valRepassesLiquidados.textContent = window.BpoMoney.formatBRL(liquidadoTotal);
+        if (valTaxaMedia) valTaxaMedia.textContent = taxaMediaStr;
     }
 
     function renderizarExtrato() {

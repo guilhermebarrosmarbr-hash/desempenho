@@ -57,6 +57,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
 
     // Métricas Consolidadas
     const valBaseFaturamento = document.getElementById('valBaseFaturamento');
+    const valFaturamentoLiquido = document.getElementById('valFaturamentoLiquido');
     const valImpostoApurado = document.getElementById('valImpostoApurado');
     const valRetencoesCompensaveis = document.getElementById('valRetencoesCompensaveis');
     const valSaldoRecolher = document.getElementById('valSaldoRecolher');
@@ -455,9 +456,15 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
 
             // Atualiza métricas consolidadas no topo
             valBaseFaturamento.textContent = window.BpoMoney.formatBRL(totalFaturamentoConsolidado);
-            valImpostoApurado.textContent = window.BpoMoney.formatBRL(totalImpostosConsolidado);
-            valRetencoesCompensaveis.textContent = window.BpoMoney.formatBRL(totalRetencoesConsolidado);
-            valSaldoRecolher.textContent = window.BpoMoney.formatBRL(totalSaldoConsolidado);
+            if (valFaturamentoLiquido) {
+                const totalLiquidoConsolidado = totalFaturamentoConsolidado > totalImpostosConsolidado 
+                    ? (totalFaturamentoConsolidado - totalImpostosConsolidado) 
+                    : 0n;
+                valFaturamentoLiquido.textContent = window.BpoMoney.formatBRL(totalLiquidoConsolidado);
+            }
+            if (valImpostoApurado) valImpostoApurado.textContent = window.BpoMoney.formatBRL(totalImpostosConsolidado);
+            if (valRetencoesCompensaveis) valRetencoesCompensaveis.textContent = window.BpoMoney.formatBRL(totalRetencoesConsolidado);
+            if (valSaldoRecolher) valSaldoRecolher.textContent = window.BpoMoney.formatBRL(totalSaldoConsolidado);
 
             // Requisito 2: "Preserve a fórmula da carga efetiva gerencial: impostos atribuídos / faturamento correspondente × 100. No consolidado, use a razão entre as somas, sem média simples das alíquotas. Denominador zero exige estado explícito."
             if (totalFaturamentoConsolidado > 0n) {

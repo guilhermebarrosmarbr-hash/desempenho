@@ -47,6 +47,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
     const tfootDemonstrativo = document.getElementById('tfootDemonstrativo');
 
     // Métricas
+    const valFaturamentoBrutoComissao = document.getElementById('valFaturamentoBrutoComissao');
     const valBaseComissao = document.getElementById('valBaseComissao');
     const valTotalComissao = document.getElementById('valTotalComissao');
     const valComissaoPaga = document.getElementById('valComissaoPaga');
@@ -569,6 +570,14 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         let comissaoTotal = 0n;
         let comissaoPaga = 0n;
 
+        // Faturamento Bruto (considerando todos os faturamentos que foram recebidos no mês)
+        let totalBrutoRecebidoCents = 0n;
+        documentosDoMes.forEach(doc => {
+            const taxDetails = doc.tax_details || window.BpoFiscalUtils.extrairTaxDetails(doc);
+            const brutoDoc = calcularFaturamentoTotalDoc(doc, taxDetails);
+            totalBrutoRecebidoCents += brutoDoc;
+        });
+
         comissoesCalculadas.forEach(c => {
             const bCents = window.BpoMoney.toCents(c.base_amount);
             const cCents = window.BpoMoney.toCents(c.commission_amount);
@@ -582,6 +591,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
 
         const pendente = comissaoTotal > comissaoPaga ? comissaoTotal - comissaoPaga : 0n;
 
+        if (valFaturamentoBrutoComissao) valFaturamentoBrutoComissao.textContent = window.BpoMoney.formatBRL(totalBrutoRecebidoCents);
         if (valBaseComissao) valBaseComissao.textContent = window.BpoMoney.formatBRL(baseTotal);
         if (valTotalComissao) valTotalComissao.textContent = window.BpoMoney.formatBRL(comissaoTotal);
         if (valComissaoPaga) valComissaoPaga.textContent = window.BpoMoney.formatBRL(comissaoPaga);

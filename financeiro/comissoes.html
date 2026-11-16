@@ -123,6 +123,13 @@
         .tab-content.active {
             display: block;
         }
+
+        /* Layout expandido para widescreen (98% da horizontalidade) */
+        .layout-container {
+            max-width: 98% !important;
+            width: 98% !important;
+            padding: 24px 16px !important;
+        }
     </style>
 </head>
 <body>
@@ -162,7 +169,11 @@
         <!-- Métricas Rápidas -->
         <section class="metrics-grid">
             <div class="metric-card primary">
-                <div class="metric-label">Base Elegível no Mês</div>
+                <div class="metric-label">Faturamento Bruto</div>
+                <div class="metric-value" id="valFaturamentoBrutoComissao">R$ 0,00</div>
+            </div>
+            <div class="metric-card info">
+                <div class="metric-label">Faturamento Líquido</div>
                 <div class="metric-value" id="valBaseComissao">R$ 0,00</div>
             </div>
             <div class="metric-card warning">
@@ -172,10 +183,6 @@
             <div class="metric-card success">
                 <div class="metric-label">Comissões Pagas</div>
                 <div class="metric-value" id="valComissaoPaga">R$ 0,00</div>
-            </div>
-            <div class="metric-card danger">
-                <div class="metric-label">Pendente de Pagamento</div>
-                <div class="metric-value" id="valComissaoPendente">R$ 0,00</div>
             </div>
         </section>
 

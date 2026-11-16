@@ -107,9 +107,10 @@ body {
 
 /* Layout Principal */
 .layout-container {
-    max-width: 1400px;
+    max-width: 98% !important;
+    width: 98% !important;
     margin: 0 auto;
-    padding: 32px 24px;
+    padding: 24px 16px !important;
 }
 
 /* Cards e Seções */
