@@ -228,12 +228,15 @@
                 const valorDas = roundCents(irpjC + csllC + cofinsC + pisC + inssC);
 
                 return {
+                    regime: 'simples_nacional',
                     rbt12: rbt,
                     faturamentoMes: fat,
                     anexo: anexoKey,
-                    faixa: faixa.faixa,
-                    aliquotaNominal: faixa.aliq,
-                    parcelaDeduzir: faixa.ded,
+                    faixaIdx: faixa.faixaIdx,
+                    faixaNominal: (faixa.rate * 100).toFixed(2) + '%',
+                    parcelaDeduzir: faixa.deduction,
+                    aliquotaEfetivaBruta: (aliquotaEfetiva * 100).toFixed(4) + '%',
+                    aliquotaEfetivaDas: (aliquotaDasIsento * 100).toFixed(4) + '%',
                     aliquotaEfetivaNumero: aliquotaDasIsento,
                     aliquotaEfetivaFormatada: (aliquotaDasIsento * 100).toFixed(2) + '%',
                     valorDas: valorDas,
@@ -520,6 +523,7 @@
 
             // Soma das bases calculadas nas notas
             const somaBasesNotasIRPJ = notasComBase.reduce((acc, n) => acc + n.baseNotaIRPJ, 0);
+            const somaBasesNotasCSLL = notasComBase.reduce((acc, n) => acc + n.baseNotaCSLL, 0);
 
             // 2. Rateio
             let somaIRPJRateado = 0;
@@ -532,6 +536,13 @@
                 if (somaBasesNotasIRPJ > 0 && totalBaseIRPJ > 0) {
                     const pesoIRPJ = nota.baseNotaIRPJ / somaBasesNotasIRPJ;
                     irpjNota = roundCents(apuracaoTrimestral.IRPJ_devido * pesoIRPJ);
+                }
+
+                if (somaBasesNotasCSLL > 0 && totalBaseCSLL > 0) {
+                    const pesoCSLL = nota.baseNotaCSLL / somaBasesNotasCSLL;
+                    csllNota = roundCents(apuracaoTrimestral.CSLL_devida * pesoCSLL);
+                } else if (somaBasesNotasIRPJ > 0 && totalBaseIRPJ > 0) {
+                    const pesoIRPJ = nota.baseNotaIRPJ / somaBasesNotasIRPJ;
                     csllNota = roundCents(apuracaoTrimestral.CSLL_devida * pesoIRPJ);
                 }
 
@@ -565,7 +576,9 @@
         static calcularPreviaNota(params) {
             const regime = params.company_tax_regime || 'lucro_presumido';
             const valorBruto = parseToNumber(params.gross_amount);
-            const tipoItem = params.item_type || 'service';
+            // F09: Normalização canônica de item_type ('servico' ou 'service' -> 'service')
+            const rawTipo = String(params.item_type || 'service').toLowerCase().trim();
+            const tipoItem = (rawTipo === 'servico' || rawTipo === 'service') ? 'service' : 'product';
             const competencia = params.competence || '2026-10';
 
             // Parâmetros de Retenção
@@ -633,27 +646,34 @@
                 const totalRetencoes = retencaoIrrf + retencaoInss + issRetidoValor;
 
                 // Provisão IRPJ / CSLL (Fórmula Oficial da Planilha / Opção A)
-                // Se a receita total mensal for informada via params.receitaMensalTotal, usa as alíquotas efetivas exatas da planilha
-                let aliqEfetivaIrpjNota = 0.048;
-                let aliqEfetivaCsllNota = 0.0288;
+                // F10: Prévia alinhada com o núcleo apurarLucroPresumidoTrimestral
+                let aliqEfetivaIrpjNota = tipoItem === 'service' ? 0.048 : 0.012;
+                let aliqEfetivaCsllNota = tipoItem === 'service' ? 0.0288 : 0.0108;
 
                 if (params.receitaMensalTotal && parseToNumber(params.receitaMensalTotal) > 0) {
                     const R_mes = parseToNumber(params.receitaMensalTotal);
-                    const L_m = 1250000 / 3;
-                    const B0_m = 400000 / 3;
-                    const base_m = Math.max(0, ((R_mes - L_m) * 0.352) + B0_m);
-                    const irpj_tot_m = (base_m * 0.15) + Math.max(0, (base_m - 20000) * 0.10);
-                    const csll_tot_m = base_m * 0.09;
-                    aliqEfetivaIrpjNota = irpj_tot_m / R_mes;
-                    aliqEfetivaCsllNota = csll_tot_m / R_mes;
+                    const ap = this.apurarLucroPresumidoTrimestral(
+                        tipoItem === 'service' ? R_mes : 0,
+                        tipoItem === 'product' ? R_mes : 0,
+                        { isMensal: true }
+                    );
+                    if (ap) {
+                        aliqEfetivaIrpjNota = ap.aliqEfetivaIRPJ;
+                        aliqEfetivaCsllNota = ap.aliqEfetivaCSLL;
+                    }
                 } else if (params.aliqIrpjEfetiva && params.aliqCsllEfetiva) {
                     aliqEfetivaIrpjNota = parseToNumber(params.aliqIrpjEfetiva);
                     aliqEfetivaCsllNota = parseToNumber(params.aliqCsllEfetiva);
-                } else {
-                    const basePresIRPJ = tipoItem === 'service' ? 0.32 : 0.08;
-                    const basePresCSLL = tipoItem === 'service' ? 0.32 : 0.12;
-                    aliqEfetivaIrpjNota = basePresIRPJ * 0.15;
-                    aliqEfetivaCsllNota = basePresCSLL * 0.09;
+                } else if (valorBruto > 0) {
+                    const ap = this.apurarLucroPresumidoTrimestral(
+                        tipoItem === 'service' ? valorBruto : 0,
+                        tipoItem === 'product' ? valorBruto : 0,
+                        { isMensal: true }
+                    );
+                    if (ap) {
+                        aliqEfetivaIrpjNota = ap.aliqEfetivaIRPJ;
+                        aliqEfetivaCsllNota = ap.aliqEfetivaCSLL;
+                    }
                 }
 
                 const provisaoIRPJ = roundCents(valorBruto * aliqEfetivaIrpjNota);

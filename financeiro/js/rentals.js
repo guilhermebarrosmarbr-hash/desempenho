@@ -46,9 +46,14 @@
                 };
             });
 
-            // Ajuste fino de centavo residual (diferença de arredondamento)
-            const residuoCents = distributableCents - somaDistribuidaCents;
-            if (residuoCents !== 0n && distribuicoes.length > 0) {
+            // F16: Soma das participações
+            const somaPcts = participants.reduce((acc, p) => acc + (parseFloat(p.participation_pct) || 0), 0);
+            const somaDistribuivelPcts = window.BpoMoney.applyPercentage(distributableCents, somaPcts);
+
+            // Ajuste fino estritamente de centavo residual de arredondamento (máximo de 1 centavo por participante)
+            const residuoCents = somaDistribuivelPcts - somaDistribuidaCents;
+            const limiteResiduoCents = BigInt(distribuicoes.length);
+            if (residuoCents !== 0n && distribuicoes.length > 0 && residuoCents <= limiteResiduoCents && residuoCents >= -limiteResiduoCents) {
                 distribuicoes[0].amountCents += residuoCents;
                 distribuicoes[0].amountFormatado = window.BpoMoney.formatBRL(distribuicoes[0].amountCents);
             }

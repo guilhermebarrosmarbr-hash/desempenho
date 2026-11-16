@@ -169,9 +169,13 @@
         let deducoesTotal = 0n;
         let distribuivelTotal = 0n;
 
+        const imoveisProcessados = new Set();
         distribuicoes.forEach(d => {
-            brutoTotal += window.BpoMoney.toCents(d.gross_received);
-            deducoesTotal += window.BpoMoney.toCents(d.deductions);
+            if (!imoveisProcessados.has(d.property_id)) {
+                imoveisProcessados.add(d.property_id);
+                brutoTotal += window.BpoMoney.toCents(d.gross_received);
+                deducoesTotal += window.BpoMoney.toCents(d.deductions);
+            }
             distribuivelTotal += window.BpoMoney.toCents(d.distribution_amount);
         });
 
@@ -185,7 +189,7 @@
             listaDistribuicoesBody.innerHTML = `
                 <tr>
                     <td colspan="9" style="text-align: center; color: var(--text-muted); padding: 32px;">
-                        Nenhum rateio societário registrado para a competência ${window.BpoUtils.escapeHtml(competenciaAtiva)}. Clique em "Processar Rateio Societário".
+                        Nenhum rateio societário registrado para a competência ${escapeHtml(competenciaAtiva)}. Clique em "Processar Rateio Societário".
                     </td>
                 </tr>
             `;
@@ -201,9 +205,9 @@
 
             return `
                 <tr>
-                    <td style="font-weight: 700; color: #fff;">${window.BpoUtils.escapeHtml(d.competence_month)}</td>
-                    <td>${window.BpoUtils.escapeHtml(imovel.name)}</td>
-                    <td style="font-weight: 600; color: #fff;">${window.BpoUtils.escapeHtml(participante.name)}</td>
+                    <td style="font-weight: 700; color: #fff;">${escapeHtml(d.competence_month)}</td>
+                    <td>${escapeHtml(imovel.name)}</td>
+                    <td style="font-weight: 600; color: #fff;">${escapeHtml(participante.name)}</td>
                     <td>${window.BpoMoney.formatBRL(d.gross_received)}</td>
                     <td style="color: var(--color-danger);">${window.BpoMoney.formatBRL(d.deductions)}</td>
                     <td style="color: var(--color-warning);">${Number(d.participation_pct).toFixed(2)}%</td>
@@ -211,7 +215,7 @@
                     <td>${statusBadge}</td>
                     <td>
                         ${d.status !== 'paid' ? `
-                            <button class="btn btn-secondary btn-sm btn-quitar-repasse" data-id="${window.BpoUtils.escapeHtml(d.id)}">
+                            <button class="btn btn-secondary btn-sm btn-quitar-repasse" data-id="${escapeHtml(d.id)}">
                                 Quitar Repasse
                             </button>
                         ` : '<span style="color: var(--text-muted); font-size: 0.8rem;">Concluído</span>'}
@@ -240,16 +244,16 @@
 
             return `
                 <tr>
-                    <td style="font-weight: 600; color: #fff;">${window.BpoUtils.escapeHtml(i.name)}</td>
-                    <td>${window.BpoUtils.escapeHtml(i.address || 'Santos / SP')}</td>
+                    <td style="font-weight: 600; color: #fff;">${escapeHtml(i.name)}</td>
+                    <td>${escapeHtml(i.address || 'Santos / SP')}</td>
                     <td style="color: var(--color-success); font-weight: 700;">${valorLoc}</td>
                     <td>${diaVenc}</td>
                     <td><span class="badge badge-success">Ativo</span></td>
                     <td style="display: flex; gap: 6px;">
-                        <button class="btn btn-secondary btn-sm btn-editar-imovel" data-id="${window.BpoUtils.escapeHtml(i.id)}">
+                        <button class="btn btn-secondary btn-sm btn-editar-imovel" data-id="${escapeHtml(i.id)}">
                             ✏️ Editar
                         </button>
-                        <button class="btn btn-danger btn-sm btn-excluir-imovel" data-id="${window.BpoUtils.escapeHtml(i.id)}">
+                        <button class="btn btn-danger btn-sm btn-excluir-imovel" data-id="${escapeHtml(i.id)}">
                             🗑️ Excluir
                         </button>
                     </td>
@@ -288,11 +292,11 @@
 
     function abrirModalContrato() {
         const selImovel = document.getElementById('locImovel');
-        selImovel.innerHTML = imoveis.map(i => `<option value="${window.BpoUtils.escapeHtml(i.id)}">${window.BpoUtils.escapeHtml(i.name)}</option>`).join('') || '<option value="">Sem imóveis cadastrados</option>';
+        selImovel.innerHTML = imoveis.map(i => `<option value="${escapeHtml(i.id)}">${escapeHtml(i.name)}</option>`).join('') || '<option value="">Sem imóveis cadastrados</option>';
 
         const selLocatario = document.getElementById('locLocatario');
         if (selLocatario) {
-            selLocatario.innerHTML = pessoas.map(p => `<option value="${window.BpoUtils.escapeHtml(p.id)}">${window.BpoUtils.escapeHtml(p.name)} (${window.BpoUtils.escapeHtml(p.person_type || 'cliente')})</option>`).join('') || '<option value="">Nenhuma pessoa cadastrada</option>';
+            selLocatario.innerHTML = pessoas.map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)} (${escapeHtml(p.person_type || 'cliente')})</option>`).join('') || '<option value="">Nenhuma pessoa cadastrada</option>';
         }
 
         modalContratoLocacao.style.display = 'flex';

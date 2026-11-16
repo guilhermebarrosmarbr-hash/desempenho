@@ -244,8 +244,8 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 return {
                     ...c,
                     setor: c.sector || setor,
-                    inicioVigencia: c.start_date || inicioVigencia,
-                    fimVigencia: c.end_date || fimVigencia,
+                    inicioVigencia: c.valid_from || c.start_date || inicioVigencia,
+                    fimVigencia: c.valid_until || c.end_date || fimVigencia,
                     active: c.active !== false
                 };
             });
@@ -843,7 +843,9 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             role: roleEnriquecida,
             document: cpf,
             email: email,
-            active: (status === 'active')
+            active: (status === 'active'),
+            valid_from: inicioVigencia || '2000-01-01',
+            valid_until: fimVigencia || null
         };
 
         try {
@@ -1030,11 +1032,35 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     pctBaseComissionada = (parseFloat(mPctCustom[1]) || 100) / 100;
                 }
 
+                const eventDate = doc.payment_date || doc.issue_date || `${competenciaAtiva}-01`;
+
                 regrasDoCtr.forEach(reg => {
-                    const colab = colabsAtivos.find(c => c.id === reg.collaborator_id);
+                    const colab = colaboradores.find(c => c.id === reg.collaborator_id);
                     if (!colab) return;
 
-                    const baseRaw = (reg.basis_override === 'gross_invoiced') ? brutoCents : liquidoCents;
+                    // F07: Validação de vigência do colaborador na data do evento
+                    const colabInicio = colab.inicioVigencia || '2000-01-01';
+                    const colabFim = colab.fimVigencia || null;
+                    if (eventDate < colabInicio || (colabFim && eventDate > colabFim)) {
+                        return;
+                    }
+
+                    // F07: Validação de vigência da regra de comissão na data do evento
+                    const regInicio = reg.valid_from || '2000-01-01';
+                    const regFim = reg.valid_until || null;
+                    if (eventDate < regInicio || (regFim && eventDate > regFim)) {
+                        return;
+                    }
+
+                    // F04: Diferenciação estrita de gross_invoiced, gross_liquidated e net_proportional
+                    let baseRaw = liquidoCents;
+                    if (reg.basis_override === 'gross_invoiced') {
+                        baseRaw = brutoCents;
+                    } else if (reg.basis_override === 'gross_liquidated') {
+                        baseRaw = recebidoCents;
+                    } else {
+                        baseRaw = liquidoCents;
+                    }
                     // Aplica fator de base comissionada (ex: apenas 24,9895% do líquido para aditivos)
                     const baseUso = BigInt(Math.round(Number(baseRaw) * pctBaseComissionada));
                     const pct = parseFloat(reg.percentage) || 0;
@@ -1069,7 +1095,27 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 return;
             }
 
-            // Deleta registros 'pending' existentes para o período antes de reinserir,
+            // F05: Busca cálculos existentes (inclusive os 'paid') para nunca sobrescrever nem reabrir comissões pagas
+            let identsPagos = new Set();
+            try {
+                const calcsPagos = await window.BpoSupabase.request(
+                    `commission_calculations?company_id=eq.${empresaAtiva.id}&competence_month=eq.${competenciaAtiva}&status=eq.paid`,
+                    { method: 'GET' }
+                ) || [];
+                calcsPagos.forEach(cp => identsPagos.add(cp.idempotency_key));
+            } catch (errPagos) {
+                console.warn('Aviso: erro ao verificar comissões pagas:', errPagos.message);
+            }
+
+            // Filtra o lote para ignorar qualquer cálculo cuja obrigação já foi liquidada (status 'paid')
+            const lotesElegiveis = lotes.filter(item => !identsPagos.has(item.idempotency_key));
+
+            if (lotesElegiveis.length === 0) {
+                alert(`Todas as comissões desta competência já se encontram liquidadas (Pagas). Nenhuma alteração pendente necessária.`);
+                return;
+            }
+
+            // Deleta apenas registros 'pending' existentes para o período antes de reinserir,
             // garantindo que re-apurações sempre reflitam as configurações mais recentes.
             // Registros com status 'paid' nunca são tocados.
             try {
@@ -1087,11 +1133,11 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 console.warn('Aviso: não foi possível limpar registros anteriores:', delErr.message);
             }
 
-            // Insere os novos cálculos (sem conflito, pois os pending foram deletados)
+            // Insere os novos cálculos elegíveis
             await window.BpoSupabase.request('commission_calculations', {
                 method: 'POST',
                 prefer: 'return=representation',
-                body: JSON.stringify(lotes)
+                body: JSON.stringify(lotesElegiveis)
             });
 
             await carregarDadosComissoes();

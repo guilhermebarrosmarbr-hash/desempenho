@@ -1760,15 +1760,15 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
 
         const subtotalCents = brutoCents + multaCents + jurosCents + extrasCents;
         const deducoesCents = descontoCents + retCents;
-        const liqCents = subtotalCents > deducoesCents ? (subtotalCents - deducoesCents) : 0n;
 
-        const descricao = document.getElementById('docDescricao').value.trim();
-        const contratoId = document.getElementById('docContrato').value || null;
-
-        if (liqCents < 0n) {
+        if (subtotalCents < deducoesCents) {
             alert('As deduções não podem ser maiores que o valor bruto e acréscimos.');
             return;
         }
+        const liqCents = subtotalCents - deducoesCents;
+
+        const descricao = document.getElementById('docDescricao').value.trim();
+        const contratoId = document.getElementById('docContrato').value || null;
 
         let taxDetailsPayload = {};
         if (isSimples) {
@@ -1834,6 +1834,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             issue_date: emissao,
             due_date: vencimento,
             gross_amount: window.BpoMoney.toDecimalString(brutoCents),
+            additions: window.BpoMoney.toDecimalString(multaCents + jurosCents + extrasCents),
             discounts: window.BpoMoney.toDecimalString(descontoCents),
             retentions: window.BpoMoney.toDecimalString(retCents),
             net_amount: window.BpoMoney.toDecimalString(liqCents),
@@ -1864,19 +1865,16 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             if (dataRecebimento && idDocSalvo) {
                 try {
                     const existingRecs = await window.BpoSupabase.request(`receipts?external_id=eq.${idDocSalvo}`, { method: 'GET' });
-                    const recPayload = {
-                        company_id: companyId,
-                        external_id: idDocSalvo,
-                        receipt_date: dataRecebimento,
-                        gross_amount: window.BpoMoney.toDecimalString(liqCents),
-                        account: 'conta_padrao'
-                    };
-                    if (existingRecs && existingRecs.length > 0) {
-                        await window.BpoSupabase.request(`receipts?id=eq.${existingRecs[0].id}`, {
-                            method: 'PATCH',
-                            body: JSON.stringify(recPayload)
-                        });
-                    } else {
+                    // F03: Se já existem recibos parciais gravados, não sobrescreve destrutivamente
+                    if (!existingRecs || existingRecs.length === 0) {
+                        const recPayload = {
+                            company_id: companyId,
+                            external_id: idDocSalvo,
+                            receipt_date: dataRecebimento,
+                            gross_amount: window.BpoMoney.toDecimalString(liqCents),
+                            account: 'conta_padrao',
+                            idempotency_key: `rec_sync_${idDocSalvo}_${dataRecebimento}`
+                        };
                         await window.BpoSupabase.request('receipts', {
                             method: 'POST',
                             body: JSON.stringify(recPayload)
@@ -1886,8 +1884,15 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     console.warn('Aviso: não foi possível sincronizar recebimento na tabela receipts:', recErr.message);
                 }
             } else if (!dataRecebimento && docId) {
+                // F03: Não apaga recibos históricos se a data de recebimento for limpa sem confirmação
                 try {
-                    await window.BpoSupabase.request(`receipts?external_id=eq.${docId}`, { method: 'DELETE' });
+                    const existingRecs = await window.BpoSupabase.request(`receipts?external_id=eq.${docId}`, { method: 'GET' });
+                    if (existingRecs && existingRecs.length > 0) {
+                        const confirmar = confirm(`Este documento possui ${existingRecs.length} recibo(s) registrado(s) no caixa. Deseja realmente remover o histórico de recebimentos?`);
+                        if (confirmar) {
+                            await window.BpoSupabase.request(`receipts?external_id=eq.${docId}`, { method: 'DELETE' });
+                        }
+                    }
                 } catch (_) {}
             }
 
@@ -1987,14 +1992,16 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 })
             });
 
-            // 2. Grava um novo recebimento na tabela receipts (SEM A COLUNA 'amount')
+            // 2. Grava um novo recebimento na tabela receipts (SEM A COLUNA 'amount') com chave idempotente
             const contaBancaria = document.getElementById('recConta')?.value || 'conta_padrao';
+            const idempotencyKey = `rec_${docId}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
             const recPayload = {
                 company_id: doc.company_id,
                 external_id: docId,
                 receipt_date: recData,
                 gross_amount: window.BpoMoney.toDecimalString(recValorCents),
-                account: contaBancaria
+                account: contaBancaria,
+                idempotency_key: idempotencyKey
             };
 
             await window.BpoSupabase.request('receipts', {
