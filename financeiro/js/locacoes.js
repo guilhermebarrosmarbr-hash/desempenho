@@ -169,9 +169,13 @@
         let deducoesTotal = 0n;
         let distribuivelTotal = 0n;
 
+        const imoveisProcessados = new Set();
         distribuicoes.forEach(d => {
-            brutoTotal += window.BpoMoney.toCents(d.gross_received);
-            deducoesTotal += window.BpoMoney.toCents(d.deductions);
+            if (!imoveisProcessados.has(d.property_id)) {
+                imoveisProcessados.add(d.property_id);
+                brutoTotal += window.BpoMoney.toCents(d.gross_received);
+                deducoesTotal += window.BpoMoney.toCents(d.deductions);
+            }
             distribuivelTotal += window.BpoMoney.toCents(d.distribution_amount);
         });
 

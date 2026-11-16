@@ -405,12 +405,14 @@
             const valorLiquidoCents = window.BpoMoney.toCents(r.base_amount);
 
             // O valor a repassar é a taxa sobre o valor líquido armazenado
-            const taxaNum = parseFloat(r.rate) || 10.0;
+            const taxaNum = (r.rate !== undefined && r.rate !== null && !isNaN(parseFloat(r.rate))) ? parseFloat(r.rate) : 10.0;
             const repasseCalc = window.BpoCommissionEngine.calcularIntermediacao({
                 baseAmount: valorLiquidoCents,
                 ratePercentage: taxaNum
             });
-            const valorRepassarCents = valorLiquidoCents > 0n ? repasseCalc.intermediacaoCents : window.BpoMoney.toCents(r.intermediation_amount);
+            const valorRepassarCents = (valorLiquidoCents > 0n && !r.document_id && r.intermediation_amount)
+                ? window.BpoMoney.toCents(r.intermediation_amount)
+                : (valorLiquidoCents > 0n ? repasseCalc.intermediacaoCents : window.BpoMoney.toCents(r.intermediation_amount));
 
             // Identificação do Contrato / Cliente igual ao Módulo de Faturamento
             let nomeContrato = '<span style="color: var(--text-muted); font-size: 0.85rem;">Avulso</span>';
@@ -606,16 +608,15 @@
 
             const idempotencyKey = `manual_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
             const valorDecimal = window.BpoMoney.toDecimalString(valorCents);
-            const taxaAcordo = acordo.rate ? parseFloat(acordo.rate) : 10.0;
-            // Para lançamento manual direto de valor, se a taxa for menor que 100%, calcula a fração ou mantém o valor direto
-            const valorRepasseCents = (acordo.event_trigger === 'manual' && taxaAcordo === 100.0)
-                ? valorCents
-                : window.BpoCommissionEngine.calcularIntermediacao({ baseAmount: valorCents, ratePercentage: taxaAcordo }).intermediacaoCents;
+            const taxaAcordo = (acordo.rate !== undefined && acordo.rate !== null) ? parseFloat(acordo.rate) : 10.0;
+            // F14: Campo Valor do Repasse representa o valor final exato informado pelo usuário
+            const valorRepasseCents = valorCents;
 
-            // Grava o cálculo sem o campo company_id
+            // Grava o cálculo incluindo company_id (F12)
             await window.BpoSupabase.request('intermediation_calculations', {
                 method: 'POST',
                 body: JSON.stringify({
+                    company_id: pag,
                     agreement_id: acordo.id,
                     contract_id: null,
                     document_id: null,
