@@ -21,8 +21,10 @@
     }
 
     global.escapeHtml = escapeHtml;
+    global.BpoUtils = global.BpoUtils || {};
+    global.BpoUtils.escapeHtml = escapeHtml;
 
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { escapeHtml };
+        module.exports = { escapeHtml, BpoUtils: { escapeHtml } };
     }
 })(typeof window !== 'undefined' ? window : globalThis);

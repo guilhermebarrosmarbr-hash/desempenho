@@ -2,27 +2,45 @@
 // supabase.js — Adaptador Supabase para o BPO Financeiro
 // ==============================================================================
 
-(function() {
+(function(global) {
     const STORAGE_KEY_URL = 'bpo_supabase_url';
     const STORAGE_KEY_ANON = 'bpo_supabase_anon_key';
+    const STORAGE_KEY_OVERRIDE = 'bpo_supabase_manual_override';
 
     const DEFAULT_URL = 'https://rdjdieirkjlyoooxtdfw.supabase.co';
     const DEFAULT_ANON = 'sb_publishable_OSLZXYjeAk8dVmwAt5-QIQ_kkFxC-V_';
 
+    function getStorage() {
+        if (typeof localStorage !== 'undefined') {
+            return localStorage;
+        }
+        // Fallback em memória para ambientes de teste Node.js
+        if (!global.__bpo_mock_storage) {
+            const mem = new Map();
+            global.__bpo_mock_storage = {
+                getItem: (k) => mem.has(k) ? mem.get(k) : null,
+                setItem: (k, v) => mem.set(k, String(v)),
+                removeItem: (k) => mem.delete(k)
+            };
+        }
+        return global.__bpo_mock_storage;
+    }
+
     function getValidKey() {
-        const stored = (localStorage.getItem(STORAGE_KEY_ANON) || '').trim();
-        // Se a chave no localStorage for a string invalida ("sua_chave_anon", vazia ou menor que 20 chars), descarta
+        const storage = getStorage();
+        const stored = (storage.getItem(STORAGE_KEY_ANON) || '').trim();
         if (!stored || stored.includes('sua_chave') || stored.length < 20) {
-            localStorage.setItem(STORAGE_KEY_ANON, DEFAULT_ANON);
+            storage.setItem(STORAGE_KEY_ANON, DEFAULT_ANON);
             return DEFAULT_ANON;
         }
         return stored;
     }
 
     function getValidUrl() {
-        const stored = (localStorage.getItem(STORAGE_KEY_URL) || '').trim();
+        const storage = getStorage();
+        const stored = (storage.getItem(STORAGE_KEY_URL) || '').trim();
         if (!stored || !stored.startsWith('https://')) {
-            localStorage.setItem(STORAGE_KEY_URL, DEFAULT_URL);
+            storage.setItem(STORAGE_KEY_URL, DEFAULT_URL);
             return DEFAULT_URL;
         }
         return stored;
@@ -36,15 +54,28 @@
         }
 
         async _fetchRemoteConfig() {
+            const storage = getStorage();
+            // F26: Se o operador salvou manualmente uma conexão na interface, não sobrescreve
+            if (storage.getItem(STORAGE_KEY_OVERRIDE) === 'true') {
+                return;
+            }
+
+            if (typeof fetch === 'undefined') {
+                return;
+            }
+
             try {
                 const res = await fetch('/api/config');
                 if (res.ok) {
                     const data = await res.json();
                     if (data.supabaseUrl && data.supabaseAnonKey && data.supabaseAnonKey.length > 20 && !data.supabaseAnonKey.includes('sua_chave')) {
-                        this.url = data.supabaseUrl;
-                        this.anonKey = data.supabaseAnonKey;
-                        localStorage.setItem(STORAGE_KEY_URL, this.url);
-                        localStorage.setItem(STORAGE_KEY_ANON, this.anonKey);
+                        // Re-checa após o await para garantir que não houve override concorrente
+                        if (storage.getItem(STORAGE_KEY_OVERRIDE) !== 'true') {
+                            this.url = data.supabaseUrl;
+                            this.anonKey = data.supabaseAnonKey;
+                            storage.setItem(STORAGE_KEY_URL, this.url);
+                            storage.setItem(STORAGE_KEY_ANON, this.anonKey);
+                        }
                     }
                 }
             } catch (_) {}
@@ -55,17 +86,21 @@
         }
 
         saveConfig(url, anonKey) {
+            const storage = getStorage();
             this.url = (url || '').trim().replace(/\/+$/, '');
             this.anonKey = (anonKey || '').trim();
-            localStorage.setItem(STORAGE_KEY_URL, this.url);
-            localStorage.setItem(STORAGE_KEY_ANON, this.anonKey);
+            storage.setItem(STORAGE_KEY_URL, this.url);
+            storage.setItem(STORAGE_KEY_ANON, this.anonKey);
+            storage.setItem(STORAGE_KEY_OVERRIDE, 'true');
         }
 
         clearConfig() {
+            const storage = getStorage();
             this.url = '';
             this.anonKey = '';
-            localStorage.removeItem(STORAGE_KEY_URL);
-            localStorage.removeItem(STORAGE_KEY_ANON);
+            storage.removeItem(STORAGE_KEY_URL);
+            storage.removeItem(STORAGE_KEY_ANON);
+            storage.removeItem(STORAGE_KEY_OVERRIDE);
         }
 
         async request(endpoint, options = {}) {
@@ -77,12 +112,26 @@
             }
 
             const url = `${this.url}/rest/v1/${endpoint}`;
+            
+            // F01: Normalização robusta de cabeçalhos e Prefer
+            const incomingHeaders = options.headers || {};
+            let finalPrefer = options.prefer;
+            for (const key of Object.keys(incomingHeaders)) {
+                if (key.toLowerCase() === 'prefer') {
+                    finalPrefer = incomingHeaders[key];
+                    break;
+                }
+            }
+            if (!finalPrefer) {
+                finalPrefer = 'return=representation';
+            }
+
             const headers = {
                 'apikey': this.anonKey,
                 'Authorization': `Bearer ${this.anonKey}`,
                 'Content-Type': 'application/json',
-                'Prefer': options.prefer || 'return=representation',
-                ...options.headers
+                ...incomingHeaders,
+                'Prefer': finalPrefer
             };
 
             const response = await fetch(url, {
@@ -95,11 +144,27 @@
                 throw new Error(`Erro Supabase (${response.status}): ${errBody}`);
             }
 
-            if (options.prefer && options.prefer.includes('return=minimal')) {
+            // HTTP 204 (No Content) ou 205 (Reset Content) nunca possui corpo JSON
+            if (response.status === 204 || response.status === 205) {
                 return true;
             }
 
-            return await response.json();
+            // Se o Prefer explicitamente pediu minimal, não tenta parsear JSON
+            if (finalPrefer.includes('return=minimal')) {
+                return true;
+            }
+
+            // Lê corpo como texto primeiro para proteger contra corpo vazio
+            const text = await response.text();
+            if (!text || text.trim() === '') {
+                return true;
+            }
+
+            try {
+                return JSON.parse(text);
+            } catch (jsonErr) {
+                throw new Error(`Erro Supabase: falha ao interpretar JSON retornado: ${jsonErr.message}`);
+            }
         }
 
         // Helpers de consulta
@@ -161,5 +226,11 @@
     }
 
     // Instância global
-    window.BpoSupabase = new SupabaseClientAdapter();
-})();
+    const client = new SupabaseClientAdapter();
+    global.BpoSupabase = client;
+    global.SupabaseClientAdapter = SupabaseClientAdapter;
+
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = { BpoSupabase: client, SupabaseClientAdapter, QueryBuilder };
+    }
+})(typeof window !== 'undefined' ? window : globalThis);
