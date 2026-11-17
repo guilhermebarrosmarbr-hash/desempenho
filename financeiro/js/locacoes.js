@@ -68,6 +68,10 @@
         const btnSocios = document.getElementById('btnParticipantesSocios');
         if (btnSocios) btnSocios.addEventListener('click', abrirModalSocios);
 
+        // Botão Gerenciar Contratos
+        const btnGerenciarContratos = document.getElementById('btnGerenciarContratos');
+        if (btnGerenciarContratos) btnGerenciarContratos.addEventListener('click', abrirModalGerenciarContratos);
+
         // Novo Sócio dentro do modal de sócios
         const btnNovoSocio = document.getElementById('btnNovoSocio');
         if (btnNovoSocio) btnNovoSocio.addEventListener('click', () => abrirFormSocio());
@@ -96,14 +100,94 @@
     // FECHAR MODAIS
     // =========================================================================
     window.fecharModais = function() {
-        if (modalSocios)          modalSocios.style.display = 'none';
-        if (modalCadastroSocio)   modalCadastroSocio.style.display = 'none';
-        if (modalContratoLocacao) modalContratoLocacao.style.display = 'none';
+        if (modalSocios)              modalSocios.style.display = 'none';
+        if (modalCadastroSocio)       modalCadastroSocio.style.display = 'none';
+        if (modalContratoLocacao)     modalContratoLocacao.style.display = 'none';
+        const mgc = document.getElementById('modalGerenciarContratos');
+        if (mgc) mgc.style.display = 'none';
     };
 
     window.voltarParaSocios = function() {
         if (modalCadastroSocio)  modalCadastroSocio.style.display = 'none';
         if (modalSocios)         modalSocios.style.display = 'flex';
+    };
+
+    // =========================================================================
+    // MODAL GERENCIAR CONTRATOS DE LOCAÇÃO
+    // =========================================================================
+    function abrirModalGerenciarContratos() {
+        const modal = document.getElementById('modalGerenciarContratos');
+        const tbody = document.getElementById('tabelaContratosBody');
+        const info  = document.getElementById('totalContratosInfo');
+        if (!modal || !tbody) return;
+
+        if (contratosLocacao.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#888; padding:32px;">
+                Nenhum contrato cadastrado. Clique em <strong>+ Contrato de Locação</strong> para criar o primeiro.
+            </td></tr>`;
+            if (info) info.textContent = '';
+        } else {
+            tbody.innerHTML = contratosLocacao.map(cl => {
+                const imovel = imoveis.find(i => i.id === cl.property_id);
+                // Empresa locatária lida de properties.address
+                let tenantName = '—';
+                if (imovel) {
+                    let meta = {};
+                    try { meta = JSON.parse(imovel.address || '{}'); } catch {}
+                    const tenantEmp = empresas.find(e => e.id === meta.tenant_company_id);
+                    tenantName = tenantEmp ? escapeHtml(tenantEmp.trade_name || tenantEmp.name) : '—';
+                }
+                const nomeImovel = imovel ? escapeHtml(imovel.name) : `Imóvel (${cl.property_id.slice(0,8)}...)`;
+                const valor = window.BpoMoney.formatBRL(cl.monthly_amount);
+                const statusBadge = cl.status === 'active'
+                    ? '<span style="background:#22c55e22; color:#22c55e; padding:2px 8px; border-radius:4px; font-size:0.78rem;">Ativo</span>'
+                    : '<span style="background:#ef444422; color:#ef4444; padding:2px 8px; border-radius:4px; font-size:0.78rem;">Inativo</span>';
+
+                return `<tr style="border-bottom:1px solid rgba(255,255,255,0.06); transition:background 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background=''">
+                    <td style="padding:12px 12px; color:#fff; font-weight:500;">${nomeImovel}</td>
+                    <td style="padding:12px 12px; color:#ccc;">${tenantName}</td>
+                    <td style="padding:12px 12px; text-align:right; color:#4ade80; font-weight:600;">${escapeHtml(valor)}</td>
+                    <td style="padding:12px 12px; text-align:center; color:#ccc;">Dia ${cl.due_day || 10}</td>
+                    <td style="padding:12px 12px; text-align:center;">${statusBadge}</td>
+                    <td style="padding:12px 12px; text-align:center;">
+                        <button class="btn btn-secondary btn-sm" onclick="window.editarContrato('${escapeHtml(cl.id)}')" style="margin-right:6px; padding:4px 10px; font-size:0.8rem;">✏️ Editar</button>
+                        <button class="btn btn-danger btn-sm" onclick="window.excluirContrato('${escapeHtml(cl.id)}')" style="padding:4px 10px; font-size:0.8rem;">🗑️ Excluir</button>
+                    </td>
+                </tr>`;
+            }).join('');
+            if (info) info.textContent = `${contratosLocacao.length} contrato(s) cadastrado(s)`;
+        }
+
+        modal.style.display = 'flex';
+    }
+
+    window.editarContrato = function(id) {
+        const contrato = contratosLocacao.find(cl => cl.id === id);
+        if (!contrato) return;
+        fecharModais();
+        abrirModalContrato(contrato);
+    };
+
+    window.excluirContrato = async function(id) {
+        if (!confirm('Tem certeza que deseja excluir este contrato de locação?\nEsta ação também removerá os participantes vinculados.')) return;
+        try {
+            // Remove participantes do imóvel vinculado
+            const contrato = contratosLocacao.find(cl => cl.id === id);
+            if (contrato?.property_id) {
+                const partics = await window.BpoSupabase.request(
+                    `property_participants?property_id=eq.${contrato.property_id}`, { method: 'GET' }
+                ) || [];
+                for (const p of partics) {
+                    await window.BpoSupabase.request(`property_participants?id=eq.${p.id}`, { method: 'DELETE' });
+                }
+            }
+            await window.BpoSupabase.request(`rental_contracts?id=eq.${id}`, { method: 'DELETE' });
+            await carregarDadosLocacoes();
+            abrirModalGerenciarContratos(); // recarrega a lista
+            alert('Contrato excluído com sucesso.');
+        } catch (err) {
+            alert('Erro ao excluir contrato: ' + err.message);
+        }
     };
 
     // =========================================================================
