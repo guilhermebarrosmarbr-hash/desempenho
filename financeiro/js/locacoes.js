@@ -107,6 +107,28 @@
     };
 
     // =========================================================================
+    // FILTRAR CONTRATOS POR EMPRESA LOCATÁRIA
+    // Popula o select de contrato/imóvel com os contratos da empresa selecionada
+    // =========================================================================
+    function filtrarContratosPorEmpresa(companyId, selContratoRef) {
+        if (!selContratoRef) return;
+        if (!companyId) {
+            selContratoRef.innerHTML = '<option value="">Selecione primeiro a empresa locatária...</option>';
+            return;
+        }
+        const contratosDaEmpresa = todosContratos.filter(c => c.company_id === companyId);
+        if (contratosDaEmpresa.length === 0) {
+            selContratoRef.innerHTML = '<option value="">Nenhum contrato cadastrado para esta empresa</option>';
+            return;
+        }
+        selContratoRef.innerHTML = '<option value="">Selecione o contrato (imóvel)...</option>' +
+            contratosDaEmpresa.map(c => {
+                const label = c.code ? `${c.code} — ${c.name}` : c.name;
+                return `<option value="${escapeHtml(c.id)}" data-name="${escapeHtml(label)}">${escapeHtml(label)}</option>`;
+            }).join('');
+    }
+
+    // =========================================================================
     // CARREGAMENTO DE DADOS
     // =========================================================================
     async function carregarEmpresas() {
@@ -487,53 +509,39 @@
 
         const selLocatario  = document.getElementById('locLocatario');
         const selAdminSocio = document.getElementById('locAdminSocio');
+        const selContratoRef = document.getElementById('locImovelContrato');
 
-        // Popula locatário
+        // Popula Empresa Locatária com todas as empresas do sistema
         if (selLocatario) {
-            selLocatario.innerHTML = pessoas.map(p =>
-                `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`
-            ).join('') || '<option value="">Nenhuma pessoa cadastrada</option>';
+            selLocatario.innerHTML = '<option value="">Selecione a empresa locatária...</option>' +
+                empresas.map(emp =>
+                    `<option value="${escapeHtml(emp.id)}">${escapeHtml(emp.trade_name || emp.name)}</option>`
+                ).join('');
+
+            // Ao mudar a empresa, filtra o dropdown de contratos
+            selLocatario.onchange = function() {
+                filtrarContratosPorEmpresa(this.value, selContratoRef);
+            };
         }
 
-        // Popula sócio administrador
+        // Popula sócio administrador com pessoas da empresa ativa
         if (selAdminSocio) {
             selAdminSocio.innerHTML = '<option value="">Nenhum (sem honorários)</option>' +
                 pessoas.map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`).join('');
         }
 
-        const inpId          = document.getElementById('locContratoId');
-        const inpPropId      = document.getElementById('locPropertyId');
-        const selContratoRef = document.getElementById('locImovelContrato'); // select de contratos
-        const inpValor       = document.getElementById('locValor');
-        const inpDia         = document.getElementById('locDia');
-        const inpDesconto    = document.getElementById('locDesconto');
-        const inpAdminPct    = document.getElementById('locAdminPct');
-        const btnExc         = document.getElementById('btnExcluirContrato');
-        const titulo         = document.getElementById('modalContratoTitulo');
+        const inpId       = document.getElementById('locContratoId');
+        const inpPropId   = document.getElementById('locPropertyId');
+        const inpValor    = document.getElementById('locValor');
+        const inpDia      = document.getElementById('locDia');
+        const inpDesconto = document.getElementById('locDesconto');
+        const inpAdminPct = document.getElementById('locAdminPct');
+        const btnExc      = document.getElementById('btnExcluirContrato');
+        const titulo      = document.getElementById('modalContratoTitulo');
 
-        // Popula o select de contratos agrupado por empresa
+        // Inicializa o select de contratos vazio (aguarda seleção de empresa)
         if (selContratoRef) {
-            selContratoRef.innerHTML = '<option value="">Selecione o contrato (imóvel)...</option>';
-            const porEmpresa = new Map();
-            todosContratos.forEach(c => {
-                if (!porEmpresa.has(c.company_id)) porEmpresa.set(c.company_id, []);
-                porEmpresa.get(c.company_id).push(c);
-            });
-            porEmpresa.forEach((contratos, companyId) => {
-                const emp = empresas.find(e => e.id === companyId);
-                const nomeEmp = emp ? (emp.trade_name || emp.name) : companyId;
-                const grp = document.createElement('optgroup');
-                grp.label = nomeEmp;
-                contratos.forEach(c => {
-                    const opt = document.createElement('option');
-                    opt.value = c.id;
-                    // Armazena name+code como data-name para uso posterior
-                    opt.dataset.name = c.code ? `${c.code} — ${c.name}` : c.name;
-                    opt.textContent = c.code ? `${c.code} — ${c.name}` : c.name;
-                    grp.appendChild(opt);
-                });
-                selContratoRef.appendChild(grp);
-            });
+            selContratoRef.innerHTML = '<option value="">Selecione primeiro a empresa locatária...</option>';
         }
 
         document.getElementById('formContratoLocacao')?.reset();
@@ -544,11 +552,16 @@
             if (titulo)   titulo.textContent = 'Editar Contrato de Locação';
             if (inpId)    inpId.value = contratoExistente.id;
             if (inpPropId) inpPropId.value = contratoExistente.property_id || '';
-            // Restaura a seleção do contrato de referência
+
+            // Restaura empresa locatária e filtra contratos dela
+            if (selLocatario && contratoExistente.tenant_id) {
+                selLocatario.value = contratoExistente.tenant_id;
+                filtrarContratosPorEmpresa(contratoExistente.tenant_id, selContratoRef);
+            }
+            // Restaura o contrato selecionado (após filtro)
             if (selContratoRef && contratoExistente.contract_ref_id) {
                 selContratoRef.value = contratoExistente.contract_ref_id;
             }
-            if (selLocatario)  selLocatario.value  = contratoExistente.tenant_id || '';
             if (inpValor)  inpValor.value = window.BpoMoney.formatBRL(contratoExistente.monthly_amount).replace('R$\u00a0', '').trim();
             if (inpDia)    inpDia.value   = contratoExistente.due_day || 10;
             if (inpDesconto) inpDesconto.value = window.BpoMoney.formatBRL(contratoExistente.discount_amount || 0).replace('R$\u00a0', '').trim();
