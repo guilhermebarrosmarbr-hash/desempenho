@@ -564,17 +564,17 @@
                 filtrarContratosPorEmpresa(contratoExistente.tenant_id, selContratoRef);
             }
 
-            // Restaura dados do imóvel (contract_ref_id e desconto ficam em properties.description)
+            // Restaura dados do imóvel (contract_ref_id e desconto ficam em properties.address)
             const imovel = imoveis.find(i => i.id === contratoExistente.property_id);
             if (imovel) {
                 let meta = {};
-                try { meta = JSON.parse(imovel.description || '{}'); } catch {}
+                try { meta = JSON.parse(imovel.address || '{}'); } catch {}
                 // Restaura contrato selecionado (após filtro)
                 if (selContratoRef && meta.contract_ref_id) {
                     selContratoRef.value = meta.contract_ref_id;
                 }
                 if (inpDesconto) inpDesconto.value = window.BpoMoney.formatBRL(meta.discount || 0).replace('R\u00a0', '').replace('R$\u00a0','').trim();
-                // Honorários (admin_socio e admin_pct ficam em properties.description)
+                // Honorários (admin_socio e admin_pct ficam em properties.address)
                 if (meta.admin_socio_id && selAdminSocio) selAdminSocio.value = meta.admin_socio_id;
                 if (meta.admin_pct && inpAdminPct) inpAdminPct.value = meta.admin_pct;
             }
@@ -736,7 +736,7 @@
             if (propertyId) {
                 await window.BpoSupabase.request(`properties?id=eq.${propertyId}`, {
                     method: 'PATCH',
-                    body: JSON.stringify({ name: nomeImovel, description: propMeta })
+                    body: JSON.stringify({ name: nomeImovel, address: propMeta })
                 });
             } else {
                 const novoImovel = await window.BpoSupabase.request('properties', {
@@ -746,7 +746,7 @@
                         company_id:  empresaAtiva.id,
                         name:        nomeImovel,
                         status:      'active',
-                        description: propMeta
+                        address: propMeta
                     })
                 });
                 propertyId = Array.isArray(novoImovel) ? novoImovel[0]?.id : novoImovel?.id;
