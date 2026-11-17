@@ -760,7 +760,8 @@
                 tenant_id:      tenantId || null,
                 monthly_amount: window.BpoMoney.toDecimalString(valorCents),
                 due_day:        dia,
-                status:         'active'
+                status:         'active',
+                start_date:     '2000-01-01'   // obrigatório (NOT NULL); representa início indeterminado
             };
 
             if (idContrato) {
