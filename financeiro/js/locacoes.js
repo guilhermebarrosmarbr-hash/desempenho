@@ -757,14 +757,21 @@
             }
 
             // 2. Cria ou atualiza o contrato de locação
-            // Colunas existentes: property_id, monthly_amount, due_day, status, start_date, end_date
-            // tenant_id: FK para people (não companies) — empresa locatária gravada em properties.address
+            // rental_contracts: colunas NOT NULL: property_id, tenant_id (FK→people), monthly_amount, start_date
+            // A empresa locatária real fica em properties.address.tenant_company_id
+            // tenant_id recebe o 1º sócio da empresa ativa como placeholder (exigência do schema)
+            const placeholderTenantId = pessoas[0]?.id || null;
+            if (!placeholderTenantId) {
+                alert('Cadastre ao menos um sócio antes de salvar um contrato de locação (exigência do banco de dados).');
+                return;
+            }
             const payloadContrato = {
                 property_id:    propertyId,
+                tenant_id:      placeholderTenantId,
                 monthly_amount: window.BpoMoney.toDecimalString(valorCents),
                 due_day:        dia,
                 status:         'active',
-                start_date:     '2000-01-01'   // obrigatório (NOT NULL); representa início indeterminado
+                start_date:     '2000-01-01'
             };
 
             if (idContrato) {
