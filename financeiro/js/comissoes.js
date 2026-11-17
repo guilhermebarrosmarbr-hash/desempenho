@@ -229,7 +229,8 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             // Suporte aos campos: setor, inicio_vigencia, fim_vigencia (extrai se salvo em document/meta se schema antigo)
             colaboradores = colabsDb.map(c => {
                 let setor = 'Geral';
-                let inicioVigencia = c.created_at ? c.created_at.slice(0, 10) : '2026-01-01';
+                // Usa '2000-01-01' como padrão para não bloquear eventos anteriores ao cadastro do colaborador
+                let inicioVigencia = '2000-01-01';
                 let fimVigencia = null;
 
                 // Tenta extrair metadados extras se armazenados em role ou document
