@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Módulo 08 — Gestão de Locações & Rateio Societário</title>
+    <title>Módulo 08 — Gestão de Locações &amp; Rateio Societário</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -42,8 +42,6 @@
                 <label for="inputCompetencia" style="font-size: 0.75rem; color: var(--text-muted); display: block;">Competência:</label>
                 <input type="month" id="inputCompetencia" class="select-control" style="color-scheme: dark;">
             </div>
-
-            <button class="btn btn-primary btn-sm" id="btnNovoImovel">+ Cadastrar Imóvel</button>
         </div>
     </header>
 
@@ -55,16 +53,16 @@
                 <div class="metric-value" id="valAlugueisBruto">R$ 0,00</div>
             </div>
             <div class="metric-card danger">
-                <div class="metric-label">Deduções (IPTU/Cond./Adm)</div>
+                <div class="metric-label">Deduções Totais</div>
                 <div class="metric-value" id="valDeducoes">R$ 0,00</div>
             </div>
-            <div class="metric-card success">
-                <div class="metric-label">Líquido Distribuível</div>
-                <div class="metric-value" id="valDistribuivel">R$ 0,00</div>
+            <div class="metric-card warning">
+                <div class="metric-label">Honorários Repassados</div>
+                <div class="metric-value" id="valHonorarios">R$ 0,00</div>
             </div>
-            <div class="metric-card info">
-                <div class="metric-label">Imóveis Ativos</div>
-                <div class="metric-value" id="valTotalImoveis">0</div>
+            <div class="metric-card success">
+                <div class="metric-label">Cotas Distribuíveis</div>
+                <div class="metric-value" id="valDistribuivel">R$ 0,00</div>
             </div>
         </section>
 
@@ -73,7 +71,7 @@
             <div style="display: flex; gap: 12px;">
                 <button class="btn btn-primary" id="btnProcessarDistribuicao">⚡ Processar Rateio Societário</button>
                 <button class="btn btn-secondary" id="btnNovoContratoLocacao">+ Contrato de Locação</button>
-                <button class="btn btn-secondary" id="btnParticipantesSocios">Participantes / Sócios</button>
+                <button class="btn btn-secondary" id="btnParticipantesSocios">👥 Sócios</button>
             </div>
         </div>
 
@@ -93,50 +91,19 @@
                             <th>Competência</th>
                             <th>Imóvel</th>
                             <th>Sócio / Participante</th>
+                            <th>Tipo</th>
                             <th>Receita Bruta</th>
                             <th>Deduções</th>
-                            <th>Participação (%)</th>
-                            <th>Valor Líquido a Receber</th>
+                            <th>%</th>
+                            <th>Valor a Receber</th>
                             <th>Status</th>
                             <th>Ações</th>
                         </tr>
                     </thead>
                     <tbody id="listaDistribuicoesBody">
                         <tr>
-                            <td colspan="9" style="text-align: center; color: var(--text-muted); padding: 32px;">
+                            <td colspan="10" style="text-align: center; color: var(--text-muted); padding: 32px;">
                                 Nenhuma distribuição processada nesta competência.
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </section>
-
-        <!-- Imóveis Cadastrados -->
-        <section class="finance-card">
-            <div class="card-header">
-                <div>
-                    <h2 class="card-title">Imóveis e Galpões Ybox</h2>
-                    <p class="card-subtitle">Cadastro de patrimônio imobiliário e inquilinos</p>
-                </div>
-            </div>
-
-            <div class="table-responsive">
-                <table class="table-custom">
-                    <thead>
-                        <tr>
-                            <th>Nome do Imóvel</th>
-                            <th>Endereço</th>
-                            <th>Aluguel Mensal</th>
-                            <th>Dia Venc.</th>
-                            <th>Status</th>
-                            <th>Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody id="listaImoveisBody">
-                        <tr>
-                            <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;">
-                                Nenhum imóvel cadastrado.
                             </td>
                         </tr>
                     </tbody>
@@ -145,63 +112,138 @@
         </section>
     </main>
 
-    <!-- Modal Novo / Editar Imóvel -->
-    <div class="modal-overlay" id="modalImovel">
-        <div class="modal-card">
-            <h2 class="card-title" id="modalImovelTitulo" style="margin-bottom: 8px;">Cadastrar Novo Imóvel</h2>
-            <p class="card-subtitle" style="margin-bottom: 20px;">Adicione ou edite um galpão, prédio ou unidade locada.</p>
+    <!-- Modal Sócios / Participantes -->
+    <div class="modal-overlay" id="modalSocios" style="display:none;">
+        <div class="modal-card" style="max-width: 700px; width: 95%;">
+            <h2 class="card-title" style="margin-bottom: 8px;">Sócios e Participações</h2>
+            <p class="card-subtitle" style="margin-bottom: 20px;">Gerencie os sócios e suas participações por imóvel/contrato.</p>
 
-            <form id="formImovel">
-                <input type="hidden" id="imovelId" value="">
-                <div style="margin-bottom: 16px;">
-                    <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Identificação do Imóvel *</label>
-                    <input type="text" id="imovelNome" required class="select-control" style="width: 100%;" placeholder="Ex: Galpão Logístico Ybox - Santos">
-                </div>
-                <div style="margin-bottom: 16px;">
-                    <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Endereço Completo</label>
-                    <input type="text" id="imovelEndereco" class="select-control" style="width: 100%;" placeholder="Av. Portuária, 1500 - Santos/SP">
-                </div>
+            <div id="listaSociosContainer" style="margin-bottom: 20px;">
+                <div style="text-align:center; color: var(--text-muted); padding: 20px;">Carregando sócios...</div>
+            </div>
 
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px;">
-                    <button type="button" class="btn btn-danger btn-sm" id="btnExcluirImovel" style="display: none;" onclick="window.deletarImovelModal()">🗑️ Excluir Imóvel</button>
-                    <div style="display: flex; gap: 12px; margin-left: auto;">
-                        <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
-                        <button type="submit" class="btn btn-primary">Salvar Imóvel</button>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+                <button class="btn btn-secondary btn-sm" id="btnNovoSocio">+ Novo Sócio</button>
+                <button class="btn btn-secondary" onclick="fecharModais()">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Cadastro de Sócio -->
+    <div class="modal-overlay" id="modalCadastroSocio" style="display:none;">
+        <div class="modal-card" style="max-width: 480px;">
+            <h2 class="card-title" id="modalSocioTitulo" style="margin-bottom: 8px;">Cadastrar Sócio</h2>
+            <form id="formSocio">
+                <input type="hidden" id="socioId" value="">
+                <div style="margin-bottom: 14px;">
+                    <label style="font-size:0.85rem; color:var(--text-secondary); display:block; margin-bottom:6px;">Nome *</label>
+                    <input type="text" id="socioNome" required class="select-control" style="width:100%;" placeholder="Ex: Loice Fernandes Mãe">
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px;">
+                    <div>
+                        <label style="font-size:0.85rem; color:var(--text-secondary); display:block; margin-bottom:6px;">CPF / CNPJ</label>
+                        <input type="text" id="socioCpf" class="select-control" style="width:100%;" placeholder="000.000.000-00">
+                    </div>
+                    <div>
+                        <label style="font-size:0.85rem; color:var(--text-secondary); display:block; margin-bottom:6px;">E-mail</label>
+                        <input type="email" id="socioEmail" class="select-control" style="width:100%;" placeholder="socio@email.com">
+                    </div>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px;">
+                    <button type="button" class="btn btn-danger btn-sm" id="btnExcluirSocio" style="display:none;" onclick="window.deletarSocioModal()">🗑️ Excluir</button>
+                    <div style="display:flex; gap:12px; margin-left:auto;">
+                        <button type="button" class="btn btn-secondary" onclick="window.voltarParaSocios()">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">Salvar Sócio</button>
                     </div>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- Modal Contrato Locação -->
-    <div class="modal-overlay" id="modalContratoLocacao">
-        <div class="modal-card">
-            <h2 class="card-title" style="margin-bottom: 8px;">Novo Contrato de Locação</h2>
-            <p class="card-subtitle" style="margin-bottom: 20px;">Defina o locatário e o valor mensal do aluguel.</p>
+    <!-- Modal Contrato de Locação -->
+    <div class="modal-overlay" id="modalContratoLocacao" style="display:none;">
+        <div class="modal-card" style="max-width: 720px; width: 95%; max-height: 90vh; overflow-y: auto;">
+            <h2 class="card-title" id="modalContratoTitulo" style="margin-bottom: 4px;">Novo Contrato de Locação</h2>
+            <p class="card-subtitle" style="margin-bottom: 20px;">Defina o imóvel, locatário, deduções e participações societárias.</p>
 
             <form id="formContratoLocacao">
-                <div style="margin-bottom: 16px;">
-                    <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Imóvel *</label>
-                    <select id="locImovel" required class="select-control" style="width: 100%;"></select>
-                </div>
-                <div style="margin-bottom: 16px;">
-                    <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Inquilino / Locatário *</label>
-                    <select id="locLocatario" required class="select-control" style="width: 100%;"></select>
-                </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
-                    <div>
-                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Valor Mensal (R$) *</label>
-                        <input type="text" id="locValor" required class="select-control" style="width: 100%;" placeholder="5.000,00">
-                    </div>
-                    <div>
-                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Dia do Vencimento</label>
-                        <input type="number" id="locDia" min="1" max="31" class="select-control" style="width: 100%;" value="10">
+                <input type="hidden" id="locContratoId" value="">
+                <input type="hidden" id="locPropertyId" value="">
+
+                <!-- Dados do Imóvel -->
+                <div style="background: rgba(255,255,255,0.04); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                    <div style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">📍 Imóvel</div>
+                    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 14px;">
+                        <div>
+                            <label style="font-size:0.85rem; color:var(--text-secondary); display:block; margin-bottom:6px;">Identificação do Imóvel *</label>
+                            <input type="text" id="locImovelNome" required class="select-control" style="width:100%;" placeholder="Ex: Laboratório Celular Martel">
+                        </div>
+                        <div>
+                            <label style="font-size:0.85rem; color:var(--text-secondary); display:block; margin-bottom:6px;">Empresa Locatária *</label>
+                            <select id="locLocatario" required class="select-control" style="width:100%;"></select>
+                        </div>
                     </div>
                 </div>
 
-                <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
-                    <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">Gravar Contrato</button>
+                <!-- Valores -->
+                <div style="background: rgba(255,255,255,0.04); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                    <div style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">💰 Valores do Contrato</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px;">
+                        <div>
+                            <label style="font-size:0.85rem; color:var(--text-secondary); display:block; margin-bottom:6px;">Aluguel Bruto (R$) *</label>
+                            <input type="text" id="locValor" required class="select-control" style="width:100%;" placeholder="5.000,00">
+                        </div>
+                        <div>
+                            <label style="font-size:0.85rem; color:var(--text-secondary); display:block; margin-bottom:6px;">Dia do Vencimento</label>
+                            <input type="number" id="locDia" min="1" max="31" class="select-control" style="width:100%;" value="10">
+                        </div>
+                        <div>
+                            <label style="font-size:0.85rem; color:var(--text-secondary); display:block; margin-bottom:6px;">Desconto Contratual (R$)</label>
+                            <input type="text" id="locDesconto" class="select-control" style="width:100%;" placeholder="0,00" value="0,00">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Honorários de Administração -->
+                <div style="background: rgba(251,191,36,0.07); border: 1px solid rgba(251,191,36,0.2); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                    <div style="font-size: 0.75rem; font-weight: 700; color: #f59e0b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">🏦 Honorários de Administração</div>
+                    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 14px;">
+                        <div>
+                            <label style="font-size:0.85rem; color:var(--text-secondary); display:block; margin-bottom:6px;">Sócio Administrador</label>
+                            <select id="locAdminSocio" class="select-control" style="width:100%;">
+                                <option value="">Nenhum (sem honorários)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size:0.85rem; color:var(--text-secondary); display:block; margin-bottom:6px;">Taxa de Administração (%)</label>
+                            <input type="number" id="locAdminPct" min="0" max="100" step="0.01" class="select-control" style="width:100%;" placeholder="0.00" value="0">
+                        </div>
+                    </div>
+                    <p style="font-size:0.75rem; color:var(--text-muted); margin-top:8px; margin-bottom:0;">
+                        Os honorários são calculados sobre o Aluguel Bruto e repassados ao sócio administrador antes da divisão de cotas.
+                    </p>
+                </div>
+
+                <!-- Cotas Societárias -->
+                <div style="background: rgba(255,255,255,0.04); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <div style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em;">📊 Cotas Societárias</div>
+                        <button type="button" class="btn btn-secondary btn-sm" id="btnAdicionarCota">+ Adicionar Sócio</button>
+                    </div>
+                    <div id="listaCotasForm">
+                        <div style="text-align:center; color:var(--text-muted); font-size:0.85rem; padding: 12px 0;">
+                            Nenhum sócio adicionado. As cotas são calculadas sobre o Líquido (Bruto − IPTU do Faturamento − DAS do período − Honorários).
+                        </div>
+                    </div>
+                    <div id="totalCotasInfo" style="text-align:right; font-size:0.82rem; color:var(--text-muted); margin-top:8px;"></div>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px;">
+                    <button type="button" class="btn btn-danger btn-sm" id="btnExcluirContrato" style="display:none;" onclick="window.excluirContratoLocacaoModal()">🗑️ Excluir Contrato</button>
+                    <div style="display: flex; gap: 12px; margin-left: auto;">
+                        <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">Gravar Contrato</button>
+                    </div>
                 </div>
             </form>
         </div>
