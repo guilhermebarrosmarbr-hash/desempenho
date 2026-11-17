@@ -558,17 +558,19 @@
             if (inpId)    inpId.value = contratoExistente.id;
             if (inpPropId) inpPropId.value = contratoExistente.property_id || '';
 
-            // Restaura empresa locatária e filtra contratos dela
-            if (selLocatario && contratoExistente.tenant_id) {
-                selLocatario.value = contratoExistente.tenant_id;
-                filtrarContratosPorEmpresa(contratoExistente.tenant_id, selContratoRef);
-            }
-
-            // Restaura dados do imóvel (contract_ref_id e desconto ficam em properties.address)
+            // Restaura empresa locatária e demais metadados (gravados em properties.address)
+            // tenant_id em rental_contracts é FK → people; empresa locatária fica em properties.address
             const imovel = imoveis.find(i => i.id === contratoExistente.property_id);
             if (imovel) {
                 let meta = {};
                 try { meta = JSON.parse(imovel.address || '{}'); } catch {}
+
+                // Restaura empresa locatária e filtra contratos
+                const tenantCompanyId = meta.tenant_company_id || '';
+                if (selLocatario && tenantCompanyId) {
+                    selLocatario.value = tenantCompanyId;
+                    filtrarContratosPorEmpresa(tenantCompanyId, selContratoRef);
+                }
                 // Restaura contrato selecionado (após filtro)
                 if (selContratoRef && meta.contract_ref_id) {
                     selContratoRef.value = meta.contract_ref_id;
@@ -728,10 +730,11 @@
             // Guarda referência ao contrato do sistema e desconto no nome do imóvel via JSON no campo name
             // (rental_contracts não possui colunas: notes, discount_amount, contract_ref_id)
             const propMeta = JSON.stringify({
-                contract_ref_id: contratoRefId || null,
-                discount:        window.BpoMoney.toDecimalString(descontoCents),
-                admin_socio_id:  adminSocioId || null,
-                admin_pct:       adminPct
+                contract_ref_id:   contratoRefId || null,
+                discount:          window.BpoMoney.toDecimalString(descontoCents),
+                admin_socio_id:    adminSocioId || null,
+                admin_pct:         adminPct,
+                tenant_company_id: tenantId || null   // empresa locatária (tenant_id FK → people, não companies)
             });
             if (propertyId) {
                 await window.BpoSupabase.request(`properties?id=eq.${propertyId}`, {
@@ -754,10 +757,10 @@
             }
 
             // 2. Cria ou atualiza o contrato de locação
-            // Colunas existentes: property_id, tenant_id, monthly_amount, due_day, status, start_date, end_date
+            // Colunas existentes: property_id, monthly_amount, due_day, status, start_date, end_date
+            // tenant_id: FK para people (não companies) — empresa locatária gravada em properties.address
             const payloadContrato = {
                 property_id:    propertyId,
-                tenant_id:      tenantId || null,
                 monthly_amount: window.BpoMoney.toDecimalString(valorCents),
                 due_day:        dia,
                 status:         'active',
