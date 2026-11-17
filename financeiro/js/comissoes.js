@@ -566,25 +566,37 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         return competenciaStr;
     }
 
+    // -------------------------------------------------------------------------
+    // calcularFaturamentoTotalDoc: retorna gross_amount em centavos do documento
+    // -------------------------------------------------------------------------
+    function calcularFaturamentoTotalDoc(doc) {
+        return window.BpoMoney.toCents(doc.gross_amount);
+    }
+
     function renderizarMetricas() {
-        let baseTotal = 0n;
         let comissaoTotal = 0n;
         let comissaoPaga = 0n;
 
-        // Faturamento Bruto (considerando todos os faturamentos que foram recebidos no mês)
+        // Card 1 — Faturamento Bruto: soma gross_amount de todos os docs recebidos no mês
         let totalBrutoRecebidoCents = 0n;
         documentosDoMes.forEach(doc => {
-            const taxDetails = doc.tax_details || window.BpoFiscalUtils.extrairTaxDetails(doc);
-            const brutoDoc = calcularFaturamentoTotalDoc(doc, taxDetails);
-            totalBrutoRecebidoCents += brutoDoc;
+            totalBrutoRecebidoCents += calcularFaturamentoTotalDoc(doc);
         });
 
-        comissoesCalculadas.forEach(c => {
-            const bCents = window.BpoMoney.toCents(c.base_amount);
-            const cCents = window.BpoMoney.toCents(c.commission_amount);
-            baseTotal += bCents;
-            comissaoTotal += cCents;
+        // Card 2 — Faturamento Líquido: soma dos líquidos (após impostos) por documento
+        // Calculado diretamente dos documentos para não multiplicar pelo nº de colaboradores
+        let totalLiquidoCents = 0n;
+        documentosDoMes.forEach(doc => {
+            const recebidoCents = window.BpoMoney.toCents(doc.net_amount || doc.gross_amount);
+            const impostosCents = calcularImpostosProporcionaisDoc(doc);
+            const liquidoDoc = recebidoCents > impostosCents ? (recebidoCents - impostosCents) : recebidoCents;
+            totalLiquidoCents += liquidoDoc;
+        });
 
+        // Cards 3 e 4 — Comissões Apuradas e Pagas: vêm das comissões gravadas no banco
+        comissoesCalculadas.forEach(c => {
+            const cCents = window.BpoMoney.toCents(c.commission_amount);
+            comissaoTotal += cCents;
             if (c.status === 'paid') {
                 comissaoPaga += cCents;
             }
@@ -593,7 +605,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         const pendente = comissaoTotal > comissaoPaga ? comissaoTotal - comissaoPaga : 0n;
 
         if (valFaturamentoBrutoComissao) valFaturamentoBrutoComissao.textContent = window.BpoMoney.formatBRL(totalBrutoRecebidoCents);
-        if (valBaseComissao) valBaseComissao.textContent = window.BpoMoney.formatBRL(baseTotal);
+        if (valBaseComissao) valBaseComissao.textContent = window.BpoMoney.formatBRL(totalLiquidoCents);
         if (valTotalComissao) valTotalComissao.textContent = window.BpoMoney.formatBRL(comissaoTotal);
         if (valComissaoPaga) valComissaoPaga.textContent = window.BpoMoney.formatBRL(comissaoPaga);
         if (valComissaoPendente) valComissaoPendente.textContent = window.BpoMoney.formatBRL(pendente);
