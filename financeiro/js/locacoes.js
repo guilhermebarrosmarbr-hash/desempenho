@@ -742,7 +742,6 @@
 
             // 2. Cria ou atualiza o contrato de locação
             const payloadContrato = {
-                company_id:      empresaAtiva.id,
                 property_id:     propertyId,
                 tenant_id:       tenantId || null,
                 monthly_amount:  window.BpoMoney.toDecimalString(valorCents),
