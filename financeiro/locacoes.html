@@ -175,8 +175,10 @@
                     <div style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">📍 Imóvel</div>
                     <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 14px;">
                         <div>
-                            <label style="font-size:0.85rem; color:var(--text-secondary); display:block; margin-bottom:6px;">Identificação do Imóvel *</label>
-                            <input type="text" id="locImovelNome" required class="select-control" style="width:100%;" placeholder="Ex: Laboratório Celular Martel">
+                            <label style="font-size:0.85rem; color:var(--text-secondary); display:block; margin-bottom:6px;">Contrato / Imóvel *</label>
+                            <select id="locImovelContrato" required class="select-control" style="width:100%;">
+                                <option value="">Carregando contratos...</option>
+                            </select>
                         </div>
                         <div>
                             <label style="font-size:0.85rem; color:var(--text-secondary); display:block; margin-bottom:6px;">Empresa Locatária *</label>

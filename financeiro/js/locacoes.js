@@ -14,6 +14,7 @@
     let distribuicoes = [];     // rental_distributions[]
     let pessoas = [];           // people[] — sócios/locatários
     let cotasForm = [];         // estado local das cotas no formulário do contrato
+    let todosContratos = [];    // contracts[] de todas as empresas (para o select de imóvel)
 
     // DOM
     const selectEmpresa          = document.getElementById('selectEmpresa');
@@ -163,7 +164,13 @@
                 contratosLocacao = [];
             }
 
-            // 4. Distribuições da competência
+            // 4. Todos os contratos do sistema (para o select de imóvel no modal)
+            todosContratos = await window.BpoSupabase.request(
+                'contracts?order=company_id.asc,code.asc',
+                { method: 'GET' }
+            ) || [];
+
+            // 5. Distribuições da competência
             distribuicoes = await window.BpoSupabase.request(
                 `rental_distributions?company_id=eq.${empresaAtiva.id}&competence_month=eq.${competenciaAtiva}&order=property_id.asc,distribution_type.asc`,
                 { method: 'GET' }
@@ -457,7 +464,18 @@
             if (modalSocios) { modalSocios.style.display = 'flex'; renderizarListaSocios(); }
             alert('Sócio excluído com sucesso.');
         } catch (err) {
-            alert('Erro ao excluir sócio: ' + err.message);
+            // FK violation: pessoa referenciada em contratos ou outras tabelas
+            const msgErro = err.message || '';
+            const isFkViolation = msgErro.includes('23503') || msgErro.includes('foreign key') || msgErro.includes('still referenced');
+            if (isFkViolation) {
+                alert(
+                    'Não é possível excluir este sócio pois ele está vinculado a contratos no sistema.\n\n' +
+                    'Para removê-lo das participações de locação, edite o contrato e remova-o das cotas/honorários.\n' +
+                    'Para desativá-lo definitivamente, entre em contato com o administrador do sistema.'
+                );
+            } else {
+                alert('Erro ao excluir sócio: ' + msgErro);
+            }
         }
     };
 
@@ -483,15 +501,40 @@
                 pessoas.map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`).join('');
         }
 
-        const inpId       = document.getElementById('locContratoId');
-        const inpPropId   = document.getElementById('locPropertyId');
-        const inpNome     = document.getElementById('locImovelNome');
-        const inpValor    = document.getElementById('locValor');
-        const inpDia      = document.getElementById('locDia');
-        const inpDesconto = document.getElementById('locDesconto');
-        const inpAdminPct = document.getElementById('locAdminPct');
-        const btnExc      = document.getElementById('btnExcluirContrato');
-        const titulo      = document.getElementById('modalContratoTitulo');
+        const inpId          = document.getElementById('locContratoId');
+        const inpPropId      = document.getElementById('locPropertyId');
+        const selContratoRef = document.getElementById('locImovelContrato'); // select de contratos
+        const inpValor       = document.getElementById('locValor');
+        const inpDia         = document.getElementById('locDia');
+        const inpDesconto    = document.getElementById('locDesconto');
+        const inpAdminPct    = document.getElementById('locAdminPct');
+        const btnExc         = document.getElementById('btnExcluirContrato');
+        const titulo         = document.getElementById('modalContratoTitulo');
+
+        // Popula o select de contratos agrupado por empresa
+        if (selContratoRef) {
+            selContratoRef.innerHTML = '<option value="">Selecione o contrato (imóvel)...</option>';
+            const porEmpresa = new Map();
+            todosContratos.forEach(c => {
+                if (!porEmpresa.has(c.company_id)) porEmpresa.set(c.company_id, []);
+                porEmpresa.get(c.company_id).push(c);
+            });
+            porEmpresa.forEach((contratos, companyId) => {
+                const emp = empresas.find(e => e.id === companyId);
+                const nomeEmp = emp ? (emp.trade_name || emp.name) : companyId;
+                const grp = document.createElement('optgroup');
+                grp.label = nomeEmp;
+                contratos.forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c.id;
+                    // Armazena name+code como data-name para uso posterior
+                    opt.dataset.name = c.code ? `${c.code} — ${c.name}` : c.name;
+                    opt.textContent = c.code ? `${c.code} — ${c.name}` : c.name;
+                    grp.appendChild(opt);
+                });
+                selContratoRef.appendChild(grp);
+            });
+        }
 
         document.getElementById('formContratoLocacao')?.reset();
         cotasForm = [];
@@ -501,8 +544,10 @@
             if (titulo)   titulo.textContent = 'Editar Contrato de Locação';
             if (inpId)    inpId.value = contratoExistente.id;
             if (inpPropId) inpPropId.value = contratoExistente.property_id || '';
-            const imovel = imoveis.find(i => i.id === contratoExistente.property_id);
-            if (inpNome)  inpNome.value = imovel ? imovel.name : '';
+            // Restaura a seleção do contrato de referência
+            if (selContratoRef && contratoExistente.contract_ref_id) {
+                selContratoRef.value = contratoExistente.contract_ref_id;
+            }
             if (selLocatario)  selLocatario.value  = contratoExistente.tenant_id || '';
             if (inpValor)  inpValor.value = window.BpoMoney.formatBRL(contratoExistente.monthly_amount).replace('R$\u00a0', '').trim();
             if (inpDia)    inpDia.value   = contratoExistente.due_day || 10;
@@ -519,12 +564,13 @@
             carregarCotasExistentes(contratoExistente.property_id);
             if (btnExc) btnExc.style.display = 'inline-flex';
         } else {
-            if (titulo)      titulo.textContent = 'Novo Contrato de Locação';
-            if (inpId)       inpId.value = '';
-            if (inpPropId)   inpPropId.value = '';
-            if (inpDesconto) inpDesconto.value = '0,00';
-            if (inpAdminPct) inpAdminPct.value = '0';
-            if (btnExc)      btnExc.style.display = 'none';
+            if (titulo)         titulo.textContent = 'Novo Contrato de Locação';
+            if (inpId)          inpId.value = '';
+            if (inpPropId)      inpPropId.value = '';
+            if (selContratoRef) selContratoRef.value = '';
+            if (inpDesconto)    inpDesconto.value = '0,00';
+            if (inpAdminPct)    inpAdminPct.value = '0';
+            if (btnExc)         btnExc.style.display = 'none';
         }
 
         if (modalContratoLocacao) modalContratoLocacao.style.display = 'flex';
@@ -633,9 +679,12 @@
         e.preventDefault();
         lerCotasForm(); // sincroniza estado do DOM antes de salvar
 
-        const idContrato   = document.getElementById('locContratoId')?.value || '';
-        const idProperty   = document.getElementById('locPropertyId')?.value || '';
-        const nomeImovel   = document.getElementById('locImovelNome')?.value.trim() || '';
+        const idContrato     = document.getElementById('locContratoId')?.value || '';
+        const idProperty     = document.getElementById('locPropertyId')?.value || '';
+        const selContratoRef = document.getElementById('locImovelContrato');
+        const contratoRefId  = selContratoRef?.value || '';
+        const contratoRefSel = selContratoRef?.options[selContratoRef.selectedIndex];
+        const nomeImovel     = contratoRefSel?.dataset?.name || contratoRefSel?.text || '';
         const tenantId     = document.getElementById('locLocatario')?.value || '';
         const valorCents   = window.BpoMoney.toCents(document.getElementById('locValor')?.value || '0');
         const dia          = parseInt(document.getElementById('locDia')?.value) || 10;
@@ -643,7 +692,7 @@
         const adminSocioId = document.getElementById('locAdminSocio')?.value || '';
         const adminPct     = parseFloat(document.getElementById('locAdminPct')?.value) || 0;
 
-        if (!nomeImovel) { alert('Informe a identificação do imóvel.'); return; }
+        if (!contratoRefId) { alert('Selecione o contrato (imóvel) correspondente.'); return; }
 
         const totalCotasPct = cotasForm.reduce((acc, c) => acc + (c.pct || 0), 0);
         if (cotasForm.length > 0 && Math.abs(totalCotasPct - 100) > 0.1) {
@@ -687,7 +736,8 @@
                 discount_amount: window.BpoMoney.toDecimalString(descontoCents),
                 due_day:         dia,
                 status:          'active',
-                notes:           notes
+                notes:           notes,
+                contract_ref_id: contratoRefId || null  // referência ao contrato cadastrado no sistema
             };
 
             if (idContrato) {
