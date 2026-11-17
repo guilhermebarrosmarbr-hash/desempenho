@@ -192,11 +192,16 @@
                 { method: 'GET' }
             ) || [];
 
-            // 5. Distribuições da competência
-            distribuicoes = await window.BpoSupabase.request(
-                `rental_distributions?company_id=eq.${empresaAtiva.id}&competence_month=eq.${competenciaAtiva}&order=property_id.asc,distribution_type.asc`,
-                { method: 'GET' }
-            ) || [];
+            // 5. Distribuições da competência (filtradas pelos imóveis da empresa — company_id não existe em rental_distributions)
+            if (imoveis.length > 0) {
+                const idsImov = imoveis.map(i => i.id).join(',');
+                distribuicoes = await window.BpoSupabase.request(
+                    `rental_distributions?property_id=in.(${idsImov})&competence_month=eq.${competenciaAtiva}&order=property_id.asc`,
+                    { method: 'GET' }
+                ) || [];
+            } else {
+                distribuicoes = [];
+            }
 
             renderizarMetricas();
             renderizarExtrato();
@@ -279,7 +284,8 @@
 
         const imoveisProcessados = new Set();
         distribuicoes.forEach(d => {
-            const tipo = d.distribution_type || 'cota';
+            // Discrimina tipo pelo idempotency_key (hon_ = honorários, cota_ = cota)
+            const tipo = (d.idempotency_key || '').startsWith('hon_') ? 'honorarios' : 'cota';
 
             if (!imoveisProcessados.has(d.property_id)) {
                 imoveisProcessados.add(d.property_id);
@@ -321,7 +327,8 @@
         listaDistribuicoesBody.innerHTML = distribuicoes.map(d => {
             const imovel      = imoveis.find(i => i.id === d.property_id) || { name: 'Imóvel' };
             const participante = pessoas.find(p => p.id === d.participant_id) || { name: 'Sócio' };
-            const tipo        = d.distribution_type || 'cota';
+            // Discrimina tipo pelo idempotency_key (hon_ = honorários, cota_ = cota)
+            const tipo = (d.idempotency_key || '').startsWith('hon_') ? 'honorarios' : 'cota';
 
             const tipoBadge = tipo === 'honorarios'
                 ? '<span class="badge badge-warning">🏦 Honorários</span>'
@@ -331,9 +338,7 @@
                 ? '<span class="badge badge-success">Pago</span>'
                 : '<span class="badge badge-warning">A Repassar</span>';
 
-            const pct = tipo === 'honorarios'
-                ? `${Number(d.admin_pct || d.participation_pct || 0).toFixed(2)}%`
-                : `${Number(d.participation_pct || 0).toFixed(2)}%`;
+            const pct = `${Number(d.participation_pct || 0).toFixed(2)}%`;
 
             const deducoesDisplay = tipo === 'honorarios'
                 ? '<span style="color:var(--text-muted);">—</span>'
@@ -558,20 +563,24 @@
                 selLocatario.value = contratoExistente.tenant_id;
                 filtrarContratosPorEmpresa(contratoExistente.tenant_id, selContratoRef);
             }
-            // Restaura o contrato selecionado (após filtro)
-            if (selContratoRef && contratoExistente.contract_ref_id) {
-                selContratoRef.value = contratoExistente.contract_ref_id;
-            }
-            if (inpValor)  inpValor.value = window.BpoMoney.formatBRL(contratoExistente.monthly_amount).replace('R$\u00a0', '').trim();
-            if (inpDia)    inpDia.value   = contratoExistente.due_day || 10;
-            if (inpDesconto) inpDesconto.value = window.BpoMoney.formatBRL(contratoExistente.discount_amount || 0).replace('R$\u00a0', '').trim();
 
-            // Lê honorários do notes do contrato
-            const notes    = contratoExistente.notes || '';
-            const mAdmin   = notes.match(/\[AdminSocio:\s*(.*?)\]/);
-            const mAdminPct = notes.match(/\[AdminPct:\s*(.*?)\]/);
-            if (mAdmin   && selAdminSocio) selAdminSocio.value = mAdmin[1].trim();
-            if (mAdminPct && inpAdminPct)  inpAdminPct.value   = mAdminPct[1].trim();
+            // Restaura dados do imóvel (contract_ref_id e desconto ficam em properties.description)
+            const imovel = imoveis.find(i => i.id === contratoExistente.property_id);
+            if (imovel) {
+                let meta = {};
+                try { meta = JSON.parse(imovel.description || '{}'); } catch {}
+                // Restaura contrato selecionado (após filtro)
+                if (selContratoRef && meta.contract_ref_id) {
+                    selContratoRef.value = meta.contract_ref_id;
+                }
+                if (inpDesconto) inpDesconto.value = window.BpoMoney.formatBRL(meta.discount || 0).replace('R\u00a0', '').replace('R$\u00a0','').trim();
+                // Honorários (admin_socio e admin_pct ficam em properties.description)
+                if (meta.admin_socio_id && selAdminSocio) selAdminSocio.value = meta.admin_socio_id;
+                if (meta.admin_pct && inpAdminPct) inpAdminPct.value = meta.admin_pct;
+            }
+
+            if (inpValor) inpValor.value = window.BpoMoney.formatBRL(contratoExistente.monthly_amount).replace('R\u00a0', '').replace('R$\u00a0','').trim();
+            if (inpDia)   inpDia.value = contratoExistente.due_day || 10;
 
             // Carrega cotas existentes do banco
             carregarCotasExistentes(contratoExistente.property_id);
@@ -598,7 +607,7 @@
             ) || [];
             // Apenas cotas (não honorários)
             cotasForm = participantes
-                .filter(p => (p.participant_type || 'cota') === 'cota')
+                .filter(p => parseFloat(p.participation_pct) > 0 && parseFloat(p.admin_pct || 0) === 0)
                 .map(p => ({
                     _db_id:    p.id,
                     person_id: p.person_id,
@@ -712,28 +721,32 @@
             if (!confirm(`As cotas somam ${totalCotasPct.toFixed(2)}% (esperado 100%). Continuar mesmo assim?`)) return;
         }
 
-        // Metadados de honorários armazenados no campo notes do contrato
-        const notes = adminSocioId
-            ? `[AdminSocio: ${adminSocioId}] [AdminPct: ${adminPct}]`
-            : '';
-
         try {
             let propertyId = idProperty;
 
             // 1. Cria ou atualiza o imóvel (properties)
+            // Guarda referência ao contrato do sistema e desconto no nome do imóvel via JSON no campo name
+            // (rental_contracts não possui colunas: notes, discount_amount, contract_ref_id)
+            const propMeta = JSON.stringify({
+                contract_ref_id: contratoRefId || null,
+                discount:        window.BpoMoney.toDecimalString(descontoCents),
+                admin_socio_id:  adminSocioId || null,
+                admin_pct:       adminPct
+            });
             if (propertyId) {
                 await window.BpoSupabase.request(`properties?id=eq.${propertyId}`, {
                     method: 'PATCH',
-                    body: JSON.stringify({ name: nomeImovel })
+                    body: JSON.stringify({ name: nomeImovel, description: propMeta })
                 });
             } else {
                 const novoImovel = await window.BpoSupabase.request('properties', {
                     method: 'POST',
                     prefer: 'return=representation',
                     body: JSON.stringify({
-                        company_id: empresaAtiva.id,
-                        name: nomeImovel,
-                        status: 'active'
+                        company_id:  empresaAtiva.id,
+                        name:        nomeImovel,
+                        status:      'active',
+                        description: propMeta
                     })
                 });
                 propertyId = Array.isArray(novoImovel) ? novoImovel[0]?.id : novoImovel?.id;
@@ -741,15 +754,13 @@
             }
 
             // 2. Cria ou atualiza o contrato de locação
+            // Colunas existentes: property_id, tenant_id, monthly_amount, due_day, status, start_date, end_date
             const payloadContrato = {
-                property_id:     propertyId,
-                tenant_id:       tenantId || null,
-                monthly_amount:  window.BpoMoney.toDecimalString(valorCents),
-                discount_amount: window.BpoMoney.toDecimalString(descontoCents),
-                due_day:         dia,
-                status:          'active',
-                notes:           notes,
-                contract_ref_id: contratoRefId || null  // referência ao contrato cadastrado no sistema
+                property_id:    propertyId,
+                tenant_id:      tenantId || null,
+                monthly_amount: window.BpoMoney.toDecimalString(valorCents),
+                due_day:        dia,
+                status:         'active'
             };
 
             if (idContrato) {
@@ -762,47 +773,45 @@
                 });
             }
 
-            // 3. Recria participantes do tipo 'cota' para este imóvel
+            // 3. Recria participantes para este imóvel
+            // property_participants colunas: property_id, person_id, participation_pct, admin_pct, valid_from, valid_until
+            // NÃO existe participant_type — usamos admin_pct > 0 para honorários, participation_pct > 0 para cotas
             if (propertyId) {
                 const existentes = await window.BpoSupabase.request(
                     `property_participants?property_id=eq.${propertyId}`,
                     { method: 'GET' }
                 ) || [];
 
-                // Remove todos os 'cota' existentes
-                for (const p of existentes.filter(p => (p.participant_type || 'cota') === 'cota')) {
+                // Remove todos os participantes existentes e recria
+                for (const p of existentes) {
                     await window.BpoSupabase.request(`property_participants?id=eq.${p.id}`, { method: 'DELETE' });
                 }
-                // Insere as novas cotas
+
+                // Insere as cotas (participation_pct > 0, admin_pct = 0)
                 for (const cota of cotasForm) {
-                    if (!cota.person_id) continue;
+                    if (!cota.person_id || cota.pct <= 0) continue;
                     await window.BpoSupabase.request('property_participants', {
                         method: 'POST',
                         body: JSON.stringify({
-                            property_id:      propertyId,
-                            person_id:        cota.person_id,
+                            property_id:       propertyId,
+                            person_id:         cota.person_id,
                             participation_pct: cota.pct,
-                            admin_pct:        0,
-                            participant_type: 'cota',
-                            valid_from:       '2000-01-01'
+                            admin_pct:         0,
+                            valid_from:        '2000-01-01'
                         })
                     });
                 }
 
-                // Remove todos os 'honorarios' existentes e recria se houver
-                for (const p of existentes.filter(p => (p.participant_type || '') === 'honorarios')) {
-                    await window.BpoSupabase.request(`property_participants?id=eq.${p.id}`, { method: 'DELETE' });
-                }
+                // Insere o sócio administrador (admin_pct > 0, participation_pct = 0)
                 if (adminSocioId && adminPct > 0) {
                     await window.BpoSupabase.request('property_participants', {
                         method: 'POST',
                         body: JSON.stringify({
-                            property_id:      propertyId,
-                            person_id:        adminSocioId,
+                            property_id:       propertyId,
+                            person_id:         adminSocioId,
                             participation_pct: 0,
-                            admin_pct:        adminPct,
-                            participant_type: 'honorarios',
-                            valid_from:       '2000-01-01'
+                            admin_pct:         adminPct,
+                            valid_from:        '2000-01-01'
                         })
                     });
                 }
@@ -863,6 +872,7 @@
                 const ded = deducoesPorImovel.get(imovel.id) || { iptuCents: 0n, dasCents: 0n };
 
                 // Participantes válidos na competência
+                // Honorário: quem tem admin_pct > 0 / Cota: quem tem participation_pct > 0
                 const participantesImovel = participantesAll.filter(p => {
                     if (p.property_id !== imovel.id) return false;
                     const fromOk  = !p.valid_from  || p.valid_from  <= compDateStr;
@@ -875,8 +885,8 @@
                     continue;
                 }
 
-                // ---- HONORÁRIOS (calculados sobre o bruto recebido, antes das cotas) ----
-                const admParticipante = participantesImovel.find(p => (p.participant_type || 'cota') === 'honorarios');
+                // ---- HONORÁRIOS (admin_pct > 0 → calculados sobre o bruto recebido) ----
+                const admParticipante = participantesImovel.find(p => parseFloat(p.admin_pct) > 0);
                 let honorariosCents = 0n;
 
                 if (admParticipante && parseFloat(admParticipante.admin_pct) > 0) {
@@ -884,24 +894,21 @@
                         valorRecebidoCents, parseFloat(admParticipante.admin_pct)
                     );
                     distributionsToInsert.push({
-                        company_id:          empresaAtiva.id,
-                        property_id:         imovel.id,
-                        participant_id:      admParticipante.person_id,
-                        competence_month:    competenciaAtiva,
-                        distribution_type:   'honorarios',
-                        gross_received:      window.BpoMoney.toDecimalString(valorRecebidoCents),
-                        deductions:          '0.00',
+                        property_id:          imovel.id,
+                        participant_id:       admParticipante.person_id,
+                        competence_month:     competenciaAtiva,
+                        gross_received:       window.BpoMoney.toDecimalString(valorRecebidoCents),
+                        deductions:           '0.00',
                         distributable_amount: window.BpoMoney.toDecimalString(honorariosCents),
-                        participation_pct:   0,
-                        admin_pct:           admParticipante.admin_pct,
-                        distribution_amount: window.BpoMoney.toDecimalString(honorariosCents),
-                        status:              'pending',
-                        idempotency_key:     `hon_${imovel.id}_${admParticipante.person_id}_${competenciaAtiva}`
+                        distribution_amount:  window.BpoMoney.toDecimalString(honorariosCents),
+                        participation_pct:    admParticipante.admin_pct,
+                        idempotency_key:      `hon_${imovel.id}_${admParticipante.person_id}_${competenciaAtiva}`,
+                        status:               'pending'
                     });
                 }
 
-                // ---- COTAS (calculadas sobre o líquido: bruto − IPTU − DAS − honorários) ----
-                const cotasParticipantes = participantesImovel.filter(p => (p.participant_type || 'cota') === 'cota');
+                // ---- COTAS (participation_pct > 0 → calculadas sobre o líquido) ----
+                const cotasParticipantes = participantesImovel.filter(p => parseFloat(p.participation_pct) > 0);
                 if (cotasParticipantes.length > 0) {
                     const totalDeducoesCotas = ded.iptuCents + ded.dasCents + honorariosCents;
                     const calculo = window.BpoRentalEngine.calcularDistribuicao({
@@ -913,19 +920,16 @@
 
                     calculo.distribuicoes.forEach(item => {
                         distributionsToInsert.push({
-                            company_id:          empresaAtiva.id,
-                            property_id:         imovel.id,
-                            participant_id:      item.person_id,
-                            competence_month:    competenciaAtiva,
-                            distribution_type:   'cota',
-                            gross_received:      window.BpoMoney.toDecimalString(calculo.grossCents),
-                            deductions:          window.BpoMoney.toDecimalString(calculo.deductionsCents),
+                            property_id:          imovel.id,
+                            participant_id:       item.person_id,
+                            competence_month:     competenciaAtiva,
+                            gross_received:       window.BpoMoney.toDecimalString(calculo.grossCents),
+                            deductions:           window.BpoMoney.toDecimalString(calculo.deductionsCents),
                             distributable_amount: window.BpoMoney.toDecimalString(calculo.distributableCents),
-                            participation_pct:   item.participation_pct,
-                            admin_pct:           0,
-                            distribution_amount: window.BpoMoney.toDecimalString(item.amountCents),
-                            status:              'pending',
-                            idempotency_key:     `cota_${imovel.id}_${item.person_id}_${competenciaAtiva}`
+                            distribution_amount:  window.BpoMoney.toDecimalString(item.amountCents),
+                            participation_pct:    item.participation_pct,
+                            idempotency_key:      `cota_${imovel.id}_${item.person_id}_${competenciaAtiva}`,
+                            status:               'pending'
                         });
                     });
                 }
@@ -937,12 +941,16 @@
             }
 
             // Remove 'pending' existentes para o período (nunca toca os 'paid')
-            const calcsExistentes = await window.BpoSupabase.request(
-                `rental_distributions?company_id=eq.${empresaAtiva.id}&competence_month=eq.${competenciaAtiva}&status=eq.pending`,
-                { method: 'GET' }
-            ) || [];
-            for (const c of calcsExistentes) {
-                await window.BpoSupabase.request(`rental_distributions?id=eq.${c.id}`, { method: 'DELETE' });
+            // Filtra pelos imóveis da empresa (company_id não existe em rental_distributions)
+            if (imoveis.length > 0) {
+                const idsImov2 = imoveis.map(i => i.id).join(',');
+                const calcsExistentes = await window.BpoSupabase.request(
+                    `rental_distributions?property_id=in.(${idsImov2})&competence_month=eq.${competenciaAtiva}&status=eq.pending`,
+                    { method: 'GET' }
+                ) || [];
+                for (const c of calcsExistentes) {
+                    await window.BpoSupabase.request(`rental_distributions?id=eq.${c.id}`, { method: 'DELETE' });
+                }
             }
 
             // Insere em lote
