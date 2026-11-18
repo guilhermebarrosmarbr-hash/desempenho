@@ -102,7 +102,13 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         const eCents = (td && td.extras) 
             ? window.BpoMoney.toCents(td.extras) 
             : 0n;
-        return (bCents + eCents) > dCents ? (bCents + eCents - dCents) : 0n;
+        // IPTU (exclusivo de contratos de locação) integra o Valor Total declarado ao cliente
+        // e deve compor a base de cálculo do DAS/tributos, pois é parte da receita bruta declarada
+        const iptuCents = (td && td.iptu_valor)
+            ? window.BpoMoney.toCents(td.iptu_valor)
+            : 0n;
+        const totalBruto = bCents + eCents + iptuCents;
+        return totalBruto > dCents ? (totalBruto - dCents) : 0n;
     }
 
     /**
