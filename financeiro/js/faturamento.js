@@ -1834,7 +1834,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             issue_date: emissao,
             due_date: vencimento,
             gross_amount: window.BpoMoney.toDecimalString(brutoCents),
-            additions: window.BpoMoney.toDecimalString(multaCents + jurosCents + extrasCents),
+            // additions: coluna não existe em billing_documents — acréscimos embutidos em gross_amount
             discounts: window.BpoMoney.toDecimalString(descontoCents),
             retentions: window.BpoMoney.toDecimalString(retCents),
             net_amount: window.BpoMoney.toDecimalString(liqCents),

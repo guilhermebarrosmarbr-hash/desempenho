@@ -76,38 +76,39 @@
             </div>
         </div>
 
-        <!-- Tabela de Distribuição da Competência -->
-        <section class="finance-card">
+        <!-- Gestão de Locações — Tabela no estilo planilha -->
+        <section class="finance-card" style="overflow-x:auto;">
             <div class="card-header">
                 <div>
-                    <h2 class="card-title">Extrato de Rateio por Participante</h2>
-                    <p class="card-subtitle">Valores líquidos divididos rigorosamente por percentual de titularidade</p>
+                    <h2 class="card-title">Gestão de Locações</h2>
+                    <p class="card-subtitle">Competência: visão consolidada por contrato com distribuição de cotas</p>
                 </div>
             </div>
 
-            <div class="table-responsive">
-                <table class="table-custom">
-                    <thead>
-                        <tr>
-                            <th>Competência</th>
-                            <th>Imóvel</th>
-                            <th>Sócio / Participante</th>
-                            <th>Tipo</th>
-                            <th>Receita Bruta</th>
-                            <th>Deduções</th>
-                            <th>%</th>
-                            <th>Valor a Receber</th>
-                            <th>Status</th>
-                            <th>Ações</th>
+            <div style="overflow-x:auto; width:100%;">
+                <table id="tabelaGestaoLocacoes" style="width:100%; border-collapse:collapse; font-size:0.82rem; white-space:nowrap; min-width:900px;">
+                    <thead id="tabelaGestaoLocacoesHead">
+                        <tr style="background:#111827; color:#9ca3af; text-transform:uppercase; font-size:0.72rem; letter-spacing:0.05em;">
+                            <th style="padding:10px 10px; text-align:left; border-bottom:2px solid rgba(255,255,255,0.1); position:sticky; left:0; background:#111827; z-index:2;">Contrato</th>
+                            <th style="padding:10px 10px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1);">Valor Bruto</th>
+                            <th style="padding:10px 10px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1);">IPTU</th>
+                            <th style="padding:10px 10px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1);">Desconto</th>
+                            <th style="padding:10px 10px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1);">Juros/Multa</th>
+                            <th style="padding:10px 10px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1);">DAS</th>
+                            <th style="padding:10px 10px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1);">Honorários</th>
+                            <th style="padding:10px 10px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1); font-weight:700; color:#fff;">Líquido</th>
+                            <!-- colunas de sócios inseridas dinamicamente pelo JS -->
+                            <th style="padding:10px 10px; text-align:center; border-bottom:2px solid rgba(255,255,255,0.1);">Recebimento</th>
                         </tr>
                     </thead>
                     <tbody id="listaDistribuicoesBody">
                         <tr>
-                            <td colspan="10" style="text-align: center; color: var(--text-muted); padding: 32px;">
-                                Nenhuma distribuição processada nesta competência.
+                            <td colspan="10" style="text-align:center; color:#6b7280; padding:40px;">
+                                Nenhum contrato processado para esta competência.
                             </td>
                         </tr>
                     </tbody>
+                    <tfoot id="tabelaGestaoLocacoesFoot"></tfoot>
                 </table>
             </div>
         </section>
