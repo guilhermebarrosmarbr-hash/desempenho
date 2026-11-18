@@ -314,15 +314,105 @@
     // BUSCAR DADOS DOS BILLING_DOCUMENTS DO PERÍODO
     // Retorna { mapCompetencia, docsCaixa }
     // =========================================================================
+
+    /**
+     * Calcula o Valor Total de um documento (mesma fórmula do módulo Faturamento e Impostos):
+     *   Valor Total = Valor Base + Extras + IPTU − Desconto
+     */
+    function calcularValorTotalDoc(doc, td) {
+        const bCents = window.BpoMoney.toCents(doc.gross_amount);
+        const dCents = td.desconto
+            ? window.BpoMoney.toCents(td.desconto)
+            : (doc.discounts ? window.BpoMoney.toCents(doc.discounts) : 0n);
+        const eCents = td.extras ? window.BpoMoney.toCents(td.extras) : 0n;
+        const iptuCents = td.iptu_valor ? window.BpoMoney.toCents(td.iptu_valor) : 0n;
+        const total = bCents + eCents + iptuCents;
+        return total > dCents ? (total - dCents) : 0n;
+    }
+
+    /**
+     * Calcula o DAS/tributos de um documento usando o mesmo motor do módulo de Impostos
+     * (BpoTaxEngine, disponível via taxes.js carregado em locacoes.html).
+     * Para Simples Nacional: DAS via apurarSimplesNacional com RBT12 real da empresa.
+     * Para Lucro Presumido: PIS + COFINS + IRPJ + CSLL.
+     */
+    function calcularDASDoc(doc, td, fatTotalCents, rbt12Empresa) {
+        const fatTotalNum = Number(fatTotalCents) / 100;
+        const isLP = empresaAtiva && empresaAtiva.tax_regime === 'lucro_presumido';
+        const isLocacao = (doc.document_type === 'locacao') || !!td.is_locacao;
+
+        if (isLP) {
+            const pisCents = (td.pis_valor !== undefined && td.pis_valor !== null)
+                ? window.BpoMoney.toCents(td.pis_valor)
+                : BigInt(Math.round(fatTotalNum * 0.0065 * 100));
+            const cofinsCents = (td.cofins_valor !== undefined && td.cofins_valor !== null)
+                ? window.BpoMoney.toCents(td.cofins_valor)
+                : BigInt(Math.round(fatTotalNum * 0.03 * 100));
+            const irpjCents = (td.irpj_valor !== undefined && td.irpj_valor !== null)
+                ? window.BpoMoney.toCents(td.irpj_valor)
+                : BigInt(Math.round(fatTotalNum * 0.048 * 100));
+            const csllCents = (td.csll_valor !== undefined && td.csll_valor !== null)
+                ? window.BpoMoney.toCents(td.csll_valor)
+                : BigInt(Math.round(fatTotalNum * 0.0288 * 100));
+            return pisCents + cofinsCents + irpjCents + csllCents;
+        } else {
+            // Simples Nacional — mesma lógica do impostos.js
+            const anexoKey = td.das_anexo || 'anexo_iii';
+            const issIsento = isLocacao || !!td.iss_isento_simples;
+            const rbt12Num = (rbt12Empresa && rbt12Empresa > 0)
+                ? rbt12Empresa
+                : (td.das_rbt12 ? Number(window.BpoMoney.toCents(td.das_rbt12)) / 100 : 180000);
+
+            if (window.BpoTaxEngine) {
+                const previa = window.BpoTaxEngine.apurarSimplesNacional(rbt12Num, fatTotalNum, anexoKey, { issIsento });
+                const aliq = previa.aliquotaEfetivaNumero || 0.06;
+                return BigInt(Math.round(fatTotalNum * aliq * 100));
+            }
+            return BigInt(Math.round(fatTotalNum * 0.06 * 100));
+        }
+    }
+
+    /**
+     * Calcula o RBT12 real da empresa: soma o Valor Total dos 12 meses anteriores à competência.
+     */
+    async function calcularRbt12Empresa(companyId, competencia) {
+        if (!competencia || !competencia.includes('-')) return 0;
+        const [anoStr, mesStr] = competencia.split('-');
+        let a = parseInt(anoStr, 10);
+        let m = parseInt(mesStr, 10);
+        const meses = [];
+        for (let i = 0; i < 12; i++) {
+            m--; if (m === 0) { m = 12; a--; }
+            meses.unshift(`${a}-${String(m).padStart(2, '0')}`);
+        }
+        try {
+            const docs12 = await window.BpoSupabase.request(
+                `billing_documents?company_id=eq.${companyId}&competence_month=in.(${meses.join(',')})&status=neq.cancelled`,
+                { method: 'GET' }
+            ) || [];
+            let total = 0n;
+            docs12.forEach(d => {
+                const tdD = (d.tax_details && typeof d.tax_details === 'object') ? d.tax_details : {};
+                total += calcularValorTotalDoc(d, tdD);
+            });
+            return Number(total) / 100;
+        } catch (e) {
+            return 0;
+        }
+    }
+
     async function buscarDeducoesDoFaturamento() {
         const mapImovel = new Map();
         const docsCaixa = [];
         try {
-            // Busca documentos de locação da empresa ativa sem cancelados
+            // Busca todos os billing_documents da empresa (sem cancelados)
             const docs = await window.BpoSupabase.request(
                 `billing_documents?company_id=eq.${empresaAtiva.id}&status=neq.cancelled`,
                 { method: 'GET' }
             ) || [];
+
+            // RBT12 real: necessário para cálculo correto do DAS no Simples Nacional
+            const rbt12Empresa = await calcularRbt12Empresa(empresaAtiva.id, competenciaAtiva);
 
             docs.forEach(d => {
                 let td = {};
@@ -336,12 +426,12 @@
                 // Apenas documentos de locação
                 if (!td.is_locacao && d.document_type !== 'locacao') return;
 
-                // Status de recebimento: paid + tem payment_date em tax_details ou no doc
+                // Status de recebimento
                 const dataRec = td.payment_date || d.payment_date || d.receipt_date || null;
                 const mesRec = dataRec ? String(dataRec).slice(0, 7) : '';
                 const recebido = !!dataRec && d.status === 'paid';
 
-                // Localiza imóvel pelo contrato (rental_contracts.id) ou pelo contrato do sistema vinculado (contract_ref_id)
+                // Localiza contrato de locação vinculado ao documento
                 let contrato = contratosLocacao.find(c => c.id === d.contract_id);
                 if (!contrato && d.contract_id) {
                     contrato = contratosLocacao.find(c => {
@@ -354,22 +444,16 @@
                     });
                 }
 
-                // ── Valor Bruto = Valor Total do faturamento ──────────────────────────────
-                // Valor Base + Extras + IPTU − Desconto
-                // Mesma fórmula do módulo de Faturamento e de Impostos.
-                // Usa a função global exposta pelo impostos.js (window.BpoFiscalUtils.calcularFaturamentoTotalDoc).
-                const fatTotalCents = (window.BpoFiscalUtils && window.BpoFiscalUtils.calcularFaturamentoTotalDoc)
-                    ? window.BpoFiscalUtils.calcularFaturamentoTotalDoc(d, td)
-                    : window.BpoMoney.toCents(d.gross_amount || 0);
+                // ── Valor Total = Valor Base + Extras + IPTU − Desconto ──────────────────
+                // Calculado inline — idêntico ao módulo de Faturamento e de Impostos.
+                const fatTotalCents = calcularValorTotalDoc(d, td);
 
-                // ── DAS = lido diretamente do campo tax_details.das_valor gravado no banco ─
-                // Não é calculado aqui. O valor é o que consta no módulo de Impostos
-                // para este lançamento (campo das_valor em tax_details do billing_document).
-                const dasTotalCents = td.das_valor
-                    ? window.BpoMoney.toCents(td.das_valor)
-                    : 0n;
+                // ── DAS = calculado com BpoTaxEngine ─────────────────────────────────────
+                // Mesmo motor e mesma lógica do módulo de Impostos (taxes.js carregado em locacoes.html).
+                // Resultado idêntico ao valor exibido por lançamento no módulo de Impostos.
+                const dasTotalCents = calcularDASDoc(d, td, fatTotalCents, rbt12Empresa);
 
-                // 1. Mapa para Competência de Faturamento (d.competence_month === competenciaAtiva)
+                // 1. Mapa da Competência de Faturamento
                 if (d.competence_month === competenciaAtiva && contrato) {
                     const propId = contrato.property_id;
                     if (!mapImovel.has(propId)) {
@@ -394,31 +478,22 @@
                     }
                     if (d.due_date) entry.dataVencimento = d.due_date;
 
-                    // Valor Bruto = Valor Total (Valor Base + Extras + IPTU − Desconto)
                     entry.grossCents = fatTotalCents;
-
                     if (td.iptu_valor) entry.iptuCents += window.BpoMoney.toCents(td.iptu_valor);
-
-                    // DAS lido do banco (das_valor em tax_details) — sem recálculo local
                     entry.dasCents += dasTotalCents;
 
-                    // Juros/multa
                     const jurosV = td.juros_valor || td.juros || 0;
                     const multaV = td.multa_valor || td.multa || 0;
                     entry.jurosMult += window.BpoMoney.toCents(jurosV) + window.BpoMoney.toCents(multaV);
 
-                    // Desconto contratual
                     const descV = td.desconto_valor || td.desconto || d.discounts || 0;
                     entry.descontoCents += window.BpoMoney.toCents(descV);
                 }
 
-                // 2. Documentos recebidos no mês de caixa (mês subsequente à competência faturada)
-                // Ex: Para competência de Setembro (2026-09), apura recebidos em Outubro (2026-10).
-                //     Para competência de Outubro (2026-10), apura recebidos em Novembro (2026-11).
+                // 2. Regime de Caixa: documentos recebidos no mês subsequente à competência
                 const mesCaixaAlvo = obterMesCaixaDaCompetencia(competenciaAtiva);
                 if (recebido && mesRec === mesCaixaAlvo) {
                     const iptuC = td.iptu_valor ? window.BpoMoney.toCents(td.iptu_valor) : 0n;
-
                     const jurosV = td.juros_valor || td.juros || 0;
                     const multaV = td.multa_valor || td.multa || 0;
                     const jurosC = window.BpoMoney.toCents(jurosV) + window.BpoMoney.toCents(multaV);
