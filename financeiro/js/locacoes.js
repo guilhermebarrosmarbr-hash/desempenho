@@ -585,12 +585,17 @@
             const dataRec  = fat.dataRecebimento;
             const mesRec   = fat.mesRecebimento || (dataRec ? String(dataRec).slice(0, 7) : '');
 
+            // Determina o mês esperado de pagamento:
+            // Se houver vencimento cadastrado no faturamento, usa o mês dele (ex: comp 2026-10 com venc em 2026-11).
+            // Caso contrário, usa a própria competência ativa.
+            const mesVencimento = fat.dataVencimento ? String(fat.dataVencimento).slice(0, 7) : competenciaAtiva;
+
             // Regra de Contabilização na Competência:
-            // - Se recebido no próprio mês da competência (mesRec === competenciaAtiva): Liquidado e contabiliza cotas
-            // - Se recebido em mês posterior / diferente (mesRec !== competenciaAtiva): Não contabilizado (não soma cotas aqui, entra no Caixa do mês recebido)
-            // - Se ainda em aberto: Em Aberto
-            const recebidoNoMes = recebido && (mesRec === competenciaAtiva);
-            const recebidoForaDoMes = recebido && (mesRec !== competenciaAtiva);
+            // - Se recebido no próprio período/mês de vencimento (ou na competência): Liquidado e contabiliza cotas
+            // - Se foi pago após esse mês: Não contabilizado (pois as cotas entram no mês que foi pago)
+            // - Se ainda não foi pago: Em Aberto
+            const recebidoNoMes = recebido && (mesRec === mesVencimento || mesRec === competenciaAtiva);
+            const recebidoForaDoMes = recebido && !recebidoNoMes;
 
             let statusBadge = '';
             if (recebidoNoMes) {
