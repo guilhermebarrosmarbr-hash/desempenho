@@ -354,6 +354,21 @@
                     });
                 }
 
+                // ── Valor Bruto = Valor Total do faturamento ──────────────────────────────
+                // Valor Base + Extras + IPTU − Desconto
+                // Mesma fórmula do módulo de Faturamento e de Impostos.
+                // Usa a função global exposta pelo impostos.js (window.BpoFiscalUtils.calcularFaturamentoTotalDoc).
+                const fatTotalCents = (window.BpoFiscalUtils && window.BpoFiscalUtils.calcularFaturamentoTotalDoc)
+                    ? window.BpoFiscalUtils.calcularFaturamentoTotalDoc(d, td)
+                    : window.BpoMoney.toCents(d.gross_amount || 0);
+
+                // ── DAS = lido diretamente do campo tax_details.das_valor gravado no banco ─
+                // Não é calculado aqui. O valor é o que consta no módulo de Impostos
+                // para este lançamento (campo das_valor em tax_details do billing_document).
+                const dasTotalCents = td.das_valor
+                    ? window.BpoMoney.toCents(td.das_valor)
+                    : 0n;
+
                 // 1. Mapa para Competência de Faturamento (d.competence_month === competenciaAtiva)
                 if (d.competence_month === competenciaAtiva && contrato) {
                     const propId = contrato.property_id;
@@ -379,13 +394,15 @@
                     }
                     if (d.due_date) entry.dataVencimento = d.due_date;
 
-                    // Valor bruto do billing_document (gross_amount)
-                    if (d.gross_amount) entry.grossCents = window.BpoMoney.toCents(d.gross_amount);
+                    // Valor Bruto = Valor Total (Valor Base + Extras + IPTU − Desconto)
+                    entry.grossCents = fatTotalCents;
 
-                    if (td.iptu_valor)   entry.iptuCents     += window.BpoMoney.toCents(td.iptu_valor);
-                    if (td.das_valor)    entry.dasCents      += window.BpoMoney.toCents(td.das_valor);
+                    if (td.iptu_valor) entry.iptuCents += window.BpoMoney.toCents(td.iptu_valor);
 
-                    // Juros/multa: campos multa + juros em tax_details
+                    // DAS lido do banco (das_valor em tax_details) — sem recálculo local
+                    entry.dasCents += dasTotalCents;
+
+                    // Juros/multa
                     const jurosV = td.juros_valor || td.juros || 0;
                     const multaV = td.multa_valor || td.multa || 0;
                     entry.jurosMult += window.BpoMoney.toCents(jurosV) + window.BpoMoney.toCents(multaV);
@@ -393,13 +410,6 @@
                     // Desconto contratual
                     const descV = td.desconto_valor || td.desconto || d.discounts || 0;
                     entry.descontoCents += window.BpoMoney.toCents(descV);
-
-                    // Lucro Presumido: soma impostos como DAS
-                    if (!td.is_simples && td.is_locacao) {
-                        ['pis_valor', 'cofins_valor', 'irpj_valor', 'csll_valor'].forEach(campo => {
-                            if (td[campo]) entry.dasCents += window.BpoMoney.toCents(td[campo]);
-                        });
-                    }
                 }
 
                 // 2. Documentos recebidos no mês de caixa (mês subsequente à competência faturada)
@@ -407,10 +417,7 @@
                 //     Para competência de Outubro (2026-10), apura recebidos em Novembro (2026-11).
                 const mesCaixaAlvo = obterMesCaixaDaCompetencia(competenciaAtiva);
                 if (recebido && mesRec === mesCaixaAlvo) {
-                    let iptuC = 0n;
-                    let dasC = 0n;
-                    if (td.iptu_valor) iptuC += window.BpoMoney.toCents(td.iptu_valor);
-                    if (td.das_valor) dasC += window.BpoMoney.toCents(td.das_valor);
+                    const iptuC = td.iptu_valor ? window.BpoMoney.toCents(td.iptu_valor) : 0n;
 
                     const jurosV = td.juros_valor || td.juros || 0;
                     const multaV = td.multa_valor || td.multa || 0;
@@ -418,21 +425,15 @@
                     const descV = td.desconto_valor || td.desconto || d.discounts || 0;
                     const descC = window.BpoMoney.toCents(descV);
 
-                    if (!td.is_simples && td.is_locacao) {
-                        ['pis_valor', 'cofins_valor', 'irpj_valor', 'csll_valor'].forEach(campo => {
-                            if (td[campo]) dasC += window.BpoMoney.toCents(td[campo]);
-                        });
-                    }
-
                     docsCaixa.push({
                         doc: d,
                         contrato: contrato || null,
                         dataRecebimento: String(dataRec).slice(0, 10),
                         dataVencimento: d.due_date || null,
                         competenceMonth: d.competence_month,
-                        grossCents: window.BpoMoney.toCents(d.gross_amount || 0),
+                        grossCents: fatTotalCents,
                         iptuCents: iptuC,
-                        dasCents: dasC,
+                        dasCents: dasTotalCents,
                         jurosMult: jurosC,
                         descontoCents: descC
                     });
@@ -1288,8 +1289,8 @@
         if (imoveis.length === 0) { alert('Nenhum imóvel cadastrado. Crie um contrato de locação primeiro.'); return; }
 
         try {
-            // Busca IPTU e DAS dos billing_documents do período
-            const deducoesPorImovel = await buscarDeducoesDoFaturamento();
+            // Busca Valor Total e DAS dos billing_documents do período
+            const { mapCompetencia: deducoesPorImovel } = await buscarDeducoesDoFaturamento();
 
             // Busca todos os participantes dos imóveis
             const imovelIds = imoveis.map(i => i.id);

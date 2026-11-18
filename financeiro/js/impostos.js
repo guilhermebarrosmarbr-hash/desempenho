@@ -6,32 +6,55 @@
 // ==============================================================================
 
 // Utilitários de metadados fiscais (compatibilidade com schemas sem coluna tax_details dedicada)
-window.BpoFiscalUtils = window.BpoFiscalUtils || {
-    extrairTaxDetails: function(doc) {
-        if (!doc) return null;
-        if (doc.tax_details && typeof doc.tax_details === 'object') {
-            return doc.tax_details;
-        }
-        if (doc.description && typeof doc.description === 'string') {
-            const match = doc.description.match(/<!--bpo_tax_details:(.*?)-->/);
-            if (match) {
-                try {
-                    return JSON.parse(match[1]);
-                } catch (e) {}
-            }
-        }
-        return null;
-    },
-    limparDescricao: function(rawDesc) {
-        if (!rawDesc) return '';
-        return rawDesc.replace(/\s*<!--bpo_tax_details:.*?-->/g, '').trim();
-    },
-    anexarTaxDetailsNaDescricao: function(descricaoLimpa, taxDetails) {
-        const limpa = window.BpoFiscalUtils.limparDescricao(descricaoLimpa);
-        if (!taxDetails) return limpa;
-        const serialized = JSON.stringify(taxDetails);
-        return limpa ? `${limpa}\n<!--bpo_tax_details:${serialized}-->` : `<!--bpo_tax_details:${serialized}-->`;
+window.BpoFiscalUtils = window.BpoFiscalUtils || {};
+
+// Extrai tax_details de um documento (do campo direto ou embutido na description)
+window.BpoFiscalUtils.extrairTaxDetails = window.BpoFiscalUtils.extrairTaxDetails || function(doc) {
+    if (!doc) return null;
+    if (doc.tax_details && typeof doc.tax_details === 'object') {
+        return doc.tax_details;
     }
+    if (doc.description && typeof doc.description === 'string') {
+        const match = doc.description.match(/<!--bpo_tax_details:(.*?)-->/);
+        if (match) {
+            try {
+                return JSON.parse(match[1]);
+            } catch (e) {}
+        }
+    }
+    return null;
+};
+window.BpoFiscalUtils.limparDescricao = window.BpoFiscalUtils.limparDescricao || function(rawDesc) {
+    if (!rawDesc) return '';
+    return rawDesc.replace(/\s*<!--bpo_tax_details:.*?-->/g, '').trim();
+};
+window.BpoFiscalUtils.anexarTaxDetailsNaDescricao = window.BpoFiscalUtils.anexarTaxDetailsNaDescricao || function(descricaoLimpa, taxDetails) {
+    const limpa = window.BpoFiscalUtils.limparDescricao(descricaoLimpa);
+    if (!taxDetails) return limpa;
+    const serialized = JSON.stringify(taxDetails);
+    return limpa ? `${limpa}\n<!--bpo_tax_details:${serialized}-->` : `<!--bpo_tax_details:${serialized}-->`;
+};
+
+/**
+ * Calcula o Valor Total de um documento de faturamento:
+ *   Valor Total = Valor Base + Extras + IPTU − Desconto
+ * Espelha exatamente o "Valor Total" exibido no módulo de Faturamento.
+ * Exposto globalmente para uso pelo módulo de Locações e outros.
+ */
+window.BpoFiscalUtils.calcularFaturamentoTotalDoc = function(doc, taxDetails) {
+    const bCents = window.BpoMoney.toCents(doc.gross_amount);
+    const td = taxDetails || doc.tax_details || window.BpoFiscalUtils.extrairTaxDetails(doc);
+    const dCents = (td && td.desconto)
+        ? window.BpoMoney.toCents(td.desconto)
+        : (doc.discounts ? window.BpoMoney.toCents(doc.discounts) : 0n);
+    const eCents = (td && td.extras)
+        ? window.BpoMoney.toCents(td.extras)
+        : 0n;
+    const iptuCents = (td && td.iptu_valor)
+        ? window.BpoMoney.toCents(td.iptu_valor)
+        : 0n;
+    const totalBruto = bCents + eCents + iptuCents;
+    return totalBruto > dCents ? (totalBruto - dCents) : 0n;
 };
 
 (function() {
@@ -93,23 +116,8 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         anexo_v:   { irpj: 0.1500, csll: 0.1500, cofins: 0.1600, pis: 0.0350, inss: 0.2850, iss: 0.2200 }
     };
 
-    function calcularFaturamentoTotalDoc(doc, taxDetails) {
-        const bCents = window.BpoMoney.toCents(doc.gross_amount);
-        const td = taxDetails || doc.tax_details || window.BpoFiscalUtils.extrairTaxDetails(doc);
-        const dCents = (td && td.desconto) 
-            ? window.BpoMoney.toCents(td.desconto) 
-            : (doc.discounts ? window.BpoMoney.toCents(doc.discounts) : 0n);
-        const eCents = (td && td.extras) 
-            ? window.BpoMoney.toCents(td.extras) 
-            : 0n;
-        // IPTU (exclusivo de contratos de locação) integra o Valor Total declarado ao cliente
-        // e deve compor a base de cálculo do DAS/tributos, pois é parte da receita bruta declarada
-        const iptuCents = (td && td.iptu_valor)
-            ? window.BpoMoney.toCents(td.iptu_valor)
-            : 0n;
-        const totalBruto = bCents + eCents + iptuCents;
-        return totalBruto > dCents ? (totalBruto - dCents) : 0n;
-    }
+    // Alias local para a função global (evita duplicação de lógica)
+    const calcularFaturamentoTotalDoc = window.BpoFiscalUtils.calcularFaturamentoTotalDoc;
 
     /**
      * Calcula a lista dos 12 meses anteriores à competência informada
