@@ -16,16 +16,19 @@
     let cotasForm = [];         // estado local das cotas no formulário do contrato
     let todosContratos = [];    // contracts[] de todas as empresas (para o select de imóvel)
 
+    // Cache de métricas calculadas pela Tabela 1 (para os cards do topo)
+    let _metricasTabela1 = { bruto: 0n, abertos: 0n, honorarios: 0n, cotas: 0n };
+
     // DOM
     const selectEmpresa          = document.getElementById('selectEmpresa');
     const inputCompetencia       = document.getElementById('inputCompetencia');
     const listaDistribuicoesBody = document.getElementById('listaDistribuicoesBody');
 
     // Métricas
-    const valAlugueisBruto = document.getElementById('valAlugueisBruto');
-    const valDeducoes      = document.getElementById('valDeducoes');
-    const valHonorarios    = document.getElementById('valHonorarios');
-    const valDistribuivel  = document.getElementById('valDistribuivel');
+    const valAlugueisBruto  = document.getElementById('valAlugueisBruto');
+    const valAlugueisAbertos = document.getElementById('valAlugueisAbertos');
+    const valHonorarios     = document.getElementById('valHonorarios');
+    const valTotalCotas     = document.getElementById('valTotalCotas');
 
     // Modais
     const modalSocios          = document.getElementById('modalSocios');
@@ -552,33 +555,15 @@
     // MÉTRICAS
     // =========================================================================
     function renderizarMetricas() {
-        let brutoTotal      = 0n;
-        let deducoesTotal   = 0n;
-        let honorariosTotal = 0n;
-        let cotasTotal      = 0n;
-
-        const imoveisProcessados = new Set();
-        distribuicoes.forEach(d => {
-            // Discrimina tipo pelo idempotency_key (hon_ = honorários, cota_ = cota)
-            const tipo = (d.idempotency_key || '').startsWith('hon_') ? 'honorarios' : 'cota';
-
-            if (!imoveisProcessados.has(d.property_id)) {
-                imoveisProcessados.add(d.property_id);
-                brutoTotal    += window.BpoMoney.toCents(d.gross_received);
-                deducoesTotal += window.BpoMoney.toCents(d.deductions);
-            }
-
-            if (tipo === 'honorarios') {
-                honorariosTotal += window.BpoMoney.toCents(d.distribution_amount);
-            } else {
-                cotasTotal += window.BpoMoney.toCents(d.distribution_amount);
-            }
-        });
-
-        if (valAlugueisBruto) valAlugueisBruto.textContent = window.BpoMoney.formatBRL(brutoTotal);
-        if (valDeducoes)      valDeducoes.textContent      = window.BpoMoney.formatBRL(deducoesTotal);
-        if (valHonorarios)    valHonorarios.textContent    = window.BpoMoney.formatBRL(honorariosTotal);
-        if (valDistribuivel)  valDistribuivel.textContent  = window.BpoMoney.formatBRL(cotasTotal);
+        // Os totais são calculados pela Tabela 1 (renderizarTabelas) e armazenados em _metricasTabela1.
+        // Card 1: Aluguéis Faturados = soma de Valor Bruto de todos os contratos da competência
+        // Card 2: Aluguéis Não Faturados = soma de Valor Bruto dos contratos "Em Aberto" (não pagos)
+        // Card 3: Total de Honorários = soma da coluna Honorários da Tabela 1
+        // Card 4: Total de Cotas = soma de todas as colunas de sócios da Tabela 1
+        if (valAlugueisBruto)  valAlugueisBruto.textContent  = window.BpoMoney.formatBRL(_metricasTabela1.bruto);
+        if (valAlugueisAbertos) valAlugueisAbertos.textContent = window.BpoMoney.formatBRL(_metricasTabela1.abertos);
+        if (valHonorarios)     valHonorarios.textContent     = window.BpoMoney.formatBRL(_metricasTabela1.honorarios);
+        if (valTotalCotas)     valTotalCotas.textContent     = window.BpoMoney.formatBRL(_metricasTabela1.cotas);
     }
 
     // =========================================================================
@@ -792,6 +777,33 @@
                 <td style="padding:10px 10px; text-align:center; color:#93c5fd; font-size:0.78rem;">Recebido: ${escapeHtml(window.BpoMoney.formatBRL(totRecebidoLiq))}</td>
             </tr>`;
         }
+
+        // Atualiza métricas dos cards do topo com os totais da Tabela 1
+        // "Aluguéis Não Faturados" = contratos cujo status é "Em Aberto" (não pagos na competência)
+        const totAberto = contratosLocacao.reduce((acc, cl) => {
+            const fat = mapCompetencia.get(cl.property_id) || {};
+            const recebido = fat.recebido || false;
+            const dataRec  = fat.dataRecebimento;
+            const mesRec   = fat.mesRecebimento || (dataRec ? String(dataRec).slice(0, 7) : '');
+            const mesVenc  = fat.dataVencimento ? String(fat.dataVencimento).slice(0, 7) : competenciaAtiva;
+            const recebidoNoMes = recebido && (mesRec === mesVenc || mesRec === competenciaAtiva);
+            const recebidoForaDoMes = recebido && !recebidoNoMes;
+            const emAberto = !recebido && !recebidoForaDoMes;
+            if (emAberto) {
+                const bc = fat.grossCents || window.BpoMoney.toCents(cl.monthly_amount);
+                return acc + bc;
+            }
+            return acc;
+        }, 0n);
+
+        const totCotasSocios = [...totSocios.values()].reduce((a, v) => a + v, 0n);
+
+        _metricasTabela1 = {
+            bruto:      totBruto,
+            abertos:    totAberto,
+            honorarios: totHon,
+            cotas:      totCotasSocios
+        };
 
         // =========================================================================
         // 2. TABELA 2: RECEBIMENTOS NO PERÍODO (REGIME DE CAIXA)
