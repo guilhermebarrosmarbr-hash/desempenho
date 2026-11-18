@@ -197,6 +197,15 @@
         }
     };
 
+    // Calcula o mês de caixa correspondente à competência faturada:
+    // Ex: Competência de Setembro (2026-09) apura os pagamentos em Outubro (2026-10);
+    //     Competência de Outubro (2026-10) apura os pagamentos em Novembro (2026-11).
+    function obterMesCaixaDaCompetencia(comp) {
+        if (!comp || !comp.includes('-')) return comp;
+        const [ano, mes] = comp.split('-').map(Number);
+        const prox = new Date(ano, mes, 1);
+        return `${prox.getFullYear()}-${String(prox.getMonth() + 1).padStart(2, '0')}`;
+    }
     // =========================================================================
     // FILTRAR CONTRATOS POR EMPRESA LOCATÁRIA
     // Popula o select de contrato/imóvel com os contratos da empresa selecionada
@@ -393,8 +402,11 @@
                     }
                 }
 
-                // 2. Documentos recebidos no mês ativo (Regime de Caixa) independente da competência de faturamento
-                if (recebido && mesRec === competenciaAtiva) {
+                // 2. Documentos recebidos no mês de caixa (mês subsequente à competência faturada)
+                // Ex: Para competência de Setembro (2026-09), apura recebidos em Outubro (2026-10).
+                //     Para competência de Outubro (2026-10), apura recebidos em Novembro (2026-11).
+                const mesCaixaAlvo = obterMesCaixaDaCompetencia(competenciaAtiva);
+                if (recebido && mesRec === mesCaixaAlvo) {
                     let iptuC = 0n;
                     let dasC = 0n;
                     if (td.iptu_valor) iptuC += window.BpoMoney.toCents(td.iptu_valor);
@@ -480,12 +492,13 @@
 
         if (!tbody) return;
 
-        // Atualiza título da tabela de caixa com o mês ativo
+        // Atualiza título da tabela de caixa com o mês de pagamento correspondente
         if (tituloCaixa && competenciaAtiva) {
-            const [ano, mes] = competenciaAtiva.split('-');
+            const mesCaixaAlvo = obterMesCaixaDaCompetencia(competenciaAtiva);
+            const [anoC, mesC] = mesCaixaAlvo.split('-');
             const nomesMeses = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-            const nomeMes = nomesMeses[parseInt(mes, 10) - 1] || mes;
-            tituloCaixa.textContent = `Locações Recebidas em ${nomeMes}/${ano} (Regime de Caixa)`;
+            const nomeMesC = nomesMeses[parseInt(mesC, 10) - 1] || mesC;
+            tituloCaixa.textContent = `Locações Recebidas em ${nomeMesC}/${anoC} (Regime de Caixa da Competência)`;
         }
 
         if (contratosLocacao.length === 0) {
@@ -678,9 +691,10 @@
         // 2. TABELA 2: RECEBIMENTOS NO PERÍODO (REGIME DE CAIXA)
         // =========================================================================
         if (tbodyCaixa) {
+            const mesCaixaAlvo = obterMesCaixaDaCompetencia(competenciaAtiva);
             if (docsCaixa.length === 0) {
                 tbodyCaixa.innerHTML = `<tr><td colspan="${9 + sociosCols.length + 1}" style="text-align:center; color:#6b7280; padding:40px;">
-                    Nenhum recebimento de locação registrado no período de ${competenciaAtiva}.
+                    Nenhum recebimento de locação registrado no período de ${mesCaixaAlvo}.
                 </td></tr>`;
                 if (tfootCaixa) tfootCaixa.innerHTML = '';
             } else {
