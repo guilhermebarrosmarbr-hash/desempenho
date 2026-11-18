@@ -736,7 +736,7 @@
             totDesc  += descCents;
             totJuros += jurosCents;
             totDas   += dasCents;
-            totHon   += honCents;
+            if (recebidoNoMes) totHon += honCents;
             totLiq   += liqCents;
             if (recebidoNoMes) totRecebidoLiq += liqCents;
 
