@@ -332,6 +332,7 @@
                 const propId = contrato.property_id;
                 if (!mapImovel.has(propId)) {
                     mapImovel.set(propId, {
+                        grossCents:    null,
                         iptuCents:     0n,
                         dasCents:      0n,
                         jurosMult:     0n,
@@ -345,6 +346,9 @@
                 const entry = mapImovel.get(propId);
                 entry.recebido = recebido;
                 if (dataRec) entry.dataRecebimento = String(dataRec).slice(0, 10);
+
+                // Valor bruto do billing_document (gross_amount)
+                if (d.gross_amount) entry.grossCents = window.BpoMoney.toCents(d.gross_amount);
 
                 if (td.iptu_valor)   entry.iptuCents     += window.BpoMoney.toCents(td.iptu_valor);
                 if (td.das_valor)    entry.dasCents      += window.BpoMoney.toCents(td.das_valor);
@@ -476,7 +480,8 @@
             try { meta = JSON.parse(imovel?.address || '{}'); } catch {}
 
             // Valores
-            const brutoCents = window.BpoMoney.toCents(cl.monthly_amount);
+            // Valor bruto = gross_amount do billing_document da competência; fallback: monthly_amount do contrato
+            const brutoCents = fat.grossCents || window.BpoMoney.toCents(cl.monthly_amount);
             const iptuCents  = fat.iptuCents  || 0n;
             const dasCents   = fat.dasCents   || 0n;
             const jurosCents = fat.jurosMult  || 0n;
@@ -508,7 +513,6 @@
                 if (recebido) totSocios.set(socioId, (totSocios.get(socioId) || 0n) + valor);
                 return `<td style="padding:9px 8px; text-align:right; color:#a3e635; font-size:0.8rem;">
                     ${recebido ? escapeHtml(window.BpoMoney.formatBRL(exibir)) : '<span style="color:#6b7280">—</span>'}
-                    <br><span style="color:#6b7280; font-size:0.7rem;">${pct.toFixed(0)}%</span>
                 </td>`;
             });
 

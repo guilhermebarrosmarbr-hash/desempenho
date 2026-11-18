@@ -1112,6 +1112,12 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         }
         if (bannerLocacao) bannerLocacao.style.display = isLocacao ? 'block' : 'none';
 
+        // Campo IPTU: visível e habilitado apenas para Locação
+        const grupoIptu = document.getElementById('grupoIptu');
+        const inpIptuValor = document.getElementById('inpIptuValor');
+        if (grupoIptu) grupoIptu.style.display = isLocacao ? 'block' : 'none';
+        if (!isLocacao && inpIptuValor) inpIptuValor.value = '0,00';
+
         // Painéis condicionais por Regime Fiscal (Item 02)
         const painelSimples = document.getElementById('painelSimplesNacional');
         const painelLucro = document.getElementById('painelCalculoTributosLancamento');
@@ -1557,6 +1563,11 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             document.getElementById('docMulta').value = taxDetails.multa || '0,00';
             document.getElementById('docJuros').value = taxDetails.juros || '0,00';
             document.getElementById('docExtras').value = taxDetails.extras || '0,00';
+            // Restaura IPTU se for locação
+            if (taxDetails.iptu_valor) {
+                const elIptu = document.getElementById('inpIptuValor');
+                if (elIptu) elIptu.value = taxDetails.iptu_valor;
+            }
 
             // Simples Nacional (Item 02)
             if (taxDetails.is_simples) {
@@ -1791,6 +1802,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 multa: window.BpoMoney.toDecimalString(multaCents),
                 juros: window.BpoMoney.toDecimalString(jurosCents),
                 extras: window.BpoMoney.toDecimalString(extrasCents),
+                iptu_valor: isLocacaoDoc ? (document.getElementById('inpIptuValor')?.value || '0,00') : '0,00',
                 payment_date: dataRecebimento || null
             };
         } else {
@@ -1819,6 +1831,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 multa: window.BpoMoney.toDecimalString(multaCents),
                 juros: window.BpoMoney.toDecimalString(jurosCents),
                 extras: window.BpoMoney.toDecimalString(extrasCents),
+                iptu_valor: isLocacaoDoc ? (document.getElementById('inpIptuValor')?.value || '0,00') : '0,00',
                 payment_date: dataRecebimento || null
             };
         }
