@@ -364,7 +364,10 @@
 
                     const entry = mapImovel.get(propId);
                     entry.recebido = recebido;
-                    if (dataRec) entry.dataRecebimento = String(dataRec).slice(0, 10);
+                    if (dataRec) {
+                        entry.dataRecebimento = String(dataRec).slice(0, 10);
+                        entry.mesRecebimento = String(dataRec).slice(0, 7);
+                    }
                     if (d.due_date) entry.dataVencimento = d.due_date;
 
                     // Valor bruto do billing_document (gross_amount)
@@ -521,7 +524,7 @@
         });
         const sociosCols = Array.from(sociosSet.entries()); // [[id, nome], ...]
 
-        // Função auxiliar para gerar o HTML do thead com Vencimento
+        // Função auxiliar para gerar o HTML do thead com Vencimento, Status e Recebimento
         function gerarTheadHtml() {
             return `
                 <tr style="background:#111827; color:#9ca3af; text-transform:uppercase; font-size:0.72rem; letter-spacing:0.05em;">
@@ -537,6 +540,7 @@
                     ${sociosCols.map(([id, nome]) =>
                         `<th style="padding:10px 8px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1);">${escapeHtml(nome)}</th>`
                     ).join('')}
+                    <th style="padding:10px 10px; text-align:center; border-bottom:2px solid rgba(255,255,255,0.1);">Status</th>
                     <th style="padding:10px 10px; text-align:center; border-bottom:2px solid rgba(255,255,255,0.1);">Recebimento</th>
                 </tr>`;
         }
@@ -576,24 +580,45 @@
             // Vencimento: dataVencimento do faturamento ou dia padrão do contrato
             const dataVenc = fat.dataVencimento ? formatarData(fat.dataVencimento) : (cl.due_day ? `Dia ${cl.due_day}` : '—');
 
-            // Recebimento
+            // Recebimento e Status
             const recebido = fat.recebido || false;
             const dataRec  = fat.dataRecebimento;
-            const statusCell = recebido
-                ? `<span style="background:#16a34a22; color:#22c55e; padding:2px 8px; border-radius:4px; font-size:0.78rem;">${dataRec ? formatarData(dataRec) : 'Liquidado'}</span>`
-                : `<span style="background:#ef444422; color:#ef4444; padding:2px 8px; border-radius:4px; font-size:0.78rem;">Em Aberto</span>`;
+            const mesRec   = fat.mesRecebimento || (dataRec ? String(dataRec).slice(0, 7) : '');
 
-            // Cotas por sócio
+            // Regra de Contabilização na Competência:
+            // - Se recebido no próprio mês da competência (mesRec === competenciaAtiva): Liquidado e contabiliza cotas
+            // - Se recebido em mês posterior / diferente (mesRec !== competenciaAtiva): Não contabilizado (não soma cotas aqui, entra no Caixa do mês recebido)
+            // - Se ainda em aberto: Em Aberto
+            const recebidoNoMes = recebido && (mesRec === competenciaAtiva);
+            const recebidoForaDoMes = recebido && (mesRec !== competenciaAtiva);
+
+            let statusBadge = '';
+            if (recebidoNoMes) {
+                statusBadge = `<span style="background:#16a34a22; color:#22c55e; padding:2px 8px; border-radius:4px; font-size:0.78rem;">Liquidado</span>`;
+            } else if (recebidoForaDoMes) {
+                statusBadge = `<span style="background:#eab30822; color:#eab308; padding:2px 8px; border-radius:4px; font-size:0.78rem;">Não contabilizado</span>`;
+            } else {
+                statusBadge = `<span style="background:#ef444422; color:#ef4444; padding:2px 8px; border-radius:4px; font-size:0.78rem;">Em Aberto</span>`;
+            }
+
+            const recBadge = dataRec
+                ? `<span style="color:#22c55e; font-size:0.8rem;">${formatarData(dataRec)}</span>`
+                : `<span style="color:#6b7280;">—</span>`;
+
+            // Cotas por sócio (apenas se recebido no próprio mês da competência ativa)
             const cotasCells = sociosCols.map(([socioId]) => {
                 const pp = partImovel.find(p => p.person_id === socioId && parseFloat(p.participation_pct) > 0);
                 if (!pp) return `<td style="padding:9px 8px; text-align:right; color:#6b7280;">—</td>`;
                 const pct    = parseFloat(pp.participation_pct);
                 const valor  = window.BpoMoney.applyPercentage(liqCents, pct);
-                const exibir = recebido ? valor : 0n;
-                if (recebido) totSocios.set(socioId, (totSocios.get(socioId) || 0n) + valor);
-                return `<td style="padding:9px 8px; text-align:right; color:#a3e635; font-size:0.8rem;">
-                    ${recebido ? escapeHtml(window.BpoMoney.formatBRL(exibir)) : '<span style="color:#6b7280">—</span>'}
-                </td>`;
+                if (recebidoNoMes) {
+                    totSocios.set(socioId, (totSocios.get(socioId) || 0n) + valor);
+                    return `<td style="padding:9px 8px; text-align:right; color:#a3e635; font-size:0.8rem;">
+                        ${escapeHtml(window.BpoMoney.formatBRL(valor))}
+                    </td>`;
+                } else {
+                    return `<td style="padding:9px 8px; text-align:right; color:#6b7280; font-size:0.8rem;">—</td>`;
+                }
             });
 
             // Acumula totais
@@ -604,12 +629,12 @@
             totDas   += dasCents;
             totHon   += honCents;
             totLiq   += liqCents;
-            if (recebido) totRecebidoLiq += liqCents;
+            if (recebidoNoMes) totRecebidoLiq += liqCents;
 
             const nomeImovel = imovel ? escapeHtml(imovel.name) : `Imóvel (${cl.property_id.slice(0,8)})`;
-            const rowBg = recebido ? '' : 'background:rgba(239,68,68,0.04);';
+            const rowBg = recebidoNoMes ? '' : (recebidoForaDoMes ? 'background:rgba(234,179,8,0.04);' : 'background:rgba(239,68,68,0.04);');
 
-            return `<tr style="border-bottom:1px solid rgba(255,255,255,0.05); ${rowBg}" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='${recebido ? '' : 'rgba(239,68,68,0.04)'}'">
+            return `<tr style="border-bottom:1px solid rgba(255,255,255,0.05); ${rowBg}" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='${recebidoNoMes ? '' : (recebidoForaDoMes ? 'rgba(234,179,8,0.04)' : 'rgba(239,68,68,0.04)')}'">
                 <td style="padding:9px 10px; color:#fff; font-weight:500; position:sticky; left:0; background:#0f172a; z-index:1; max-width:200px; overflow:hidden; text-overflow:ellipsis;" title="${nomeImovel}">${nomeImovel}</td>
                 <td style="padding:9px 10px; text-align:center; color:#9ca3af; font-size:0.8rem;">${escapeHtml(dataVenc)}</td>
                 <td style="padding:9px 10px; text-align:right; color:#4ade80; font-weight:600;">${escapeHtml(window.BpoMoney.formatBRL(brutoCents))}</td>
@@ -620,7 +645,8 @@
                 <td style="padding:9px 10px; text-align:right; color:${honCents > 0n ? '#fbbf24' : '#6b7280'};">${honCents > 0n ? escapeHtml(window.BpoMoney.formatBRL(honCents)) : '—'}</td>
                 <td style="padding:9px 10px; text-align:right; color:#60a5fa; font-weight:700;">${escapeHtml(window.BpoMoney.formatBRL(liqCents))}</td>
                 ${cotasCells.join('')}
-                <td style="padding:9px 10px; text-align:center;">${statusCell}</td>
+                <td style="padding:9px 10px; text-align:center;">${statusBadge}</td>
+                <td style="padding:9px 10px; text-align:center;">${recBadge}</td>
             </tr>`;
         });
 
@@ -638,6 +664,10 @@
                 <td style="padding:10px 10px; text-align:right; color:#fbbf24;">${totHon > 0n ? escapeHtml(window.BpoMoney.formatBRL(totHon)) : '—'}</td>
                 <td style="padding:10px 10px; text-align:right; color:#60a5fa;">${escapeHtml(window.BpoMoney.formatBRL(totLiq))}</td>
                 ${sociosCols.map(([id]) => `<td style="padding:10px 8px; text-align:right; color:#a3e635;">${escapeHtml(window.BpoMoney.formatBRL(totSocios.get(id) || 0n))}</td>`).join('')}
+                <td style="padding:10px 10px; text-align:center; color:#93c5fd; font-size:0.78rem;">—</td>
+                <td style="padding:10px 10px; text-align:center; color:#93c5fd; font-size:0.78rem;">Recebido: ${escapeHtml(window.BpoMoney.formatBRL(totRecebidoLiq))}</td>
+            </tr>`;
+        }
                 <td style="padding:10px 10px; text-align:center; color:#93c5fd; font-size:0.78rem;">Recebido: ${escapeHtml(window.BpoMoney.formatBRL(totRecebidoLiq))}</td>
             </tr>`;
         }
@@ -718,7 +748,10 @@
                         <td style="padding:9px 10px; text-align:right; color:#60a5fa; font-weight:700;">${escapeHtml(window.BpoMoney.formatBRL(liqCents))}</td>
                         ${cotasCells.join('')}
                         <td style="padding:9px 10px; text-align:center;">
-                            <span style="background:#16a34a22; color:#22c55e; padding:2px 8px; border-radius:4px; font-size:0.78rem;">${dataRec}</span>
+                            <span style="background:#16a34a22; color:#22c55e; padding:2px 8px; border-radius:4px; font-size:0.78rem;">Liquidado</span>
+                        </td>
+                        <td style="padding:9px 10px; text-align:center;">
+                            <span style="color:#22c55e; font-size:0.8rem;">${dataRec}</span>
                         </td>
                     </tr>`;
                 });
@@ -737,6 +770,7 @@
                         <td style="padding:10px 10px; text-align:right; color:#fbbf24;">${cTotHon > 0n ? escapeHtml(window.BpoMoney.formatBRL(cTotHon)) : '—'}</td>
                         <td style="padding:10px 10px; text-align:right; color:#60a5fa;">${escapeHtml(window.BpoMoney.formatBRL(cTotLiq))}</td>
                         ${sociosCols.map(([id]) => `<td style="padding:10px 8px; text-align:right; color:#a3e635;">${escapeHtml(window.BpoMoney.formatBRL(cTotSocios.get(id) || 0n))}</td>`).join('')}
+                        <td style="padding:10px 10px; text-align:center; color:#93c5fd; font-size:0.78rem;">—</td>
                         <td style="padding:10px 10px; text-align:center; color:#93c5fd; font-size:0.78rem;">Total: ${escapeHtml(window.BpoMoney.formatBRL(cTotRecebidoLiq))}</td>
                     </tr>`;
                 }
