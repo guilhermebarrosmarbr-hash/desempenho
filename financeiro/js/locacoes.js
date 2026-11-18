@@ -254,9 +254,9 @@
     async function carregarDadosLocacoes() {
         if (!empresaAtiva) return;
         try {
-            // 1. Pessoas (sócios/locatários) da empresa
+            // 1. Sócios da empresa (filtrados por person_type = 'socio')
             pessoas = await window.BpoSupabase.request(
-                `people?company_id=eq.${empresaAtiva.id}&order=name.asc`,
+                `people?company_id=eq.${empresaAtiva.id}&person_type=eq.socio&order=name.asc`,
                 { method: 'GET' }
             ) || [];
 

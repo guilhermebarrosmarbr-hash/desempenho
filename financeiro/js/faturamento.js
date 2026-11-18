@@ -393,11 +393,11 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 };
             });
 
-            // Busca clientes cadastrados
+            // Busca clientes cadastrados (person_type = client)
             let clientesMap = new Map();
             try {
-                let queryCli = 'people';
-                if (empresaAtivaId !== 'all') queryCli += `?company_id=eq.${empresaAtivaId}`;
+                let queryCli = 'people?person_type=eq.client';
+                if (empresaAtivaId !== 'all') queryCli += `&company_id=eq.${empresaAtivaId}`;
                 const clientes = await window.BpoSupabase.request(queryCli, { method: 'GET' });
                 clientes.forEach(p => clientesMap.set(p.id, p));
             } catch (e) {}
@@ -2067,25 +2067,34 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         try {
             let clientId = null;
             if (clienteNome) {
-                // Tenta reaproveitar cliente existente com o mesmo nome na mesma empresa
+                // Tenta reaproveitar cliente existente com o mesmo nome na mesma empresa (apenas person_type = client)
                 let existingPeople = [];
                 try {
-                    const q = `people?company_id=eq.${targetEmpresaId}&name=eq.${encodeURIComponent(clienteNome)}`;
+                    const q = `people?company_id=eq.${targetEmpresaId}&person_type=eq.client&name=eq.${encodeURIComponent(clienteNome)}`;
                     existingPeople = await window.BpoSupabase.request(q, { method: 'GET' });
                 } catch (_) {}
 
+                const payloadPessoa = {
+                    company_id: targetEmpresaId,
+                    name: clienteNome,
+                    document_type: clienteTipo === 'PF' ? 'CPF' : 'CNPJ',
+                    document: clienteDoc || null,
+                    person_type: 'client',
+                    active: true
+                };
+
                 if (existingPeople && existingPeople.length > 0) {
                     clientId = existingPeople[0].id;
+                    // Atualiza o documento/tipo do cliente caso tenha sido editado
+                    try {
+                        await window.BpoSupabase.request(`people?id=eq.${clientId}`, {
+                            method: 'PATCH',
+                            body: JSON.stringify(payloadPessoa)
+                        });
+                    } catch (updErr) {
+                        console.warn('Aviso ao atualizar cliente em people:', updErr.message);
+                    }
                 } else {
-                    const payloadPessoa = {
-                        company_id: targetEmpresaId,
-                        name: clienteNome,
-                        document_type: clienteTipo === 'PF' ? 'CPF' : 'CNPJ',
-                        document: clienteDoc || null,
-                        person_type: 'client',
-                        active: true
-                    };
-
                     try {
                         const resPessoa = await window.BpoSupabase.request('people', {
                             method: 'POST',
