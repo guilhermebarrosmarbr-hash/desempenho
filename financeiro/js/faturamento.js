@@ -540,8 +540,8 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                         break;
                     }
                     case 'bruto': {
-                        const cA = window.BpoMoney.toCents(a.gross_amount);
-                        const cB = window.BpoMoney.toCents(b.gross_amount);
+                        const cA = window.BpoMoney.toCents(a.net_amount);
+                        const cB = window.BpoMoney.toCents(b.net_amount);
                         return ordenacaoDirecao === 'asc' ? (cA < cB ? -1 : (cA > cB ? 1 : 0)) : (cA > cB ? -1 : (cA < cB ? 1 : 0));
                     }
                     case 'retencoes': {
@@ -811,7 +811,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     <td>${escapeHtml(formatarData(doc.issue_date))}</td>
                     <td>${escapeHtml(formatarData(doc.due_date))}</td>
                     <td>${recebimentoLabel}</td>
-                    <td>${escapeHtml(window.BpoMoney.formatBRL(doc.gross_amount))}</td>
+                    <td style="font-weight: 600;">${escapeHtml(window.BpoMoney.formatBRL(doc.net_amount))}</td>
                     <td style="color: #f59e0b;">${impostosAtrib}</td>
                     <td style="color: var(--color-danger);">${escapeHtml(window.BpoMoney.formatBRL(doc.retentions))}</td>
                     <td style="font-weight: 700; color: #fff;">${window.BpoMoney.formatBRL(liquidoEconomicoRealCents)}</td>
