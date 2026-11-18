@@ -484,6 +484,7 @@
                     if (!mapImovel.has(propId)) {
                         mapImovel.set(propId, {
                             grossCents:      null,
+                            rawGrossCents:   0n,
                             iptuCents:       0n,
                             dasCents:        0n,
                             jurosMult:       0n,
@@ -503,7 +504,8 @@
                     }
                     if (d.due_date) entry.dataVencimento = d.due_date;
 
-                    entry.grossCents = fatTotalCents;
+                    entry.grossCents    = fatTotalCents;
+                    entry.rawGrossCents = window.BpoMoney.toCents(d.gross_amount || 0);
                     if (td.iptu_valor) entry.iptuCents += window.BpoMoney.toCents(td.iptu_valor);
                     entry.dasCents += dasTotalCents;
 
@@ -532,6 +534,7 @@
                         dataVencimento: d.due_date || null,
                         competenceMonth: d.competence_month,
                         grossCents: fatTotalCents,
+                        rawGrossCents: window.BpoMoney.toCents(d.gross_amount || 0),
                         iptuCents: iptuC,
                         dasCents: dasTotalCents,
                         jurosMult: jurosC,
@@ -686,7 +689,9 @@
             const partImovel = participantesAll.filter(p => p.property_id === cl.property_id);
             const admPart = partImovel.find(p => parseFloat(p.admin_pct) > 0);
             const admPct  = admPart ? parseFloat(admPart.admin_pct) : (parseFloat(meta.admin_pct) || 0);
-            const honCents = admPct > 0 ? window.BpoMoney.applyPercentage(brutoCents, admPct) : 0n;
+            // Base honorários = gross_amount − desconto + juros/multa (sem IPTU, sem extras)
+            const baseHonCents1 = (fat.rawGrossCents || 0n) - (fat.descontoCents || 0n) + (fat.jurosMult || 0n);
+            const honCents = admPct > 0 ? window.BpoMoney.applyPercentage(baseHonCents1 > 0n ? baseHonCents1 : 0n, admPct) : 0n;
 
             // Líquido = Bruto − IPTU − Desconto − DAS − Honorários + Juros/Multa
             const liqCents = brutoCents - iptuCents - descCents - dasCents - honCents + jurosCents;
@@ -819,7 +824,9 @@
                     const partImovel = cl ? participantesAll.filter(p => p.property_id === cl.property_id) : [];
                     const admPart = partImovel.find(p => parseFloat(p.admin_pct) > 0);
                     const admPct  = admPart ? parseFloat(admPart.admin_pct) : (parseFloat(meta.admin_pct) || 0);
-                    const honCents = admPct > 0 ? window.BpoMoney.applyPercentage(brutoCents, admPct) : 0n;
+                    // Base honorários = gross_amount − desconto + juros/multa (sem IPTU, sem extras)
+                    const baseHonCents2 = (item.rawGrossCents || 0n) - (item.descontoCents || 0n) + (item.jurosMult || 0n);
+                    const honCents = admPct > 0 ? window.BpoMoney.applyPercentage(baseHonCents2 > 0n ? baseHonCents2 : 0n, admPct) : 0n;
 
                     const liqCents = brutoCents - iptuCents - descCents - dasCents - honCents + jurosCents;
 
@@ -1411,8 +1418,8 @@
                 // Valor efetivamente recebido (bruto menos desconto contratual)
                 const valorRecebidoCents = brutoCents > descontoCents ? brutoCents - descontoCents : brutoCents;
 
-                // Deduções do faturamento (IPTU + DAS)
-                const ded = deducoesPorImovel.get(imovel.id) || { iptuCents: 0n, dasCents: 0n };
+                // Deduções do faturamento (IPTU + DAS + juros/multa)
+                const ded = deducoesPorImovel.get(imovel.id) || { iptuCents: 0n, dasCents: 0n, jurosMult: 0n, rawGrossCents: 0n, descontoCents: 0n };
 
                 // Participantes válidos na competência
                 // Honorário: quem tem admin_pct > 0 / Cota: quem tem participation_pct > 0
@@ -1428,13 +1435,18 @@
                     continue;
                 }
 
-                // ---- HONORÁRIOS (admin_pct > 0 → calculados sobre o bruto recebido) ----
+                // ---- HONORÁRIOS (admin_pct > 0 → calculados sobre gross_amount − desconto + juros/multa) ----
                 const admParticipante = participantesImovel.find(p => parseFloat(p.admin_pct) > 0);
                 let honorariosCents = 0n;
 
                 if (admParticipante && parseFloat(admParticipante.admin_pct) > 0) {
+                    // Base honorários = gross_amount do faturamento − desconto + juros/multa (sem IPTU)
+                    const rawGrossRateio = ded.rawGrossCents || brutoCents;
+                    const descRateio     = ded.descontoCents  || descontoCents;
+                    const jurosRateio    = ded.jurosMult      || 0n;
+                    const baseHonRateio  = rawGrossRateio - descRateio + jurosRateio;
                     honorariosCents = window.BpoMoney.applyPercentage(
-                        valorRecebidoCents, parseFloat(admParticipante.admin_pct)
+                        baseHonRateio > 0n ? baseHonRateio : 0n, parseFloat(admParticipante.admin_pct)
                     );
                     distributionsToInsert.push({
                         property_id:          imovel.id,
