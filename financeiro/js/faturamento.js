@@ -378,6 +378,8 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
 
                 const extrasCents = (taxDetails && taxDetails.extras) ? window.BpoMoney.toCents(taxDetails.extras) : 0n;
                 const discountsCents = d.discounts ? window.BpoMoney.toCents(d.discounts) : ((taxDetails && taxDetails.desconto) ? window.BpoMoney.toCents(taxDetails.desconto) : 0n);
+                const isLoc = (d.document_type === 'locacao') || !!(taxDetails && taxDetails.is_locacao);
+                const iptuCents = (isLoc && taxDetails && taxDetails.iptu_valor) ? window.BpoMoney.toCents(taxDetails.iptu_valor) : 0n;
 
                 return {
                     ...d,
@@ -389,7 +391,8 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     _totalRecebidoCents: totalRecebidoCents,
                     _saldoRestanteCents: saldoRestanteCents,
                     _extrasCents: extrasCents,
-                    _discountsCents: discountsCents
+                    _discountsCents: discountsCents,
+                    _iptuCents: iptuCents
                 };
             });
 
@@ -582,9 +585,10 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             const lCents = window.BpoMoney.toCents(doc.net_amount);
             const dCents = doc._discountsCents !== undefined ? doc._discountsCents : (doc.discounts ? window.BpoMoney.toCents(doc.discounts) : 0n);
             const eCents = doc._extrasCents !== undefined ? doc._extrasCents : 0n;
+            const iptuDocCents = doc._iptuCents !== undefined ? doc._iptuCents : 0n;
 
-            // Faturamento Total = Valor Base - Descontos + Extras (não considera multas nem juros)
-            const fatDoc = (bCents + eCents) > dCents ? (bCents + eCents - dCents) : 0n;
+            // Faturamento Total = Valor Base - Descontos + Extras + IPTU (se locação)
+            const fatDoc = (bCents + eCents + iptuDocCents) > dCents ? (bCents + eCents + iptuDocCents - dCents) : 0n;
             faturamentoTotal += fatDoc;
             retencoesTotal += rCents;
 
@@ -939,6 +943,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         const inpMulta = document.getElementById('docMulta');
         const inpJuros = document.getElementById('docJuros');
         const inpExtras = document.getElementById('docExtras');
+        const inpIptu = document.getElementById('inpIptuValor');
 
         const selEmpresa = document.getElementById('docEmpresaId');
         const selContrato = document.getElementById('docContrato');
@@ -980,7 +985,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         });
 
         // Eventos de valores, acréscimos e descontos (Item 01)
-        [inpBruto, inpDesconto, inpMulta, inpJuros, inpExtras].forEach(el => {
+        [inpBruto, inpDesconto, inpMulta, inpJuros, inpExtras, inpIptu].forEach(el => {
             if (el) el.addEventListener('input', () => dispararPreviaImpostos('valores'));
         });
 
@@ -1090,15 +1095,13 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         const multaCents = window.BpoMoney.toCents(document.getElementById('docMulta')?.value || '0');
         const jurosCents = window.BpoMoney.toCents(document.getElementById('docJuros')?.value || '0');
         const extrasCents = window.BpoMoney.toCents(document.getElementById('docExtras')?.value || '0');
+        const docTipoAtual = document.getElementById('docTipo')?.value || '';
+        const isLocacao = (docTipoAtual === 'locacao');
+        const iptuCents = isLocacao ? window.BpoMoney.toCents(document.getElementById('inpIptuValor')?.value || '0') : 0n;
 
         const emp = companiesMap.get(companyId);
         const isSimples = emp && emp.tax_regime === 'simples_nacional';
         const isLucroPresumido = !isSimples;
-
-        // Isenção de ISS por Locação — base legal: locação de bens não é prestação de serviço,
-        // portanto não sujeita ao ISS (STJ, Súmula 31; LC 116/2003), em qualquer regime tributário.
-        const docTipoAtual = document.getElementById('docTipo')?.value || '';
-        const isLocacao = (docTipoAtual === 'locacao');
 
         // Atualiza banner de isenção de ISS por Locação
         let bannerLocacao = document.getElementById('bannerIssIsentoLocacao');
@@ -1432,9 +1435,9 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
 
         // =========================================================================
         // Cálculo do Líquido a Receber (Item 01):
-        // Líquido = Bruto + Multa + Juros + Extras - Desconto - Retenções
+        // Líquido = Bruto + Multa + Juros + Extras + IPTU (se locação) - Desconto - Retenções
         // =========================================================================
-        const subtotalCents = brutoCents + multaCents + jurosCents + extrasCents;
+        const subtotalCents = brutoCents + multaCents + jurosCents + extrasCents + iptuCents;
         const deducoesCents = descontoCents + retTotalCents;
         const liquidoRecebCents = subtotalCents > deducoesCents ? (subtotalCents - deducoesCents) : 0n;
 
@@ -1765,11 +1768,12 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         const multaCents = window.BpoMoney.toCents(document.getElementById('docMulta').value);
         const jurosCents = window.BpoMoney.toCents(document.getElementById('docJuros').value);
         const extrasCents = window.BpoMoney.toCents(document.getElementById('docExtras').value);
+        const iptuCents = isLocacaoDoc ? window.BpoMoney.toCents(document.getElementById('inpIptuValor')?.value || '0') : 0n;
 
         // No Simples Nacional não há retenções de IRRF, INSS nem ISS
         const retCents = isSimples ? 0n : window.BpoMoney.toCents(document.getElementById('docRetencoes').value);
 
-        const subtotalCents = brutoCents + multaCents + jurosCents + extrasCents;
+        const subtotalCents = brutoCents + multaCents + jurosCents + extrasCents + iptuCents;
         const deducoesCents = descontoCents + retCents;
 
         if (subtotalCents < deducoesCents) {
