@@ -668,9 +668,6 @@
                 <td style="padding:10px 10px; text-align:center; color:#93c5fd; font-size:0.78rem;">Recebido: ${escapeHtml(window.BpoMoney.formatBRL(totRecebidoLiq))}</td>
             </tr>`;
         }
-                <td style="padding:10px 10px; text-align:center; color:#93c5fd; font-size:0.78rem;">Recebido: ${escapeHtml(window.BpoMoney.formatBRL(totRecebidoLiq))}</td>
-            </tr>`;
-        }
 
         // =========================================================================
         // 2. TABELA 2: RECEBIMENTOS NO PERÍODO (REGIME DE CAIXA)
