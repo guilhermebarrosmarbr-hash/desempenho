@@ -76,12 +76,12 @@
             </div>
         </div>
 
-        <!-- Gestão de Locações — Tabela no estilo planilha -->
-        <section class="finance-card" style="overflow-x:auto;">
+        <!-- Gestão de Locações — Tabela no estilo planilha (Competência de Faturamento) -->
+        <section class="finance-card" style="overflow-x:auto; margin-bottom: 24px;">
             <div class="card-header">
                 <div>
-                    <h2 class="card-title">Gestão de Locações</h2>
-                    <p class="card-subtitle">Competência: visão consolidada por contrato com distribuição de cotas</p>
+                    <h2 class="card-title">Gestão de Locações — Competência de Faturamento</h2>
+                    <p class="card-subtitle">Visão consolidada por contrato com distribuição de cotas da competência selecionada</p>
                 </div>
             </div>
 
@@ -90,6 +90,7 @@
                     <thead id="tabelaGestaoLocacoesHead">
                         <tr style="background:#111827; color:#9ca3af; text-transform:uppercase; font-size:0.72rem; letter-spacing:0.05em;">
                             <th style="padding:10px 10px; text-align:left; border-bottom:2px solid rgba(255,255,255,0.1); position:sticky; left:0; background:#111827; z-index:2;">Contrato</th>
+                            <th style="padding:10px 10px; text-align:center; border-bottom:2px solid rgba(255,255,255,0.1);">Vencimento</th>
                             <th style="padding:10px 10px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1);">Valor Bruto</th>
                             <th style="padding:10px 10px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1);">IPTU</th>
                             <th style="padding:10px 10px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1);">Desconto</th>
@@ -103,12 +104,50 @@
                     </thead>
                     <tbody id="listaDistribuicoesBody">
                         <tr>
-                            <td colspan="10" style="text-align:center; color:#6b7280; padding:40px;">
+                            <td colspan="11" style="text-align:center; color:#6b7280; padding:40px;">
                                 Nenhum contrato processado para esta competência.
                             </td>
                         </tr>
                     </tbody>
                     <tfoot id="tabelaGestaoLocacoesFoot"></tfoot>
+                </table>
+            </div>
+        </section>
+
+        <!-- Segunda Tabela: Locações Recebidas na Competência (Regime de Caixa) -->
+        <section class="finance-card" style="overflow-x:auto;">
+            <div class="card-header">
+                <div>
+                    <h2 class="card-title" id="tituloTabelaCaixa">Locações Recebidas no Período (Regime de Caixa)</h2>
+                    <p class="card-subtitle">Lançamentos recebidos/liquidados na competência, independente do mês de faturamento original</p>
+                </div>
+            </div>
+
+            <div style="overflow-x:auto; width:100%;">
+                <table id="tabelaLocacoesCaixa" style="width:100%; border-collapse:collapse; font-size:0.82rem; white-space:nowrap; min-width:900px;">
+                    <thead id="tabelaLocacoesCaixaHead">
+                        <tr style="background:#111827; color:#9ca3af; text-transform:uppercase; font-size:0.72rem; letter-spacing:0.05em;">
+                            <th style="padding:10px 10px; text-align:left; border-bottom:2px solid rgba(255,255,255,0.1); position:sticky; left:0; background:#111827; z-index:2;">Contrato</th>
+                            <th style="padding:10px 10px; text-align:center; border-bottom:2px solid rgba(255,255,255,0.1);">Vencimento</th>
+                            <th style="padding:10px 10px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1);">Valor Bruto</th>
+                            <th style="padding:10px 10px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1);">IPTU</th>
+                            <th style="padding:10px 10px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1);">Desconto</th>
+                            <th style="padding:10px 10px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1);">Juros/Multa</th>
+                            <th style="padding:10px 10px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1);">DAS</th>
+                            <th style="padding:10px 10px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1);">Honorários</th>
+                            <th style="padding:10px 10px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1); font-weight:700; color:#fff;">Líquido</th>
+                            <!-- colunas de sócios inseridas dinamicamente pelo JS -->
+                            <th style="padding:10px 10px; text-align:center; border-bottom:2px solid rgba(255,255,255,0.1);">Recebimento</th>
+                        </tr>
+                    </thead>
+                    <tbody id="listaCaixaBody">
+                        <tr>
+                            <td colspan="11" style="text-align:center; color:#6b7280; padding:40px;">
+                                Nenhum recebimento registrado para este período.
+                            </td>
+                        </tr>
+                    </tbody>
+                    <tfoot id="tabelaLocacoesCaixaFoot"></tfoot>
                 </table>
             </div>
         </section>

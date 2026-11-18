@@ -303,14 +303,15 @@
 
     // =========================================================================
     // BUSCAR DADOS DOS BILLING_DOCUMENTS DO PERÍODO
-    // Retorna mapa: property_id → { iptuCents, dasCents, jurosMult, descontoCents, dataRecebimento, recebido }
+    // Retorna { mapCompetencia, docsCaixa }
     // =========================================================================
     async function buscarDeducoesDoFaturamento() {
         const mapImovel = new Map();
+        const docsCaixa = [];
         try {
-            // Filtra documentos de locação da competência ativa diretamente na query
+            // Busca documentos de locação da empresa ativa sem cancelados
             const docs = await window.BpoSupabase.request(
-                `billing_documents?company_id=eq.${empresaAtiva.id}&competence_month=eq.${competenciaAtiva}&status=neq.cancelled`,
+                `billing_documents?company_id=eq.${empresaAtiva.id}&status=neq.cancelled`,
                 { method: 'GET' }
             ) || [];
 
@@ -326,14 +327,14 @@
                 // Apenas documentos de locação
                 if (!td.is_locacao && d.document_type !== 'locacao') return;
 
-                // Status de recebimento: paid + tem payment_date em tax_details
+                // Status de recebimento: paid + tem payment_date em tax_details ou no doc
                 const dataRec = td.payment_date || d.payment_date || d.receipt_date || null;
+                const mesRec = dataRec ? String(dataRec).slice(0, 7) : '';
                 const recebido = !!dataRec && d.status === 'paid';
 
                 // Localiza imóvel pelo contrato (rental_contracts.id) ou pelo contrato do sistema vinculado (contract_ref_id)
                 let contrato = contratosLocacao.find(c => c.id === d.contract_id);
                 if (!contrato && d.contract_id) {
-                    // Tenta encontrar pelo property meta contract_ref_id
                     contrato = contratosLocacao.find(c => {
                         const imov = imoveis.find(i => i.id === c.property_id);
                         if (!imov) return false;
@@ -343,51 +344,89 @@
                         } catch { return false; }
                     });
                 }
-                if (!contrato) return;
-                const propId = contrato.property_id;
-                if (!mapImovel.has(propId)) {
-                    mapImovel.set(propId, {
-                        grossCents:      null,
-                        iptuCents:       0n,
-                        dasCents:        0n,
-                        jurosMult:       0n,
-                        descontoCents:   0n,
-                        dataRecebimento: null,
-                        recebido:        false,
-                        contract_id:     contrato.id
-                    });
+
+                // 1. Mapa para Competência de Faturamento (d.competence_month === competenciaAtiva)
+                if (d.competence_month === competenciaAtiva && contrato) {
+                    const propId = contrato.property_id;
+                    if (!mapImovel.has(propId)) {
+                        mapImovel.set(propId, {
+                            grossCents:      null,
+                            iptuCents:       0n,
+                            dasCents:        0n,
+                            jurosMult:       0n,
+                            descontoCents:   0n,
+                            dataRecebimento: null,
+                            dataVencimento:  d.due_date || null,
+                            recebido:        false,
+                            contract_id:     contrato.id
+                        });
+                    }
+
+                    const entry = mapImovel.get(propId);
+                    entry.recebido = recebido;
+                    if (dataRec) entry.dataRecebimento = String(dataRec).slice(0, 10);
+                    if (d.due_date) entry.dataVencimento = d.due_date;
+
+                    // Valor bruto do billing_document (gross_amount)
+                    if (d.gross_amount) entry.grossCents = window.BpoMoney.toCents(d.gross_amount);
+
+                    if (td.iptu_valor)   entry.iptuCents     += window.BpoMoney.toCents(td.iptu_valor);
+                    if (td.das_valor)    entry.dasCents      += window.BpoMoney.toCents(td.das_valor);
+
+                    // Juros/multa: campos multa + juros em tax_details
+                    const jurosV = td.juros_valor || td.juros || 0;
+                    const multaV = td.multa_valor || td.multa || 0;
+                    entry.jurosMult += window.BpoMoney.toCents(jurosV) + window.BpoMoney.toCents(multaV);
+
+                    // Desconto contratual
+                    const descV = td.desconto_valor || td.desconto || d.discounts || 0;
+                    entry.descontoCents += window.BpoMoney.toCents(descV);
+
+                    // Lucro Presumido: soma impostos como DAS
+                    if (!td.is_simples && td.is_locacao) {
+                        ['pis_valor', 'cofins_valor', 'irpj_valor', 'csll_valor'].forEach(campo => {
+                            if (td[campo]) entry.dasCents += window.BpoMoney.toCents(td[campo]);
+                        });
+                    }
                 }
 
-                const entry = mapImovel.get(propId);
-                entry.recebido = recebido;
-                if (dataRec) entry.dataRecebimento = String(dataRec).slice(0, 10);
+                // 2. Documentos recebidos no mês ativo (Regime de Caixa) independente da competência de faturamento
+                if (recebido && mesRec === competenciaAtiva) {
+                    let iptuC = 0n;
+                    let dasC = 0n;
+                    if (td.iptu_valor) iptuC += window.BpoMoney.toCents(td.iptu_valor);
+                    if (td.das_valor) dasC += window.BpoMoney.toCents(td.das_valor);
 
-                // Valor bruto do billing_document (gross_amount)
-                if (d.gross_amount) entry.grossCents = window.BpoMoney.toCents(d.gross_amount);
+                    const jurosV = td.juros_valor || td.juros || 0;
+                    const multaV = td.multa_valor || td.multa || 0;
+                    const jurosC = window.BpoMoney.toCents(jurosV) + window.BpoMoney.toCents(multaV);
+                    const descV = td.desconto_valor || td.desconto || d.discounts || 0;
+                    const descC = window.BpoMoney.toCents(descV);
 
-                if (td.iptu_valor)   entry.iptuCents     += window.BpoMoney.toCents(td.iptu_valor);
-                if (td.das_valor)    entry.dasCents      += window.BpoMoney.toCents(td.das_valor);
+                    if (!td.is_simples && td.is_locacao) {
+                        ['pis_valor', 'cofins_valor', 'irpj_valor', 'csll_valor'].forEach(campo => {
+                            if (td[campo]) dasC += window.BpoMoney.toCents(td[campo]);
+                        });
+                    }
 
-                // Juros/multa: campos multa + juros em tax_details
-                const jurosV = td.juros_valor || td.juros || 0;
-                const multaV = td.multa_valor || td.multa || 0;
-                entry.jurosMult += window.BpoMoney.toCents(jurosV) + window.BpoMoney.toCents(multaV);
-
-                // Desconto contratual
-                const descV = td.desconto_valor || td.desconto || d.discounts || 0;
-                entry.descontoCents += window.BpoMoney.toCents(descV);
-
-                // Lucro Presumido: soma impostos como DAS
-                if (!td.is_simples && td.is_locacao) {
-                    ['pis_valor', 'cofins_valor', 'irpj_valor', 'csll_valor'].forEach(campo => {
-                        if (td[campo]) entry.dasCents += window.BpoMoney.toCents(td[campo]);
+                    docsCaixa.push({
+                        doc: d,
+                        contrato: contrato || null,
+                        dataRecebimento: String(dataRec).slice(0, 10),
+                        dataVencimento: d.due_date || null,
+                        competenceMonth: d.competence_month,
+                        grossCents: window.BpoMoney.toCents(d.gross_amount || 0),
+                        iptuCents: iptuC,
+                        dasCents: dasC,
+                        jurosMult: jurosC,
+                        descontoCents: descC
                     });
                 }
             });
         } catch (e) {
             console.warn('Aviso: não foi possível buscar deduções do faturamento:', e);
         }
-        return mapImovel;
+        return { mapCompetencia: mapImovel, docsCaixa };
     }
 
     // =========================================================================
@@ -424,23 +463,42 @@
     }
 
     // =========================================================================
-    // TABELA GESTÃO DE LOCAÇÕES (estilo planilha)
+    // TABELAS DE GESTÃO DE LOCAÇÕES (Competência de Faturamento + Regime de Caixa)
     // =========================================================================
     async function renderizarExtrato() {
         const tbody = document.getElementById('listaDistribuicoesBody');
         const thead = document.getElementById('tabelaGestaoLocacoesHead');
         const tfoot = document.getElementById('tabelaGestaoLocacoesFoot');
+
+        const tbodyCaixa = document.getElementById('listaCaixaBody');
+        const theadCaixa = document.getElementById('tabelaLocacoesCaixaHead');
+        const tfootCaixa = document.getElementById('tabelaLocacoesCaixaFoot');
+        const tituloCaixa = document.getElementById('tituloTabelaCaixa');
+
         if (!tbody) return;
 
+        // Atualiza título da tabela de caixa com o mês ativo
+        if (tituloCaixa && competenciaAtiva) {
+            const [ano, mes] = competenciaAtiva.split('-');
+            const nomesMeses = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+            const nomeMes = nomesMeses[parseInt(mes, 10) - 1] || mes;
+            tituloCaixa.textContent = `Locações Recebidas em ${nomeMes}/${ano} (Regime de Caixa)`;
+        }
+
         if (contratosLocacao.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; color:#6b7280; padding:40px;">
+            tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; color:#6b7280; padding:40px;">
                 Nenhum contrato cadastrado. Clique em <strong>+ Contrato de Locação</strong> para criar o primeiro.
             </td></tr>`;
+            if (tbodyCaixa) {
+                tbodyCaixa.innerHTML = `<tr><td colspan="11" style="text-align:center; color:#6b7280; padding:40px;">
+                    Nenhum contrato cadastrado.
+                </td></tr>`;
+            }
             return;
         }
 
-        // Busca dados de faturamento (IPTU, DAS, juros/multa, recebimento)
-        const mapFat = await buscarDeducoesDoFaturamento();
+        // Busca dados de faturamento (IPTU, DAS, juros/multa, recebimento) para competência e para caixa
+        const { mapCompetencia, docsCaixa } = await buscarDeducoesDoFaturamento();
 
         // Busca todos os participantes dos imóveis
         const imovelIds = imoveis.map(i => i.id);
@@ -463,11 +521,12 @@
         });
         const sociosCols = Array.from(sociosSet.entries()); // [[id, nome], ...]
 
-        // Atualiza cabeçalho com colunas dinâmicas de sócios
-        if (thead) {
-            const thBase = `
+        // Função auxiliar para gerar o HTML do thead com Vencimento
+        function gerarTheadHtml() {
+            return `
                 <tr style="background:#111827; color:#9ca3af; text-transform:uppercase; font-size:0.72rem; letter-spacing:0.05em;">
                     <th style="padding:10px 10px; text-align:left; border-bottom:2px solid rgba(255,255,255,0.1); position:sticky; left:0; background:#111827; z-index:2;">Contrato</th>
+                    <th style="padding:10px 10px; text-align:center; border-bottom:2px solid rgba(255,255,255,0.1);">Vencimento</th>
                     <th style="padding:10px 10px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1);">Valor Bruto</th>
                     <th style="padding:10px 10px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1);">IPTU</th>
                     <th style="padding:10px 10px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1);">Desconto</th>
@@ -480,22 +539,25 @@
                     ).join('')}
                     <th style="padding:10px 10px; text-align:center; border-bottom:2px solid rgba(255,255,255,0.1);">Recebimento</th>
                 </tr>`;
-            thead.innerHTML = thBase;
         }
 
-        // Totais para rodapé
+        if (thead) thead.innerHTML = gerarTheadHtml();
+        if (theadCaixa) theadCaixa.innerHTML = gerarTheadHtml();
+
+        // =========================================================================
+        // 1. TABELA 1: COMPETÊNCIA DE FATURAMENTO
+        // =========================================================================
         let totBruto = 0n, totIptu = 0n, totDesc = 0n, totJuros = 0n, totDas = 0n, totHon = 0n, totLiq = 0n;
         const totSocios = new Map(sociosCols.map(([id]) => [id, 0n]));
         let totRecebidoLiq = 0n;
 
-        const linhas = contratosLocacao.map(cl => {
+        const linhasCompetencia = contratosLocacao.map(cl => {
             const imovel = imoveis.find(i => i.id === cl.property_id);
-            const fat    = mapFat.get(cl.property_id) || {};
+            const fat    = mapCompetencia.get(cl.property_id) || {};
             let meta = {};
             try { meta = JSON.parse(imovel?.address || '{}'); } catch {}
 
             // Valores
-            // Valor bruto = gross_amount do billing_document da competência; fallback: monthly_amount do contrato
             const brutoCents = fat.grossCents || window.BpoMoney.toCents(cl.monthly_amount);
             const iptuCents  = fat.iptuCents  || 0n;
             const dasCents   = fat.dasCents   || 0n;
@@ -508,14 +570,17 @@
             const admPct  = admPart ? parseFloat(admPart.admin_pct) : (parseFloat(meta.admin_pct) || 0);
             const honCents = admPct > 0 ? window.BpoMoney.applyPercentage(brutoCents, admPct) : 0n;
 
-            // Líquido = Bruto − IPTU − Desconto − DAS − Honorários (juros/multa entra positivo)
+            // Líquido = Bruto − IPTU − Desconto − DAS − Honorários + Juros/Multa
             const liqCents = brutoCents - iptuCents - descCents - dasCents - honCents + jurosCents;
+
+            // Vencimento: dataVencimento do faturamento ou dia padrão do contrato
+            const dataVenc = fat.dataVencimento ? formatarData(fat.dataVencimento) : (cl.due_day ? `Dia ${cl.due_day}` : '—');
 
             // Recebimento
             const recebido = fat.recebido || false;
             const dataRec  = fat.dataRecebimento;
             const statusCell = recebido
-                ? `<span style="background:#16a34a22; color:#22c55e; padding:2px 8px; border-radius:4px; font-size:0.78rem;">${dataRec || 'Recebido'}</span>`
+                ? `<span style="background:#16a34a22; color:#22c55e; padding:2px 8px; border-radius:4px; font-size:0.78rem;">${dataRec ? formatarData(dataRec) : 'Liquidado'}</span>`
                 : `<span style="background:#ef444422; color:#ef4444; padding:2px 8px; border-radius:4px; font-size:0.78rem;">Em Aberto</span>`;
 
             // Cotas por sócio
@@ -546,6 +611,7 @@
 
             return `<tr style="border-bottom:1px solid rgba(255,255,255,0.05); ${rowBg}" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='${recebido ? '' : 'rgba(239,68,68,0.04)'}'">
                 <td style="padding:9px 10px; color:#fff; font-weight:500; position:sticky; left:0; background:#0f172a; z-index:1; max-width:200px; overflow:hidden; text-overflow:ellipsis;" title="${nomeImovel}">${nomeImovel}</td>
+                <td style="padding:9px 10px; text-align:center; color:#9ca3af; font-size:0.8rem;">${escapeHtml(dataVenc)}</td>
                 <td style="padding:9px 10px; text-align:right; color:#4ade80; font-weight:600;">${escapeHtml(window.BpoMoney.formatBRL(brutoCents))}</td>
                 <td style="padding:9px 10px; text-align:right; color:${iptuCents > 0n ? '#f87171' : '#6b7280'};">${iptuCents > 0n ? escapeHtml(window.BpoMoney.formatBRL(iptuCents)) : '—'}</td>
                 <td style="padding:9px 10px; text-align:right; color:${descCents > 0n ? '#f87171' : '#6b7280'};">${descCents > 0n ? escapeHtml(window.BpoMoney.formatBRL(descCents)) : '—'}</td>
@@ -558,13 +624,12 @@
             </tr>`;
         });
 
-        tbody.innerHTML = linhas.join('');
+        tbody.innerHTML = linhasCompetencia.join('');
 
-        // Rodapé de totais
         if (tfoot) {
-            const colsCount = 8 + sociosCols.length + 1;
             tfoot.innerHTML = `<tr style="background:#1e3a5f; border-top:2px solid #3b82f6; font-weight:700; font-size:0.82rem;">
                 <td style="padding:10px 10px; color:#93c5fd; position:sticky; left:0; background:#1e3a5f;">TOTAL</td>
+                <td style="padding:10px 10px; text-align:center; color:#93c5fd;">—</td>
                 <td style="padding:10px 10px; text-align:right; color:#4ade80;">${escapeHtml(window.BpoMoney.formatBRL(totBruto))}</td>
                 <td style="padding:10px 10px; text-align:right; color:#f87171;">${totIptu > 0n ? escapeHtml(window.BpoMoney.formatBRL(totIptu)) : '—'}</td>
                 <td style="padding:10px 10px; text-align:right; color:#f87171;">${totDesc > 0n ? escapeHtml(window.BpoMoney.formatBRL(totDesc)) : '—'}</td>
@@ -575,6 +640,107 @@
                 ${sociosCols.map(([id]) => `<td style="padding:10px 8px; text-align:right; color:#a3e635;">${escapeHtml(window.BpoMoney.formatBRL(totSocios.get(id) || 0n))}</td>`).join('')}
                 <td style="padding:10px 10px; text-align:center; color:#93c5fd; font-size:0.78rem;">Recebido: ${escapeHtml(window.BpoMoney.formatBRL(totRecebidoLiq))}</td>
             </tr>`;
+        }
+
+        // =========================================================================
+        // 2. TABELA 2: RECEBIMENTOS NO PERÍODO (REGIME DE CAIXA)
+        // =========================================================================
+        if (tbodyCaixa) {
+            if (docsCaixa.length === 0) {
+                tbodyCaixa.innerHTML = `<tr><td colspan="${9 + sociosCols.length + 1}" style="text-align:center; color:#6b7280; padding:40px;">
+                    Nenhum recebimento de locação registrado no período de ${competenciaAtiva}.
+                </td></tr>`;
+                if (tfootCaixa) tfootCaixa.innerHTML = '';
+            } else {
+                let cTotBruto = 0n, cTotIptu = 0n, cTotDesc = 0n, cTotJuros = 0n, cTotDas = 0n, cTotHon = 0n, cTotLiq = 0n;
+                const cTotSocios = new Map(sociosCols.map(([id]) => [id, 0n]));
+                let cTotRecebidoLiq = 0n;
+
+                const linhasCaixa = docsCaixa.map(item => {
+                    const cl = item.contrato;
+                    const imovel = cl ? imoveis.find(i => i.id === cl.property_id) : null;
+                    let meta = {};
+                    try { meta = JSON.parse(imovel?.address || '{}'); } catch {}
+
+                    const brutoCents = item.grossCents;
+                    const iptuCents  = item.iptuCents;
+                    const dasCents   = item.dasCents;
+                    const jurosCents = item.jurosMult;
+                    const descCents  = item.descontoCents;
+
+                    // Honorários do imóvel
+                    const partImovel = cl ? participantesAll.filter(p => p.property_id === cl.property_id) : [];
+                    const admPart = partImovel.find(p => parseFloat(p.admin_pct) > 0);
+                    const admPct  = admPart ? parseFloat(admPart.admin_pct) : (parseFloat(meta.admin_pct) || 0);
+                    const honCents = admPct > 0 ? window.BpoMoney.applyPercentage(brutoCents, admPct) : 0n;
+
+                    const liqCents = brutoCents - iptuCents - descCents - dasCents - honCents + jurosCents;
+
+                    const dataVenc = item.dataVencimento ? formatarData(item.dataVencimento) : (cl && cl.due_day ? `Dia ${cl.due_day}` : '—');
+                    const dataRec = item.dataRecebimento ? formatarData(item.dataRecebimento) : 'Liquidado';
+
+                    // Cotas por sócio (todos recebidos, pois está na tabela de caixa)
+                    const cotasCells = sociosCols.map(([socioId]) => {
+                        const pp = partImovel.find(p => p.person_id === socioId && parseFloat(p.participation_pct) > 0);
+                        if (!pp) return `<td style="padding:9px 8px; text-align:right; color:#6b7280;">—</td>`;
+                        const pct   = parseFloat(pp.participation_pct);
+                        const valor = window.BpoMoney.applyPercentage(liqCents, pct);
+                        cTotSocios.set(socioId, (cTotSocios.get(socioId) || 0n) + valor);
+                        return `<td style="padding:9px 8px; text-align:right; color:#a3e635; font-size:0.8rem;">
+                            ${escapeHtml(window.BpoMoney.formatBRL(valor))}
+                        </td>`;
+                    });
+
+                    cTotBruto += brutoCents;
+                    cTotIptu  += iptuCents;
+                    cTotDesc  += descCents;
+                    cTotJuros += jurosCents;
+                    cTotDas   += dasCents;
+                    cTotHon   += honCents;
+                    cTotLiq   += liqCents;
+                    cTotRecebidoLiq += liqCents;
+
+                    const nomeImovel = imovel ? escapeHtml(imovel.name) : (item.doc.document_number ? `Doc ${escapeHtml(item.doc.document_number)}` : 'Locação');
+                    const compBadge = item.competenceMonth ? `<span style="color:#94a3b8; font-size:0.72rem; display:block;">Comp: ${escapeHtml(item.competenceMonth)}</span>` : '';
+
+                    return `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background=''">
+                        <td style="padding:9px 10px; color:#fff; font-weight:500; position:sticky; left:0; background:#0f172a; z-index:1; max-width:200px; overflow:hidden; text-overflow:ellipsis;" title="${nomeImovel}">
+                            ${nomeImovel}
+                            ${compBadge}
+                        </td>
+                        <td style="padding:9px 10px; text-align:center; color:#9ca3af; font-size:0.8rem;">${escapeHtml(dataVenc)}</td>
+                        <td style="padding:9px 10px; text-align:right; color:#4ade80; font-weight:600;">${escapeHtml(window.BpoMoney.formatBRL(brutoCents))}</td>
+                        <td style="padding:9px 10px; text-align:right; color:${iptuCents > 0n ? '#f87171' : '#6b7280'};">${iptuCents > 0n ? escapeHtml(window.BpoMoney.formatBRL(iptuCents)) : '—'}</td>
+                        <td style="padding:9px 10px; text-align:right; color:${descCents > 0n ? '#f87171' : '#6b7280'};">${descCents > 0n ? escapeHtml(window.BpoMoney.formatBRL(descCents)) : '—'}</td>
+                        <td style="padding:9px 10px; text-align:right; color:${jurosCents > 0n ? '#a3e635' : '#6b7280'};">${jurosCents > 0n ? escapeHtml(window.BpoMoney.formatBRL(jurosCents)) : '—'}</td>
+                        <td style="padding:9px 10px; text-align:right; color:${dasCents > 0n ? '#f87171' : '#6b7280'};">${dasCents > 0n ? escapeHtml(window.BpoMoney.formatBRL(dasCents)) : '—'}</td>
+                        <td style="padding:9px 10px; text-align:right; color:${honCents > 0n ? '#fbbf24' : '#6b7280'};">${honCents > 0n ? escapeHtml(window.BpoMoney.formatBRL(honCents)) : '—'}</td>
+                        <td style="padding:9px 10px; text-align:right; color:#60a5fa; font-weight:700;">${escapeHtml(window.BpoMoney.formatBRL(liqCents))}</td>
+                        ${cotasCells.join('')}
+                        <td style="padding:9px 10px; text-align:center;">
+                            <span style="background:#16a34a22; color:#22c55e; padding:2px 8px; border-radius:4px; font-size:0.78rem;">${dataRec}</span>
+                        </td>
+                    </tr>`;
+                });
+
+                tbodyCaixa.innerHTML = linhasCaixa.join('');
+
+                if (tfootCaixa) {
+                    tfootCaixa.innerHTML = `<tr style="background:#1e3a5f; border-top:2px solid #3b82f6; font-weight:700; font-size:0.82rem;">
+                        <td style="padding:10px 10px; color:#93c5fd; position:sticky; left:0; background:#1e3a5f;">TOTAL RECEBIDO</td>
+                        <td style="padding:10px 10px; text-align:center; color:#93c5fd;">—</td>
+                        <td style="padding:10px 10px; text-align:right; color:#4ade80;">${escapeHtml(window.BpoMoney.formatBRL(cTotBruto))}</td>
+                        <td style="padding:10px 10px; text-align:right; color:#f87171;">${cTotIptu > 0n ? escapeHtml(window.BpoMoney.formatBRL(cTotIptu)) : '—'}</td>
+                        <td style="padding:10px 10px; text-align:right; color:#f87171;">${cTotDesc > 0n ? escapeHtml(window.BpoMoney.formatBRL(cTotDesc)) : '—'}</td>
+                        <td style="padding:10px 10px; text-align:right; color:#a3e635;">${cTotJuros > 0n ? escapeHtml(window.BpoMoney.formatBRL(cTotJuros)) : '—'}</td>
+                        <td style="padding:10px 10px; text-align:right; color:#f87171;">${cTotDas > 0n ? escapeHtml(window.BpoMoney.formatBRL(cTotDas)) : '—'}</td>
+                        <td style="padding:10px 10px; text-align:right; color:#fbbf24;">${cTotHon > 0n ? escapeHtml(window.BpoMoney.formatBRL(cTotHon)) : '—'}</td>
+                        <td style="padding:10px 10px; text-align:right; color:#60a5fa;">${escapeHtml(window.BpoMoney.formatBRL(cTotLiq))}</td>
+                        ${sociosCols.map(([id]) => `<td style="padding:10px 8px; text-align:right; color:#a3e635;">${escapeHtml(window.BpoMoney.formatBRL(cTotSocios.get(id) || 0n))}</td>`).join('')}
+                        <td style="padding:10px 10px; text-align:center; color:#93c5fd; font-size:0.78rem;">Total: ${escapeHtml(window.BpoMoney.formatBRL(cTotRecebidoLiq))}</td>
+                    </tr>`;
+                }
+            }
         }
 
         // Atualiza métricas
@@ -1221,5 +1387,14 @@
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
+    }
+
+    function formatarData(dataStr) {
+        if (!dataStr) return '—';
+        const parts = String(dataStr).split('-');
+        if (parts.length === 3) {
+            return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+        return dataStr;
     }
 })();
