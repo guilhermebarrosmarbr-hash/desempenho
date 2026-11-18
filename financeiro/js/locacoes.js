@@ -316,52 +316,75 @@
     // =========================================================================
 
     /**
-     * Calcula o Valor Total de um documento (mesma fórmula do módulo Faturamento e Impostos):
-     *   Valor Total = Valor Base + Extras + IPTU − Desconto
+     * Extrai tax_details de um documento (do campo direto ou embutido na description).
+     * Idêntico ao window.BpoFiscalUtils.extrairTaxDetails do impostos.js.
+     */
+    function extrairTaxDetails(doc) {
+        if (!doc) return null;
+        if (doc.tax_details && typeof doc.tax_details === 'object') return doc.tax_details;
+        if (doc.description && typeof doc.description === 'string') {
+            const match = doc.description.match(/<!--bpo_tax_details:(.*?)-->/);
+            if (match) { try { return JSON.parse(match[1]); } catch (e) {} }
+        }
+        return null;
+    }
+
+    /**
+     * Calcula o Valor Total de um documento.
+     * Fórmula alinhada com faturamento.js (linha 379-382 e 590-591):
+     *   Valor Total = Valor Base + Extras + IPTU (se locação) − Desconto
+     * Prioridade de desconto: d.discounts > td.desconto (igual ao faturamento.js).
      */
     function calcularValorTotalDoc(doc, td) {
+        const isLoc = (doc.document_type === 'locacao') || !!(td && td.is_locacao);
         const bCents = window.BpoMoney.toCents(doc.gross_amount);
-        const dCents = td.desconto
-            ? window.BpoMoney.toCents(td.desconto)
-            : (doc.discounts ? window.BpoMoney.toCents(doc.discounts) : 0n);
-        const eCents = td.extras ? window.BpoMoney.toCents(td.extras) : 0n;
-        const iptuCents = td.iptu_valor ? window.BpoMoney.toCents(td.iptu_valor) : 0n;
+        const eCents = (td && td.extras) ? window.BpoMoney.toCents(td.extras) : 0n;
+        // faturamento.js prioriza d.discounts; fallback td.desconto
+        const dCents = doc.discounts
+            ? window.BpoMoney.toCents(doc.discounts)
+            : ((td && td.desconto) ? window.BpoMoney.toCents(td.desconto) : 0n);
+        // IPTU: apenas para locação (igual a faturamento.js linha 382)
+        const iptuCents = (isLoc && td && td.iptu_valor)
+            ? window.BpoMoney.toCents(td.iptu_valor)
+            : 0n;
         const total = bCents + eCents + iptuCents;
         return total > dCents ? (total - dCents) : 0n;
     }
 
     /**
-     * Calcula o DAS/tributos de um documento usando o mesmo motor do módulo de Impostos
-     * (BpoTaxEngine, disponível via taxes.js carregado em locacoes.html).
-     * Para Simples Nacional: DAS via apurarSimplesNacional com RBT12 real da empresa.
-     * Para Lucro Presumido: PIS + COFINS + IRPJ + CSLL.
+     * Calcula o Total Tributos de um documento usando BpoTaxEngine — idêntico ao
+     * módulo de Impostos (tabela "Detalhamento de Tributos por Faturamento").
+     * Para Simples Nacional: tributosCents = fatTotalNum * aliqDasEfetiva.
+     * Para Lucro Presumido: PIS + COFINS + ISS + IRPJ + CSLL.
      */
-    function calcularDASDoc(doc, td, fatTotalCents, rbt12Empresa) {
+    function calcularTributosTotalDoc(doc, td, fatTotalCents, rbt12Empresa) {
         const fatTotalNum = Number(fatTotalCents) / 100;
         const isLP = empresaAtiva && empresaAtiva.tax_regime === 'lucro_presumido';
-        const isLocacao = (doc.document_type === 'locacao') || !!td.is_locacao;
+        const isLocacao = (doc.document_type === 'locacao') || !!(td && td.is_locacao);
 
         if (isLP) {
-            const pisCents = (td.pis_valor !== undefined && td.pis_valor !== null)
+            // Lucro Presumido: PIS(0,65%) + COFINS(3%) + ISS(0 p/ locação) + IRPJ + CSLL
+            const pisCents = (td && td.pis_valor !== undefined && td.pis_valor !== null)
                 ? window.BpoMoney.toCents(td.pis_valor)
                 : BigInt(Math.round(fatTotalNum * 0.0065 * 100));
-            const cofinsCents = (td.cofins_valor !== undefined && td.cofins_valor !== null)
+            const cofinsCents = (td && td.cofins_valor !== undefined && td.cofins_valor !== null)
                 ? window.BpoMoney.toCents(td.cofins_valor)
                 : BigInt(Math.round(fatTotalNum * 0.03 * 100));
-            const irpjCents = (td.irpj_valor !== undefined && td.irpj_valor !== null)
+            const issCents = isLocacao ? 0n
+                : BigInt(Math.round(fatTotalNum * ((td && td.iss_aliq !== undefined) ? Number(td.iss_aliq) : 3.0) / 100 * 100));
+            const irpjCents = (td && td.irpj_valor !== undefined && td.irpj_valor !== null)
                 ? window.BpoMoney.toCents(td.irpj_valor)
                 : BigInt(Math.round(fatTotalNum * 0.048 * 100));
-            const csllCents = (td.csll_valor !== undefined && td.csll_valor !== null)
+            const csllCents = (td && td.csll_valor !== undefined && td.csll_valor !== null)
                 ? window.BpoMoney.toCents(td.csll_valor)
                 : BigInt(Math.round(fatTotalNum * 0.0288 * 100));
-            return pisCents + cofinsCents + irpjCents + csllCents;
+            return pisCents + cofinsCents + issCents + irpjCents + csllCents;
         } else {
-            // Simples Nacional — mesma lógica do impostos.js
-            const anexoKey = td.das_anexo || 'anexo_iii';
-            const issIsento = isLocacao || !!td.iss_isento_simples;
-            const rbt12Num = (rbt12Empresa && rbt12Empresa > 0)
-                ? rbt12Empresa
-                : (td.das_rbt12 ? Number(window.BpoMoney.toCents(td.das_rbt12)) / 100 : 180000);
+            // Simples Nacional — idêntico ao impostos.js: fatTotalNum * aliqDasEfetiva
+            const anexoKey = (td && td.das_anexo) || 'anexo_iii';
+            const issIsento = isLocacao || !!(td && td.iss_isento_simples);
+            const rbt12Num = (rbt12Empresa > 0) ? rbt12Empresa
+                : ((td && td.das_rbt12) ? Number(window.BpoMoney.toCents(td.das_rbt12)) / 100 : 180000);
 
             if (window.BpoTaxEngine) {
                 const previa = window.BpoTaxEngine.apurarSimplesNacional(rbt12Num, fatTotalNum, anexoKey, { issIsento });
@@ -374,6 +397,8 @@
 
     /**
      * Calcula o RBT12 real da empresa: soma o Valor Total dos 12 meses anteriores à competência.
+     * Idêntico a calcularRbt12RealEmpresa() do impostos.js (inclui extração de tax_details
+     * embutido na description para consistência).
      */
     async function calcularRbt12Empresa(companyId, competencia) {
         if (!competencia || !competencia.includes('-')) return 0;
@@ -381,7 +406,7 @@
         let a = parseInt(anoStr, 10);
         let m = parseInt(mesStr, 10);
         const meses = [];
-        for (let i = 0; i < 12; i++) {
+        for (let i = 1; i <= 12; i++) {
             m--; if (m === 0) { m = 12; a--; }
             meses.unshift(`${a}-${String(m).padStart(2, '0')}`);
         }
@@ -392,7 +417,7 @@
             ) || [];
             let total = 0n;
             docs12.forEach(d => {
-                const tdD = (d.tax_details && typeof d.tax_details === 'object') ? d.tax_details : {};
+                const tdD = extrairTaxDetails(d) || {};
                 total += calcularValorTotalDoc(d, tdD);
             });
             return Number(total) / 100;
@@ -444,14 +469,14 @@
                     });
                 }
 
-                // ── Valor Total = Valor Base + Extras + IPTU − Desconto ──────────────────
-                // Calculado inline — idêntico ao módulo de Faturamento e de Impostos.
+                // ── Valor Total = Valor Base + Extras + IPTU (se locação) − Desconto ───────
+                // Alinhado com faturamento.js: desconto prioriza d.discounts > td.desconto;
+                // IPTU incluído apenas para documentos de locação.
                 const fatTotalCents = calcularValorTotalDoc(d, td);
 
-                // ── DAS = calculado com BpoTaxEngine ─────────────────────────────────────
-                // Mesmo motor e mesma lógica do módulo de Impostos (taxes.js carregado em locacoes.html).
-                // Resultado idêntico ao valor exibido por lançamento no módulo de Impostos.
-                const dasTotalCents = calcularDASDoc(d, td, fatTotalCents, rbt12Empresa);
+                // ── Total Tributos = mesmo valor de "Total Tributos" do módulo de Impostos ─
+                // Usa BpoTaxEngine (taxes.js) com RBT12 real — resultado idêntico ao impostos.
+                const dasTotalCents = calcularTributosTotalDoc(d, td, fatTotalCents, rbt12Empresa);
 
                 // 1. Mapa da Competência de Faturamento
                 if (d.competence_month === competenciaAtiva && contrato) {
