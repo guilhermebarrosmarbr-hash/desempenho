@@ -2,6 +2,23 @@
 // intermediacao.js — Lógica do Módulo 07 (Intermediação de Negócios)
 // ==============================================================================
 
+// Garante que BpoFiscalUtils está disponível (pode não estar se impostos.js não for carregado)
+window.BpoFiscalUtils = window.BpoFiscalUtils || {
+    extrairTaxDetails: function(doc) {
+        if (!doc) return null;
+        if (doc.tax_details && typeof doc.tax_details === 'object') return doc.tax_details;
+        if (doc.description && typeof doc.description === 'string') {
+            const match = doc.description.match(/<!--bpo_tax_details:(.*?)-->/);
+            if (match) { try { return JSON.parse(match[1]); } catch (e) {} }
+        }
+        return null;
+    },
+    limparDescricao: function(rawDesc) {
+        if (!rawDesc) return '';
+        return rawDesc.replace(/\s*<!--bpo_tax_details:.*?-->/g, '').trim();
+    }
+};
+
 (function() {
     let empresas = [];
     let empresaPagadoraAtiva = null;
@@ -130,10 +147,9 @@
         const retCents = window.BpoMoney.toCents(doc.retentions);
 
         if (isLP) {
-            // Lucro Presumido
+            // Lucro Presumido — fórmula da planilha segregada por atividade (mesmo que módulo de Impostos)
             const aliqIss = (taxDetails && taxDetails.iss_aliq !== undefined && taxDetails.iss_aliq !== null)
-                ? Number(taxDetails.iss_aliq)
-                : 3.0;
+                ? Number(taxDetails.iss_aliq) : 3.0;
             const issRetido = !!(taxDetails && taxDetails.iss_retained);
 
             const pisCents = (taxDetails && taxDetails.pis_valor !== undefined && taxDetails.pis_valor !== null)
@@ -149,49 +165,39 @@
                 issCents = BigInt(Math.round(fatTotalNum * (aliqIss / 100) * 100));
             }
 
-            // Trimestral / Mensal LP
-            let servicosCents = 0n;
-            let produtosCents = 0n;
-            let irrfRetidoMesCents = 0n;
-            (docsCompetenciaEmpresa || []).forEach(d => {
-                const td = d.tax_details || (window.BpoFiscalUtils && window.BpoFiscalUtils.extrairTaxDetails(d));
-                const v = calcularFaturamentoTotalDoc(d, td);
-                const it = (td && td.item_type) || 'servico';
-                if (it === 'produto') produtosCents += v;
-                else servicosCents += v;
+            // IRPJ e CSLL: fórmula da planilha segregada por atividade
+            // Prioridade: irpj_valor/csll_valor manual > fórmula dinâmica
+            const L_m = 1250000 / 3;
+            let irpjBrutoCents;
+            let csllCents;
 
-                const vNum = Number(v) / 100;
-                if (td && td.has_irrf) {
-                    const aliq = (td.irrf_aliq !== undefined && td.irrf_aliq !== null) ? td.irrf_aliq : 4.8;
-                    irrfRetidoMesCents += BigInt(Math.round(vNum * (aliq / 100) * 100));
+            if (taxDetails && taxDetails.irpj_valor !== undefined && taxDetails.irpj_valor !== null && String(taxDetails.irpj_valor).trim() !== '') {
+                irpjBrutoCents = window.BpoMoney.toCents(taxDetails.irpj_valor);
+            } else {
+                let aliqIrpj;
+                if (itemType === 'produto') {
+                    const base = Math.max(0, ((fatTotalNum - L_m) * 0.088) + (100000 / 3));
+                    aliqIrpj = fatTotalNum > 0 ? ((base * 0.15 + Math.max(0, (base - 20000) * 0.10)) / fatTotalNum) : 0.012;
                 } else {
-                    const r = window.BpoMoney.toCents(d.retentions);
-                    const issR = !!(td && td.iss_retained);
-                    if (r > 0n && !issR) irrfRetidoMesCents += r;
+                    const base = Math.max(0, ((fatTotalNum - L_m) * 0.352) + (400000 / 3));
+                    aliqIrpj = fatTotalNum > 0 ? ((base * 0.15 + Math.max(0, (base - 20000) * 0.10)) / fatTotalNum) : 0.048;
                 }
-            });
-
-            const [anoStr, mesStr] = competenciaAtiva.split('-');
-            const ano = parseInt(anoStr, 10);
-            const mes = parseInt(mesStr, 10);
-            const numTrimestre = Math.ceil(mes / 3);
-
-            let aliqIrpjVar = 0.048;
-            let aliqCsllVar = 0.0288;
-            if (window.BpoTaxEngine && window.BpoTaxEngine.apurarLucroPresumidoTrimestral) {
-                const apuracaoLP = window.BpoTaxEngine.apurarLucroPresumidoTrimestral(
-                    Number(servicosCents) / 100,
-                    Number(produtosCents) / 100,
-                    { ano, trimestre: numTrimestre, isMensal: true, irrfRetidoTrimestre: Number(irrfRetidoMesCents) / 100 }
-                );
-                if (apuracaoLP) {
-                    aliqIrpjVar = apuracaoLP.aliqEfetivaIRPJ;
-                    aliqCsllVar = apuracaoLP.aliqEfetivaCSLL;
-                }
+                irpjBrutoCents = BigInt(Math.round(fatTotalNum * aliqIrpj * 100));
             }
 
-            const irpjBrutoCents = BigInt(Math.round(fatTotalNum * aliqIrpjVar * 100));
-            const csllCents = BigInt(Math.round(fatTotalNum * aliqCsllVar * 100));
+            if (taxDetails && taxDetails.csll_valor !== undefined && taxDetails.csll_valor !== null && String(taxDetails.csll_valor).trim() !== '') {
+                csllCents = window.BpoMoney.toCents(taxDetails.csll_valor);
+            } else {
+                let aliqCsll;
+                if (itemType === 'produto') {
+                    const base = Math.max(0, ((fatTotalNum - L_m) * 0.132) + (150000 / 3));
+                    aliqCsll = fatTotalNum > 0 ? ((base * 0.09) / fatTotalNum) : 0.0108;
+                } else {
+                    const base = Math.max(0, ((fatTotalNum - L_m) * 0.352) + (400000 / 3));
+                    aliqCsll = fatTotalNum > 0 ? ((base * 0.09) / fatTotalNum) : 0.0288;
+                }
+                csllCents = BigInt(Math.round(fatTotalNum * aliqCsll * 100));
+            }
 
             let irrfDocCents = 0n;
             if (taxDetails && taxDetails.has_irrf) {
@@ -529,6 +535,7 @@
         try {
             await window.BpoSupabase.request('intermediation_agreements', {
                 method: 'POST',
+                prefer: 'return=representation',
                 body: JSON.stringify({
                     payer_company_id: pag,
                     receiver_company_id: rec,
@@ -539,7 +546,7 @@
             });
 
             fecharModais();
-            // Sincroniza o seletor da empresa ativa para a empresa pagadora do acordo salvo
+            // Atualiza empresa ativa ANTES de recarregar para o filtro de acordos estar correto
             empresaPagadoraAtiva = empresas.find(e => e.id === pag) || empresaPagadoraAtiva;
             selectEmpresaPagadora.value = empresaPagadoraAtiva.id;
 

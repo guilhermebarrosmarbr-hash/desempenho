@@ -441,10 +441,8 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             const brutoCents = window.BpoMoney.toCents(doc.gross_amount);
             const recebidoCents = window.BpoMoney.toCents(doc.net_amount || doc.gross_amount);
 
-            // Valor Líquido Deduzido de Impostos (Base Oficial de Comissão)
-            // Desconta os impostos federais proporcionais da nota
-            const deducoesImpostosCents = calcularImpostosProporcionaisDoc(doc);
-            const liquidoCents = recebidoCents > deducoesImpostosCents ? (recebidoCents - deducoesImpostosCents) : recebidoCents;
+            // Valor Líquido = mesmo cálculo do módulo de Impostos (fórmula planilha por atividade)
+            const liquidoCents = calcularValorLiquidoDocComissao(doc);
 
             totalBrutoCents += brutoCents;
             totalRecebidoCents += recebidoCents;
@@ -537,24 +535,101 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         tfootDemonstrativo.innerHTML = tfootHtml;
     }
 
-    function calcularImpostosProporcionaisDoc(doc) {
-        const td = doc.tax_details || {};
-        let impostosCents = 0n;
+    /**
+     * Calcula o Valor Líquido de um documento para base de comissão.
+     * Usa a mesma fórmula da planilha segregada por atividade (serviço/produto)
+     * que o módulo de Impostos, garantindo consistência entre os módulos.
+     */
+    function calcularValorLiquidoDocComissao(doc) {
+        const taxDetails = (doc.tax_details && typeof doc.tax_details === 'object')
+            ? doc.tax_details
+            : window.BpoFiscalUtils.extrairTaxDetails(doc);
 
-        // Se tem tributos declarados no tax_details
-        if (td.pis_valor) impostosCents += window.BpoMoney.toCents(td.pis_valor);
-        if (td.cofins_valor) impostosCents += window.BpoMoney.toCents(td.cofins_valor);
-        if (td.irpj_valor) impostosCents += window.BpoMoney.toCents(td.irpj_valor);
-        if (td.csll_valor) impostosCents += window.BpoMoney.toCents(td.csll_valor);
+        // Faturamento total = bruto + extras + IPTU - desconto (mesmo que módulo de Impostos)
+        const bCents = window.BpoMoney.toCents(doc.gross_amount);
+        const dCents = (taxDetails && taxDetails.desconto != null)
+            ? window.BpoMoney.toCents(taxDetails.desconto)
+            : (doc.discounts ? window.BpoMoney.toCents(doc.discounts) : 0n);
+        const eCents = (taxDetails && taxDetails.extras != null)
+            ? window.BpoMoney.toCents(taxDetails.extras) : 0n;
+        const iptuCents = (taxDetails && taxDetails.iptu_valor != null)
+            ? window.BpoMoney.toCents(taxDetails.iptu_valor) : 0n;
+        const fatTotalCents = (bCents + eCents + iptuCents) > dCents
+            ? (bCents + eCents + iptuCents - dCents) : 0n;
+        const fatTotalNum = Number(fatTotalCents) / 100;
 
-        // Se não houver detalhamento salvo, aplica a estimativa de Lucro Presumido (~14.63%)
-        if (impostosCents === 0n) {
-            const b = Number(window.BpoMoney.toCents(doc.gross_amount)) / 100;
-            // 0.65% PIS + 3% COFINS + ~8% IRPJ + ~3% CSLL
-            impostosCents = BigInt(Math.round(b * 0.1463 * 100));
+        const itemType = (taxDetails && taxDetails.item_type) || 'servico';
+        const isLocacao = (doc.document_type === 'locacao') || !!(taxDetails && taxDetails.is_locacao);
+        const issRetido = !!(taxDetails && taxDetails.iss_retained);
+        const aliqIss = (taxDetails && taxDetails.iss_aliq != null) ? Number(taxDetails.iss_aliq) : 3.0;
+        const retCents = window.BpoMoney.toCents(doc.retentions);
+
+        // PIS (0,65%) e COFINS (3,00%)
+        const pisCents = (taxDetails && taxDetails.pis_valor != null)
+            ? window.BpoMoney.toCents(taxDetails.pis_valor)
+            : BigInt(Math.round(fatTotalNum * 0.0065 * 100));
+        const cofinsCents = (taxDetails && taxDetails.cofins_valor != null)
+            ? window.BpoMoney.toCents(taxDetails.cofins_valor)
+            : BigInt(Math.round(fatTotalNum * 0.03 * 100));
+
+        // ISS (zero para locação)
+        const issCents = !isLocacao
+            ? ((taxDetails && taxDetails.iss_valor != null)
+                ? window.BpoMoney.toCents(taxDetails.iss_valor)
+                : BigInt(Math.round(fatTotalNum * (aliqIss / 100) * 100)))
+            : 0n;
+
+        // IRPJ e CSLL: fórmula da planilha segregada por atividade
+        // Prioridade: irpj_valor/csll_valor manual > fórmula dinâmica
+        let irpjBrutoCents;
+        let csllCents;
+        const L_m = 1250000 / 3;
+
+        if (taxDetails && taxDetails.irpj_valor !== undefined && taxDetails.irpj_valor !== null && String(taxDetails.irpj_valor).trim() !== '') {
+            irpjBrutoCents = window.BpoMoney.toCents(taxDetails.irpj_valor);
+        } else {
+            let aliqIrpj;
+            if (itemType === 'produto') {
+                const base = Math.max(0, ((fatTotalNum - L_m) * 0.088) + (100000 / 3));
+                aliqIrpj = fatTotalNum > 0 ? ((base * 0.15 + Math.max(0, (base - 20000) * 0.10)) / fatTotalNum) : 0.012;
+            } else {
+                const base = Math.max(0, ((fatTotalNum - L_m) * 0.352) + (400000 / 3));
+                aliqIrpj = fatTotalNum > 0 ? ((base * 0.15 + Math.max(0, (base - 20000) * 0.10)) / fatTotalNum) : 0.048;
+            }
+            irpjBrutoCents = BigInt(Math.round(fatTotalNum * aliqIrpj * 100));
         }
 
-        return impostosCents;
+        if (taxDetails && taxDetails.csll_valor !== undefined && taxDetails.csll_valor !== null && String(taxDetails.csll_valor).trim() !== '') {
+            csllCents = window.BpoMoney.toCents(taxDetails.csll_valor);
+        } else {
+            let aliqCsll;
+            if (itemType === 'produto') {
+                const base = Math.max(0, ((fatTotalNum - L_m) * 0.132) + (150000 / 3));
+                aliqCsll = fatTotalNum > 0 ? ((base * 0.09) / fatTotalNum) : 0.0108;
+            } else {
+                const base = Math.max(0, ((fatTotalNum - L_m) * 0.352) + (400000 / 3));
+                aliqCsll = fatTotalNum > 0 ? ((base * 0.09) / fatTotalNum) : 0.0288;
+            }
+            csllCents = BigInt(Math.round(fatTotalNum * aliqCsll * 100));
+        }
+
+        // IRRF retido do documento
+        let irrfDocCents = 0n;
+        if (taxDetails && taxDetails.has_irrf) {
+            const aliqIrrf = (taxDetails.irrf_aliq != null) ? Number(taxDetails.irrf_aliq) : (itemType === 'produto' ? 1.2 : 4.8);
+            irrfDocCents = BigInt(Math.round(fatTotalNum * (aliqIrrf / 100) * 100));
+        } else if (retCents > 0n && !issRetido) {
+            irrfDocCents = retCents;
+        } else if (retCents > 0n && issRetido) {
+            irrfDocCents = retCents > issCents ? (retCents - issCents) : 0n;
+        }
+
+        // IRPJ líquido (pós-IRRF)
+        const irpjLiqCents = irpjBrutoCents > irrfDocCents ? (irpjBrutoCents - irrfDocCents) : 0n;
+
+        // Total tributos = PIS + COFINS + ISS + IRPJ líq + CSLL + IRRF
+        const tributosCents = pisCents + cofinsCents + issCents + irpjLiqCents + csllCents + irrfDocCents;
+        return fatTotalCents > tributosCents ? (fatTotalCents - tributosCents) : 0n;
     }
 
     function formatarCiclo(competenciaStr) {
@@ -583,14 +658,10 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             totalBrutoRecebidoCents += calcularFaturamentoTotalDoc(doc);
         });
 
-        // Card 2 — Faturamento Líquido: soma dos líquidos (após impostos) por documento
-        // Calculado diretamente dos documentos para não multiplicar pelo nº de colaboradores
+        // Card 2 — Faturamento Líquido: mesmo cálculo do módulo de Impostos
         let totalLiquidoCents = 0n;
         documentosDoMes.forEach(doc => {
-            const recebidoCents = window.BpoMoney.toCents(doc.net_amount || doc.gross_amount);
-            const impostosCents = calcularImpostosProporcionaisDoc(doc);
-            const liquidoDoc = recebidoCents > impostosCents ? (recebidoCents - impostosCents) : recebidoCents;
-            totalLiquidoCents += liquidoDoc;
+            totalLiquidoCents += calcularValorLiquidoDocComissao(doc);
         });
 
         // Cards 3 e 4 — Comissões Apuradas e Pagas: vêm das comissões gravadas no banco
@@ -1043,8 +1114,8 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
 
                 const brutoCents = window.BpoMoney.toCents(doc.gross_amount);
                 const recebidoCents = window.BpoMoney.toCents(doc.net_amount || doc.gross_amount);
-                const impostosCents = calcularImpostosProporcionaisDoc(doc);
-                const liquidoCents = recebidoCents > impostosCents ? (recebidoCents - impostosCents) : recebidoCents;
+                // Valor Líquido = mesmo cálculo do módulo de Impostos (fórmula planilha por atividade)
+                const liquidoCents = calcularValorLiquidoDocComissao(doc);
 
                 // Lê configuração de escopo de comissão do campo notes do contrato
                 const notesContrato = ctr.notes || '';
