@@ -458,28 +458,20 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             // Comissões de cada colaborador para este documento
             const comissoesColabs = {};
             colabsAtivos.forEach(colab => {
-                // Busca se há comissão gravada no banco para este doc + colab
+                // Se já estiver gravada E PAGA no banco, respeita o valor histórico pago.
+                // Se não gravada ou ainda pendente, calcula com base no Valor Líquido exibido em tela.
                 const calcGravado = comissoesCalculadas.find(c => c.document_id === doc.id && c.collaborator_id === colab.id);
-                if (calcGravado) {
+                if (calcGravado && calcGravado.status === 'paid') {
                     const cCents = window.BpoMoney.toCents(calcGravado.commission_amount);
                     comissoesColabs[colab.id] = cCents;
                 } else if (ctr && ctr.commission_eligible) {
-                    // Calcula dinamicamente com base na regra do contrato
+                    // Calcula dinamicamente com base no valor líquido que mostra em tela
                     const regras = regrasPorContrato.get(ctr.id) || [];
                     const reg = regras.find(r => r.collaborator_id === colab.id);
                     if (reg) {
                         const pct = parseFloat(reg.percentage) || 0;
-                        // Aplica fator de base comissionada (ComissaoEscopo custom)
-                        const notesCtrd = ctr.notes || '';
-                        let pctBaseComissionada = 1.0;
-                        const mEscopoDin = notesCtrd.match(/\[ComissaoEscopo:\s*(.*?)\]/);
-                        const mPctCustDin = notesCtrd.match(/\[ComissaoPctCustom:\s*(.*?)\]/);
-                        if (mEscopoDin && mEscopoDin[1].trim() === 'custom' && mPctCustDin) {
-                            pctBaseComissionada = (parseFloat(mPctCustDin[1]) || 100) / 100;
-                        }
-                        const baseRaw = (reg.basis_override === 'gross_invoiced') ? brutoCents : liquidoCents;
-                        const baseUso = BigInt(Math.round(Number(baseRaw) * pctBaseComissionada));
-                        const cNum = (Number(baseUso) / 100) * (pct / 100);
+                        // O cálculo da comissão é sobre o valor líquido exibido em tela
+                        const cNum = (Number(liquidoCents) / 100) * (pct / 100);
                         comissoesColabs[colab.id] = BigInt(Math.round(cNum * 100));
                     } else {
                         comissoesColabs[colab.id] = 0n;
@@ -1146,17 +1138,8 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                         return;
                     }
 
-                    // F04: Diferenciação estrita de gross_invoiced, gross_liquidated e net_proportional
-                    let baseRaw = liquidoCents;
-                    if (reg.basis_override === 'gross_invoiced') {
-                        baseRaw = brutoCents;
-                    } else if (reg.basis_override === 'gross_liquidated') {
-                        baseRaw = recebidoCents;
-                    } else {
-                        baseRaw = liquidoCents;
-                    }
-                    // Aplica fator de base comissionada (ex: apenas 24,9895% do líquido para aditivos)
-                    const baseUso = BigInt(Math.round(Number(baseRaw) * pctBaseComissionada));
+                    // Base de cálculo é o valor líquido recebido apurado
+                    const baseUso = liquidoCents;
                     const pct = parseFloat(reg.percentage) || 0;
 
                     const res = window.BpoCommissionEngine.calcularComissao({
