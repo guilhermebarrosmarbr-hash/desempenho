@@ -608,6 +608,32 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         valAReceber.textContent = window.BpoMoney.formatBRL(aReceber);
     }
 
+    // Calcula o Valor Total do documento:
+    // Valor Total = Valor Base + Multa + Juros + Extras + IPTU (se locação) - Descontos
+    // O mesmo valor que consta na tela de criar/editar lançamento (docValorLiquido).
+    function calcularValorTotalDocumento(doc) {
+        const taxDetails = (doc.tax_details && typeof doc.tax_details === 'object')
+            ? doc.tax_details
+            : window.BpoFiscalUtils.extrairTaxDetails(doc);
+        const bCents = window.BpoMoney.toCents(doc.gross_amount);
+        const dCents = doc._discountsCents !== undefined 
+            ? doc._discountsCents 
+            : ((taxDetails && taxDetails.desconto != null) 
+                ? window.BpoMoney.toCents(taxDetails.desconto) 
+                : (doc.discounts ? window.BpoMoney.toCents(doc.discounts) : 0n));
+        const eCents = doc._extrasCents !== undefined 
+            ? doc._extrasCents 
+            : ((taxDetails && taxDetails.extras != null) ? window.BpoMoney.toCents(taxDetails.extras) : 0n);
+        const multaCents = (taxDetails && taxDetails.multa != null) ? window.BpoMoney.toCents(taxDetails.multa) : 0n;
+        const jurosCents = (taxDetails && taxDetails.juros != null) ? window.BpoMoney.toCents(taxDetails.juros) : 0n;
+        const iptuDocCents = doc._iptuCents !== undefined 
+            ? doc._iptuCents 
+            : ((taxDetails && taxDetails.iptu_valor != null) ? window.BpoMoney.toCents(taxDetails.iptu_valor) : 0n);
+
+        const subtotal = bCents + multaCents + jurosCents + eCents + iptuDocCents;
+        return subtotal > dCents ? (subtotal - dCents) : 0n;
+    }
+
     // Calcula o Valor Líquido Econômico de um documento para exibição na tabela.
     // Deduz todos os tributos (PIS, COFINS, IRPJ, CSLL, ISS próprio, DAS) + retenções,
     // sem duplicar o ISS quando este for retido pelo tomador.
@@ -805,10 +831,8 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             // Valor Líquido Econômico: bruto - todos tributos - retenções (sem duplicar ISS retido)
             const liquidoEconomicoRealCents = calcularLiquidoEconomicoDoc(doc, emp);
 
-            // Valor Total = net_amount + retentions (compatível com lançamentos antigos onde
-            // net_amount foi salvo com retenções deduzidas, e com novos onde não foi)
-            const retencoesCents = window.BpoMoney.toCents(doc.retentions);
-            const valorTotalExibicaoCents = window.BpoMoney.toCents(doc.net_amount) + retencoesCents;
+            // Valor Total: idêntico ao campo "Valor Total" da tela de criar/editar lançamento
+            const valorTotalExibicaoCents = calcularValorTotalDocumento(doc);
 
             return `
                 <tr>
