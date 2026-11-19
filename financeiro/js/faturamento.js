@@ -805,6 +805,11 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             // Valor Líquido Econômico: bruto - todos tributos - retenções (sem duplicar ISS retido)
             const liquidoEconomicoRealCents = calcularLiquidoEconomicoDoc(doc, emp);
 
+            // Valor Total = net_amount + retentions (compatível com lançamentos antigos onde
+            // net_amount foi salvo com retenções deduzidas, e com novos onde não foi)
+            const retencoesCents = window.BpoMoney.toCents(doc.retentions);
+            const valorTotalExibicaoCents = window.BpoMoney.toCents(doc.net_amount) + retencoesCents;
+
             return `
                 <tr>
                     <td>${empBadge}</td>
@@ -819,7 +824,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     <td>${escapeHtml(formatarData(doc.issue_date))}</td>
                     <td>${escapeHtml(formatarData(doc.due_date))}</td>
                     <td>${recebimentoLabel}</td>
-                    <td style="font-weight: 600;">${escapeHtml(window.BpoMoney.formatBRL(doc.net_amount))}</td>
+                    <td style="font-weight: 600;">${escapeHtml(window.BpoMoney.formatBRL(valorTotalExibicaoCents))}</td>
                     <td style="color: #f59e0b;">${impostosAtrib}</td>
                     <td style="color: var(--color-danger);">${escapeHtml(window.BpoMoney.formatBRL(doc.retentions))}</td>
                     <td style="font-weight: 700; color: #fff;">${window.BpoMoney.formatBRL(liquidoEconomicoRealCents)}</td>
@@ -832,7 +837,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                             <button class="btn btn-secondary btn-sm btn-dar-baixa" 
                                 data-id="${escapeHtml(doc.id)}" 
                                 data-numero="${escapeHtml(doc.document_number)}" 
-                                data-liquido="${escapeHtml(doc.net_amount)}"
+                                data-liquido="${escapeHtml(window.BpoMoney.toDecimalString(valorTotalExibicaoCents))}"
                                 title="${doc.status === 'partially_paid' ? 'Baixar restante ou outra parcela' : 'Registrar recebimento'}">
                                 ${doc.status === 'partially_paid' ? 'Baixar Restante' : 'Baixa'}
                             </button>
@@ -1494,12 +1499,12 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         }
 
         // =========================================================================
-        // Cálculo do Líquido a Receber (Item 01):
-        // Líquido = Bruto + Multa + Juros + Extras + IPTU (se locação) - Desconto - Retenções
+        // Valor Total (Item 01):
+        // Valor Total = Bruto + Multa + Juros + Extras + IPTU (se locação) - Desconto
+        // Retenções NÃO afetam o Valor Total — apenas o Valor Líquido
         // =========================================================================
         const subtotalCents = brutoCents + multaCents + jurosCents + extrasCents + iptuCents;
-        const deducoesCents = descontoCents + retTotalCents;
-        const liquidoRecebCents = subtotalCents > deducoesCents ? (subtotalCents - deducoesCents) : 0n;
+        const liquidoRecebCents = subtotalCents > descontoCents ? (subtotalCents - descontoCents) : 0n;
 
         // Líquido Econômico: deduz todos os tributos + retenções, sem duplicar ISS retido.
         // Para LP: _lpPisCents/_lpCofinsCents/_lpIrpjCents/_lpCsllCents/_lpIssProprioDevido
@@ -1836,13 +1841,12 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         const retCents = isSimples ? 0n : window.BpoMoney.toCents(document.getElementById('docRetencoes').value);
 
         const subtotalCents = brutoCents + multaCents + jurosCents + extrasCents + iptuCents;
-        const deducoesCents = descontoCents + retCents;
 
-        if (subtotalCents < deducoesCents) {
-            alert('As deduções não podem ser maiores que o valor bruto e acréscimos.');
+        if (subtotalCents < descontoCents) {
+            alert('O desconto não pode ser maior que o valor bruto e acréscimos.');
             return;
         }
-        const liqCents = subtotalCents - deducoesCents;
+        const liqCents = subtotalCents - descontoCents;  // Valor Total = sem retenções
 
         const descricao = document.getElementById('docDescricao').value.trim();
         const contratoId = document.getElementById('docContrato').value || null;
