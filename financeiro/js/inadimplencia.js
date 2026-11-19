@@ -3,6 +3,56 @@
 // BPO Financeiro Mar Brasil
 // ==============================================================================
 
+// Utilitários de metadados fiscais (compatibilidade com schemas sem coluna tax_details dedicada)
+window.BpoFiscalUtils = window.BpoFiscalUtils || {
+    extrairTaxDetails: function(doc) {
+        if (!doc) return null;
+        if (doc.tax_details && typeof doc.tax_details === 'object') {
+            return doc.tax_details;
+        }
+        if (doc.description && typeof doc.description === 'string') {
+            const match = doc.description.match(/<!--bpo_tax_details:(.*?)-->/);
+            if (match) {
+                try {
+                    return JSON.parse(match[1]);
+                } catch (e) {}
+            }
+        }
+        return null;
+    },
+    limparDescricao: function(rawDesc) {
+        if (!rawDesc) return '';
+        return rawDesc.replace(/\s*<!--bpo_tax_details:.*?-->/g, '').trim();
+    },
+    anexarTaxDetailsNaDescricao: function(descricaoLimpa, taxDetails) {
+        const limpa = window.BpoFiscalUtils.limparDescricao(descricaoLimpa);
+        if (!taxDetails) return limpa;
+        const serialized = JSON.stringify(taxDetails);
+        return limpa ? `${limpa}\n<!--bpo_tax_details:${serialized}-->` : `<!--bpo_tax_details:${serialized}-->`;
+    },
+    serializarTaxDetails: function(rawDesc, taxDetails) {
+        const limpa = window.BpoFiscalUtils.limparDescricao(rawDesc);
+        if (!taxDetails) return limpa;
+        const serialized = JSON.stringify(taxDetails);
+        return limpa ? `${limpa}\n<!--bpo_tax_details:${serialized}-->` : `<!--bpo_tax_details:${serialized}-->`;
+    },
+    calcularFaturamentoTotalDoc: function(doc, taxDetails) {
+        const bCents = window.BpoMoney.toCents(doc.gross_amount);
+        const td = taxDetails || doc.tax_details || window.BpoFiscalUtils.extrairTaxDetails(doc);
+        const dCents = (td && td.desconto)
+            ? window.BpoMoney.toCents(td.desconto)
+            : (doc.discounts ? window.BpoMoney.toCents(doc.discounts) : 0n);
+        const eCents = (td && td.extras)
+            ? window.BpoMoney.toCents(td.extras)
+            : 0n;
+        const iptuCents = (td && td.iptu_valor)
+            ? window.BpoMoney.toCents(td.iptu_valor)
+            : 0n;
+        const totalBruto = bCents + eCents + iptuCents;
+        return totalBruto > dCents ? (totalBruto - dCents) : 0n;
+    }
+};
+
 (function() {
     let empresas = [];
     let empresaAtivaId = 'all'; // Padrão: "Todas as empresas"
