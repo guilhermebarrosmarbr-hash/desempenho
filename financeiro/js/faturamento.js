@@ -678,33 +678,82 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     : BigInt(Math.round(fatTotalNum * (aliqIss / 100) * 100)))
                 : 0n;
 
-            // IRPJ e CSLL variáveis da competência calculados pela fórmula oficial
-            let aliqIrpj = (taxDetails && taxDetails.irpj_aliq != null) ? Number(taxDetails.irpj_aliq) / 100 : 0.07951;
-            let aliqCsll = (taxDetails && taxDetails.csll_aliq != null) ? Number(taxDetails.csll_aliq) / 100 : 0.02977;
+            // IRPJ e CSLL: fórmula oficial da planilha segregada por atividade (serviço vs produto),
+            // espelhando exatamente a lógica do módulo de Impostos.
+            // Prioridade: irpj_valor/csll_valor manual (R$) > fórmula dinâmica por atividade.
+            let irpjBrutoCents;
+            let csllCents;
 
-            if (window.BpoTaxEngine && documentos && documentos.length > 0) {
-                const docsEmpMes = documentos.filter(d => d.company_id === doc.company_id && d.status !== 'cancelled');
-                let recServMes = 0;
-                let recProdMes = 0;
-                docsEmpMes.forEach(d => {
-                    const td = d.tax_details || window.BpoFiscalUtils.extrairTaxDetails(d);
-                    const it = (td && td.item_type) || 'servico';
-                    const valorD = Number(window.BpoMoney.toCents(d.gross_amount)) / 100;
-                    if (it === 'produto') recProdMes += valorD;
-                    else recServMes += valorD;
-                });
-                const recTotalMes = recServMes + recProdMes;
-                if (recTotalMes > 0) {
-                    const ap = window.BpoTaxEngine.apurarLucroPresumidoTrimestral(recServMes, recProdMes, { isMensal: true });
-                    if (ap) {
-                        aliqIrpj = ap.aliqEfetivaIRPJ || aliqIrpj;
-                        aliqCsll = ap.aliqEfetivaCSLL || aliqCsll;
+            if (taxDetails && taxDetails.irpj_valor !== undefined && taxDetails.irpj_valor !== null && String(taxDetails.irpj_valor).trim() !== '') {
+                irpjBrutoCents = window.BpoMoney.toCents(taxDetails.irpj_valor);
+            } else {
+                // Calcula alíquota efetiva segregada por atividade com a fórmula da planilha
+                const L_m = 1250000 / 3;
+                let aliqIrpjPlanilha;
+                if (documentos && documentos.length > 0) {
+                    const docsEmpMes = documentos.filter(d => d.company_id === doc.company_id && d.status !== 'cancelled');
+                    let recServMes = 0;
+                    let recProdMes = 0;
+                    docsEmpMes.forEach(d => {
+                        const td = d.tax_details || window.BpoFiscalUtils.extrairTaxDetails(d);
+                        const it = (td && td.item_type) || 'servico';
+                        const valorD = Number(window.BpoMoney.toCents(d.gross_amount)) / 100;
+                        if (it === 'produto') recProdMes += valorD;
+                        else recServMes += valorD;
+                    });
+                    const fatTotalMesNum = recServMes + recProdMes;
+                    if (fatTotalMesNum > 0) {
+                        if (itemType === 'produto') {
+                            const baseProd = Math.max(0, ((fatTotalMesNum - L_m) * 0.088) + (100000 / 3));
+                            const irpjProd = (baseProd * 0.15) + Math.max(0, (baseProd - 20000) * 0.10);
+                            aliqIrpjPlanilha = irpjProd / fatTotalMesNum;
+                        } else {
+                            const baseServ = Math.max(0, ((fatTotalMesNum - L_m) * 0.352) + (400000 / 3));
+                            const irpjServ = (baseServ * 0.15) + Math.max(0, (baseServ - 20000) * 0.10);
+                            aliqIrpjPlanilha = irpjServ / fatTotalMesNum;
+                        }
+                    } else {
+                        aliqIrpjPlanilha = itemType === 'produto' ? 0.012 : 0.048;
                     }
+                } else {
+                    aliqIrpjPlanilha = itemType === 'produto' ? 0.012 : 0.048;
                 }
+                irpjBrutoCents = BigInt(Math.round(fatTotalNum * aliqIrpjPlanilha * 100));
             }
 
-            const irpjBrutoCents = BigInt(Math.round(fatTotalNum * aliqIrpj * 100));
-            const csllCents = BigInt(Math.round(fatTotalNum * aliqCsll * 100));
+            if (taxDetails && taxDetails.csll_valor !== undefined && taxDetails.csll_valor !== null && String(taxDetails.csll_valor).trim() !== '') {
+                csllCents = window.BpoMoney.toCents(taxDetails.csll_valor);
+            } else {
+                const L_m = 1250000 / 3;
+                let aliqCsllPlanilha;
+                if (documentos && documentos.length > 0) {
+                    const docsEmpMes = documentos.filter(d => d.company_id === doc.company_id && d.status !== 'cancelled');
+                    let recServMes = 0;
+                    let recProdMes = 0;
+                    docsEmpMes.forEach(d => {
+                        const td = d.tax_details || window.BpoFiscalUtils.extrairTaxDetails(d);
+                        const it = (td && td.item_type) || 'servico';
+                        const valorD = Number(window.BpoMoney.toCents(d.gross_amount)) / 100;
+                        if (it === 'produto') recProdMes += valorD;
+                        else recServMes += valorD;
+                    });
+                    const fatTotalMesNum = recServMes + recProdMes;
+                    if (fatTotalMesNum > 0) {
+                        if (itemType === 'produto') {
+                            const baseCsllProd = Math.max(0, ((fatTotalMesNum - L_m) * 0.132) + (150000 / 3));
+                            aliqCsllPlanilha = (baseCsllProd * 0.09) / fatTotalMesNum;
+                        } else {
+                            const baseServ = Math.max(0, ((fatTotalMesNum - L_m) * 0.352) + (400000 / 3));
+                            aliqCsllPlanilha = (baseServ * 0.09) / fatTotalMesNum;
+                        }
+                    } else {
+                        aliqCsllPlanilha = itemType === 'produto' ? 0.0108 : 0.0288;
+                    }
+                } else {
+                    aliqCsllPlanilha = itemType === 'produto' ? 0.0108 : 0.0288;
+                }
+                csllCents = BigInt(Math.round(fatTotalNum * aliqCsllPlanilha * 100));
+            }
 
             // IRRF retido do documento
             let irrfDocCents = 0n;
