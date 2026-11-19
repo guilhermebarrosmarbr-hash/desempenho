@@ -586,7 +586,12 @@ window.BpoFiscalUtils.calcularFaturamentoTotalDoc = function(doc, taxDetails) {
                             ? window.BpoMoney.toCents(taxDetails.cofins_valor)
                             : BigInt(Math.round(fatTotalNum * 0.03 * 100));
 
-                        if (itemType === 'servico' && !isLocacao) {
+                        // ISS ou ICMS (se mercadoria/produto)
+                        if (itemType === 'produto') {
+                            issCents = (taxDetails && taxDetails.iss_valor !== undefined && taxDetails.iss_valor !== null)
+                                ? window.BpoMoney.toCents(taxDetails.iss_valor)
+                                : BigInt(Math.round(fatTotalNum * (aliqIss / 100) * 100));
+                        } else if (itemType === 'servico' && !isLocacao) {
                             issCents = BigInt(Math.round(fatTotalNum * (aliqIss / 100) * 100));
                         } else {
                             issCents = 0n;
@@ -605,7 +610,9 @@ window.BpoFiscalUtils.calcularFaturamentoTotalDoc = function(doc, taxDetails) {
                         // O IR retido deste documento (IRRF)
                         let irrfDocCents = 0n;
                         if (taxDetails && taxDetails.has_irrf) {
-                            const aliqIrrf = (taxDetails.irrf_aliq !== undefined && taxDetails.irrf_aliq !== null) ? taxDetails.irrf_aliq : 4.8;
+                            const aliqIrrf = (taxDetails.irrf_aliq !== undefined && taxDetails.irrf_aliq !== null)
+                                ? Number(taxDetails.irrf_aliq)
+                                : (itemType === 'produto' ? 1.2 : 4.8);
                             irrfDocCents = BigInt(Math.round(fatTotalNum * (aliqIrrf / 100) * 100));
                         } else if (retCents > 0n && !issRetido) {
                             irrfDocCents = retCents;
@@ -688,12 +695,15 @@ window.BpoFiscalUtils.calcularFaturamentoTotalDoc = function(doc, taxDetails) {
                         : (ctr ? escapeHtml(ctr.name) : '<span style="color:var(--text-muted);font-size:0.78rem;">Avulso</span>');
 
                     let issLabel = '';
+                    const impostoNome = itemType === 'produto' ? 'ICMS' : 'ISS';
                     if (isLocacao) {
                         issLabel = `<span style="color: #f59e0b; font-size: 0.78rem;" title="Isento — Locação de bens não é prestação de serviço (STJ Súmula 31; LC 116/2003)">R$ 0,00 <span style="font-size:0.68rem; padding:1px 4px; border-radius:3px; background:rgba(245,158,11,0.15);">Locação</span></span>`;
                     } else if (issIsento) {
-                        issLabel = `<span style="color: #f59e0b; font-size: 0.78rem;" title="Isento de ISS">R$ 0,00 <span style="font-size:0.68rem; padding:1px 4px; border-radius:3px; background:rgba(245,158,11,0.15);">Isento</span></span>`;
+                        issLabel = `<span style="color: #f59e0b; font-size: 0.78rem;" title="Isento de ${impostoNome}">R$ 0,00 <span style="font-size:0.68rem; padding:1px 4px; border-radius:3px; background:rgba(245,158,11,0.15);">Isento</span></span>`;
                     } else if (issRetido) {
-                        issLabel = `<span style="color:var(--color-danger); font-size:0.8rem;" title="Retido na Fonte pelo Tomador">${window.BpoMoney.formatBRL(issCents)} <span style="font-size:0.68rem; padding:1px 4px; border-radius:3px; background:rgba(239,68,68,0.15);">Retido</span></span>`;
+                        issLabel = `<span style="color:var(--color-danger); font-size:0.8rem;" title="Retido na Fonte pelo Tomador">${window.BpoMoney.formatBRL(issCents)} <span style="font-size:0.68rem; padding:1px 4px; border-radius:3px; background:rgba(239,68,68,0.15);">${itemType === 'produto' ? 'ST' : 'Retido'}</span></span>`;
+                    } else if (itemType === 'produto') {
+                        issLabel = `<span style="color:#38bdf8;" title="ICMS sobre Venda de Mercadoria">${window.BpoMoney.formatBRL(issCents)} <span style="font-size:0.68rem; padding:1px 4px; border-radius:3px; background:rgba(56,189,248,0.15);">ICMS</span></span>`;
                     } else {
                         issLabel = `<span style="color:#fff;">${window.BpoMoney.formatBRL(issCents)}</span>`;
                     }

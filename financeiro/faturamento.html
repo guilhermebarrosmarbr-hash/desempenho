@@ -297,6 +297,7 @@
                         <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Tipo de Documento</label>
                         <select id="docTipo" class="select-control" style="width: 100%;">
                             <option value="nfse">NFS-e (Nota de Serviço)</option>
+                            <option value="nfe">NF-e (Nota de Produto / Mercadoria)</option>
                             <option value="fatura">Fatura / Medição</option>
                             <option value="recibo">Recibo</option>
                             <option value="locacao">Contrato de Locação</option>
@@ -306,7 +307,7 @@
                         <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Natureza / Item *</label>
                         <select id="docItemTipo" class="select-control" style="width: 100%;">
                             <option value="servico">Prestação de Serviço</option>
-                            <option value="produto">Venda de Produto / Mercadoria</option>
+                            <option value="produto">Venda de Mercadoria</option>
                         </select>
                     </div>
                     <div>
@@ -531,7 +532,7 @@
                 <!-- Painel Impostos e Retenções com Prévia Dinâmica (Lucro Presumido / Real) -->
                 <div id="painelRetencoesIss" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                        <h4 style="font-size: 0.9rem; font-weight: 600; margin: 0; color: var(--text-main);">Retenções e ISS da Nota (Prévia em Tempo Real)</h4>
+                        <h4 id="tituloRetencoesIss" style="font-size: 0.9rem; font-weight: 600; margin: 0; color: var(--text-main);">Retenções e ISS da Nota (Prévia em Tempo Real)</h4>
                         <span id="badgeRegimePrevia" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3);">Regime Fiscal</span>
                     </div>
 
@@ -564,16 +565,16 @@
                             </div>
                         </div>
 
-                        <!-- ISS -->
-                        <div style="border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; padding: 10px; background: rgba(0,0,0,0.15);">
+                        <!-- ISS / ICMS -->
+                        <div id="boxIssCol" style="border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; padding: 10px; background: rgba(0,0,0,0.15);">
                             <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
-                                <span style="font-size: 0.82rem; font-weight: 500;">Alíquota ISS:</span>
-                                <input type="number" id="aliqIss" value="5.0" step="0.01" min="2" max="5" class="select-control" style="padding: 4px 6px; font-size: 0.8rem; width: 65px;">
+                                <span id="lblAliqIss" style="font-size: 0.82rem; font-weight: 500;">Alíquota ISS:</span>
+                                <input type="number" id="aliqIss" value="5.0" step="0.01" min="0" max="100" class="select-control" style="padding: 4px 6px; font-size: 0.8rem; width: 65px;">
                                 <span style="font-size: 0.78rem; color: var(--text-muted);">%</span>
                             </div>
-                            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.78rem; cursor: pointer;">
+                            <label id="lblWrapIssRetido" style="display: flex; align-items: center; gap: 6px; font-size: 0.78rem; cursor: pointer;">
                                 <input type="checkbox" id="chkIssRetido" style="cursor: pointer;">
-                                <span>ISS Retido pelo tomador</span>
+                                <span id="lblTxtIssRetido">ISS Retido pelo tomador</span>
                             </label>
                         </div>
                     </div>

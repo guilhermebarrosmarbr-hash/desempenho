@@ -635,13 +635,13 @@
                 // Lucro Presumido
                 const pis = roundCents(valorBruto * 0.0065);
                 const cofins = roundCents(valorBruto * 0.03);
-                // ISS isento para Locação de bens em qualquer regime tributário (STJ Súmula 31; LC 116/2003)
-                const issCalculado = (!isLocacao && tipoItem === 'service') ? roundCents(valorBruto * (aliquotaIss / 100)) : 0;
-                const issRetidoValor = (!isLocacao && tipoItem === 'service' && issRetido) ? issCalculado : 0;
+                // ISS (Serviço) / ICMS (Produto). Isento para Locação de bens em qualquer regime tributário (STJ Súmula 31; LC 116/2003)
+                const issCalculado = !isLocacao ? roundCents(valorBruto * (aliquotaIss / 100)) : 0;
+                const issRetidoValor = (!isLocacao && issRetido) ? issCalculado : 0;
                 const issEmpresa = (isLocacao || issRetido) ? 0 : issCalculado;
 
                 // Retenções
-                const retencaoIrrf = (tipoItem === 'service' && temIrrf) ? roundCents(valorBruto * (aliquotaIrrf / 100)) : 0;
+                const retencaoIrrf = temIrrf ? roundCents(valorBruto * (aliquotaIrrf / 100)) : 0;
                 const retencaoInss = (tipoItem === 'service' && temInss) ? roundCents(valorBruto * (aliquotaInss / 100)) : 0;
                 const totalRetencoes = retencaoIrrf + retencaoInss + issRetidoValor;
 

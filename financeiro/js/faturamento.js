@@ -646,9 +646,11 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 ? window.BpoMoney.toCents(taxDetails.cofins_valor)
                 : BigInt(Math.round(fatTotalNum * 0.03 * 100));
 
-            // ISS (zerado para locação ou não-serviço)
-            const issCents = (itemType === 'servico' && !isLocacao)
-                ? BigInt(Math.round(fatTotalNum * (aliqIss / 100) * 100))
+            // ISS ou ICMS
+            const issCents = !isLocacao
+                ? (taxDetails && taxDetails.iss_valor != null
+                    ? window.BpoMoney.toCents(taxDetails.iss_valor)
+                    : BigInt(Math.round(fatTotalNum * (aliqIss / 100) * 100)))
                 : 0n;
 
             // IRPJ e CSLL variáveis da competência calculados pela fórmula oficial
@@ -657,12 +659,18 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
 
             if (window.BpoTaxEngine && documentos && documentos.length > 0) {
                 const docsEmpMes = documentos.filter(d => d.company_id === doc.company_id && d.status !== 'cancelled');
-                let recTotalMes = 0;
+                let recServMes = 0;
+                let recProdMes = 0;
                 docsEmpMes.forEach(d => {
-                    recTotalMes += Number(window.BpoMoney.toCents(d.gross_amount)) / 100;
+                    const td = d.tax_details || window.BpoFiscalUtils.extrairTaxDetails(d);
+                    const it = (td && td.item_type) || 'servico';
+                    const valorD = Number(window.BpoMoney.toCents(d.gross_amount)) / 100;
+                    if (it === 'produto') recProdMes += valorD;
+                    else recServMes += valorD;
                 });
+                const recTotalMes = recServMes + recProdMes;
                 if (recTotalMes > 0) {
-                    const ap = window.BpoTaxEngine.apurarLucroPresumidoTrimestral(recTotalMes, 0, { isMensal: true });
+                    const ap = window.BpoTaxEngine.apurarLucroPresumidoTrimestral(recServMes, recProdMes, { isMensal: true });
                     if (ap) {
                         aliqIrpj = ap.aliqEfetivaIRPJ || aliqIrpj;
                         aliqCsll = ap.aliqEfetivaCSLL || aliqCsll;
@@ -676,7 +684,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             // IRRF retido do documento
             let irrfDocCents = 0n;
             if (taxDetails && taxDetails.has_irrf) {
-                const aliqIrrf = (taxDetails.irrf_aliq != null) ? Number(taxDetails.irrf_aliq) : 4.8;
+                const aliqIrrf = (taxDetails.irrf_aliq != null) ? Number(taxDetails.irrf_aliq) : (itemType === 'produto' ? 1.2 : 4.8);
                 irrfDocCents = BigInt(Math.round(fatTotalNum * (aliqIrrf / 100) * 100));
             } else if (retCents > 0n && !issRetido) {
                 irrfDocCents = retCents;
@@ -993,9 +1001,33 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             if (el) el.addEventListener('input', () => dispararPreviaImpostos('geral'));
         });
 
-        [selEmpresa, selContrato, selItemTipo, chkIssRetido].forEach(el => {
+        [selEmpresa, selContrato, chkIssRetido].forEach(el => {
             if (el) el.addEventListener('change', () => dispararPreviaImpostos('empresa_ou_tipo'));
         });
+
+        // Natureza / Item: Prestação de Serviço vs Venda de Mercadoria
+        if (selItemTipo) {
+            selItemTipo.addEventListener('change', () => {
+                const tipoAtual = selItemTipo.value;
+                const inpAliqIrrf = document.getElementById('aliqIrrf');
+                const selDocTipo = document.getElementById('docTipo');
+
+                if (tipoAtual === 'produto') {
+                    // Predefine alíquota de IRRF para 1.2% para venda de mercadoria
+                    if (inpAliqIrrf) inpAliqIrrf.value = '1.20';
+                    // Sugere NF-e se ainda estiver como NFS-e
+                    if (selDocTipo && selDocTipo.value === 'nfse') {
+                        selDocTipo.value = 'nfe';
+                    }
+                } else {
+                    if (inpAliqIrrf) inpAliqIrrf.value = '4.80';
+                    if (selDocTipo && selDocTipo.value === 'nfe') {
+                        selDocTipo.value = 'nfse';
+                    }
+                }
+                dispararPreviaImpostos('empresa_ou_tipo');
+            });
+        }
 
         // Tipo de documento: locação altera isenção de ISS
         const selTipoDoc = document.getElementById('docTipo');
@@ -1271,17 +1303,29 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             const chkIssRetido = document.getElementById('chkIssRetido').checked;
             const itemTipo = document.getElementById('docItemTipo').value || 'servico';
 
+            // Dinâmica visual do campo ISS / ICMS e retenções conforme Natureza / Item
+            const lblAliqIss = document.getElementById('lblAliqIss');
+            const lblTxtIssRetido = document.getElementById('lblTxtIssRetido');
+            const tituloRetIss = document.getElementById('tituloRetencoesIss');
+            const elAliqIss = document.getElementById('aliqIss');
+            const elChkIssRetido = document.getElementById('chkIssRetido');
+
+            if (itemTipo === 'produto') {
+                if (lblAliqIss) lblAliqIss.textContent = 'Alíquota ICMS:';
+                if (lblTxtIssRetido) lblTxtIssRetido.textContent = 'ICMS Retido (ST)';
+                if (tituloRetIss) tituloRetIss.textContent = 'Retenções e ICMS da Nota (Prévia em Tempo Real)';
+            } else {
+                if (lblAliqIss) lblAliqIss.textContent = 'Alíquota ISS:';
+                if (lblTxtIssRetido) lblTxtIssRetido.textContent = 'ISS Retido pelo tomador';
+                if (tituloRetIss) tituloRetIss.textContent = 'Retenções e ISS da Nota (Prévia em Tempo Real)';
+            }
+
             // Locação: ISS zerado por isenção legal (qualquer regime), oculta seção ISS e mostra info
-            const boxIssLP = document.querySelector('#painelRetencoesIss > div > div:last-child');
             if (isLocacao) {
                 // Desabilita aliq ISS e ISS retido visualmente (não apaga o valor para não confundir)
-                const elAliqIss = document.getElementById('aliqIss');
-                const elChkIssRetido = document.getElementById('chkIssRetido');
                 if (elAliqIss) { elAliqIss.disabled = true; elAliqIss.style.opacity = '0.4'; }
                 if (elChkIssRetido) { elChkIssRetido.disabled = true; elChkIssRetido.checked = false; }
             } else {
-                const elAliqIss = document.getElementById('aliqIss');
-                const elChkIssRetido = document.getElementById('chkIssRetido');
                 if (elAliqIss) { elAliqIss.disabled = false; elAliqIss.style.opacity = '1'; }
                 if (elChkIssRetido) { elChkIssRetido.disabled = false; }
             }
@@ -1302,16 +1346,31 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             let aliqCsllSugerida = itemTipo === 'servico' ? '2.88' : '1.08';
 
             // Calcula a alíquota efetiva dinâmica oficial da planilha
-            if (itemTipo === 'servico') {
-                let recMes = brutoNum;
-                if (documentos && documentos.length > 0) {
-                    const somaOutros = documentos
-                        .filter(d => d.company_id === companyId && d.status !== 'cancelled' && d.id !== docEmEdicaoId)
-                        .reduce((acc, d) => acc + (Number(window.BpoMoney.toCents(d.gross_amount)) / 100), 0);
-                    recMes = somaOutros + brutoNum;
-                }
-                if (recMes > 0) {
-                    const L_m = 1250000 / 3;
+            let recMes = brutoNum;
+            if (documentos && documentos.length > 0) {
+                const somaOutros = documentos
+                    .filter(d => d.company_id === companyId && d.status !== 'cancelled' && d.id !== docEmEdicaoId)
+                    .reduce((acc, d) => acc + (Number(window.BpoMoney.toCents(d.gross_amount)) / 100), 0);
+                recMes = somaOutros + brutoNum;
+            }
+            if (recMes > 0) {
+                const L_m = 1250000 / 3;
+                if (itemTipo === 'produto') {
+                    // Fórmula Oficial de Venda de Mercadoria / Produto:
+                    // IRPJ: =(((((D$129-(1250000/3))*8,8%)+100000/3)*15%)*M127)+((((((D$129-(1250000/3))*8,8%)+100000/3)-20000)*10%)*M127)
+                    // CSLL: =((((D$129-(1250000/3))*13,2%)+150000/3)*9%)*M127
+                    const B0_prod_irpj = 100000 / 3;
+                    const base_irpj_prod = Math.max(0, ((recMes - L_m) * 0.088) + B0_prod_irpj);
+                    const irpj_prod_tot = (base_irpj_prod * 0.15) + Math.max(0, (base_irpj_prod - 20000) * 0.10);
+
+                    const B0_prod_csll = 150000 / 3;
+                    const base_csll_prod = Math.max(0, ((recMes - L_m) * 0.132) + B0_prod_csll);
+                    const csll_prod_tot = base_csll_prod * 0.09;
+
+                    aliqIrpjSugerida = (irpj_prod_tot / recMes * 100).toFixed(2);
+                    aliqCsllSugerida = (csll_prod_tot / recMes * 100).toFixed(2);
+                } else {
+                    // Fórmula Oficial de Prestação de Serviço:
                     const B0_m = 400000 / 3;
                     const base_m = Math.max(0, ((recMes - L_m) * 0.352) + B0_m);
                     const irpj_tot = (base_m * 0.15) + Math.max(0, (base_m - 20000) * 0.10);
@@ -1399,14 +1458,15 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             }
 
             // Retenções
-            const irrfCents = (itemTipo === 'servico' && chkIrrf) 
+            // IRRF é aplicável para serviços (padrão 4.8%) e para mercadorias (pré-definido 1.2%, editável)
+            const irrfCents = chkIrrf 
                 ? BigInt(Math.round(brutoNum * (aliqIrrfVal / 100) * 100)) 
                 : 0n;
             const inssCents = (itemTipo === 'servico' && chkInss) 
                 ? BigInt(Math.round(brutoNum * (aliqInssVal / 100) * 100)) 
                 : 0n;
-            // ISS isento para Locação de bens em qualquer regime tributário
-            const issCalcCents = (isLocacao || itemTipo !== 'servico')
+            // ISS para serviço / ICMS para produto (isento para Locação)
+            const issCalcCents = isLocacao
                 ? 0n
                 : BigInt(Math.round(brutoNum * (aliqIssVal / 100) * 100));
             const issRetidoCents = (!isLocacao && chkIssRetido) ? issCalcCents : 0n;
@@ -1425,8 +1485,8 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             _lpCofinsCents = curCofinsCents;
             _lpIrpjCents = curIrpjCents;
             _lpCsllCents = curCsllCents;
-            // ISS próprio devido: 0 se retido (já está em retTotalCents via issRetidoCents)
-            _lpIssProprioDevido = (!isLocacao && chkIssRetido && itemTipo === 'servico') ? 0n : issCalcCents;
+            // ISS / ICMS próprio devido: 0 se retido (já está em retTotalCents via issRetidoCents)
+            _lpIssProprioDevido = (!isLocacao && chkIssRetido) ? 0n : issCalcCents;
 
             // Valores de retenção nas tags
             document.getElementById('valIrrfPreview').textContent = window.BpoMoney.toDecimalString(irrfCents);
@@ -1607,11 +1667,13 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 document.getElementById('boxInssConfig').style.display = 'none';
             }
 
+            document.getElementById('chkIssRetido').checked = !!taxDetails.iss_retained;
+            if (taxDetails.item_type) {
+                document.getElementById('docItemTipo').value = taxDetails.item_type;
+            }
             if (taxDetails.iss_aliq !== undefined && taxDetails.iss_aliq !== null) {
                 document.getElementById('aliqIss').value = taxDetails.iss_aliq;
             }
-            document.getElementById('chkIssRetido').checked = !!taxDetails.iss_retained;
-            if (taxDetails.item_type) document.getElementById('docItemTipo').value = taxDetails.item_type;
 
             if (taxDetails.pis_aliq !== undefined && taxDetails.pis_aliq !== null) {
                 document.getElementById('inpAliqPis').value = taxDetails.pis_aliq;
