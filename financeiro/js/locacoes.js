@@ -360,7 +360,7 @@
      * Para Simples Nacional: tributosCents = fatTotalNum * aliqDasEfetiva.
      * Para Lucro Presumido: PIS + COFINS + ISS + IRPJ + CSLL.
      */
-    function calcularTributosTotalDoc(doc, td, fatTotalCents, rbt12Empresa) {
+    function calcularTributosTotalDoc(doc, td, fatTotalCents, rbt12Empresa, aliqIrpjVarEmpresa, aliqCsllVarEmpresa) {
         const fatTotalNum = Number(fatTotalCents) / 100;
         const isLP = empresaAtiva && empresaAtiva.tax_regime === 'lucro_presumido';
         const isLocacao = (doc.document_type === 'locacao') || !!(td && td.is_locacao);
@@ -369,7 +369,7 @@
         const itemType = (td && td.item_type) || 'servico';
 
         if (isLP) {
-            // Lucro Presumido: idêntico ao impostos.js (linha 580-644)
+            // Lucro Presumido: idêntico ao impostos.js
             const pisCents = (td && td.pis_valor !== undefined && td.pis_valor !== null)
                 ? window.BpoMoney.toCents(td.pis_valor)
                 : BigInt(Math.round(fatTotalNum * 0.0065 * 100));
@@ -387,7 +387,9 @@
             } else if (td && td.irpj_aliq !== undefined && td.irpj_aliq !== null) {
                 irpjBrutoCents = BigInt(Math.round(fatTotalNum * (Number(td.irpj_aliq) / 100) * 100));
             } else {
-                const aliqIrpjVar = itemType === 'produto' ? 0.012 : 0.048;
+                const aliqIrpjVar = aliqIrpjVarEmpresa !== undefined 
+                    ? aliqIrpjVarEmpresa 
+                    : (itemType === 'produto' ? 0.012 : 0.048);
                 irpjBrutoCents = BigInt(Math.round(fatTotalNum * aliqIrpjVar * 100));
             }
 
@@ -398,7 +400,9 @@
             } else if (td && td.csll_aliq !== undefined && td.csll_aliq !== null) {
                 csllCents = BigInt(Math.round(fatTotalNum * (Number(td.csll_aliq) / 100) * 100));
             } else {
-                const aliqCsllVar = itemType === 'produto' ? 0.0108 : 0.0288;
+                const aliqCsllVar = aliqCsllVarEmpresa !== undefined 
+                    ? aliqCsllVarEmpresa 
+                    : (itemType === 'produto' ? 0.0108 : 0.0288);
                 csllCents = BigInt(Math.round(fatTotalNum * aliqCsllVar * 100));
             }
 
@@ -415,7 +419,7 @@
                 irrfDocCents = retCents > issCents ? (retCents - issCents) : 0n;
             }
 
-            // IRPJ líquido = IRPJ bruto − IRRF (igual ao impostos.js linha 638)
+            // IRPJ líquido = IRPJ bruto − IRRF (igual ao impostos.js)
             const irpjCents = irpjBrutoCents > irrfDocCents ? (irpjBrutoCents - irrfDocCents) : 0n;
             const retencaoExibicaoCents = irrfDocCents;
 
@@ -481,6 +485,26 @@
             // RBT12 real: necessário para cálculo correto do DAS no Simples Nacional
             const rbt12Empresa = await calcularRbt12Empresa(empresaAtiva.id, competenciaAtiva);
 
+            // Alíquotas de Lucro Presumido da competência conforme fórmula da planilha (se LP)
+            let aliqIrpjServPlanilha = 0.048;
+            let aliqCsllServPlanilha = 0.0288;
+            if (empresaAtiva && empresaAtiva.tax_regime === 'lucro_presumido') {
+                let fatTotalMesLP = 0n;
+                docs.filter(d => d.competence_month === competenciaAtiva).forEach(d => {
+                    const tdD = extrairTaxDetails(d) || {};
+                    fatTotalMesLP += calcularValorTotalDoc(d, tdD);
+                });
+                const fatTotalNumLP = Number(fatTotalMesLP) / 100;
+                if (fatTotalNumLP > 0) {
+                    const L_m = 1250000 / 3;
+                    const baseServMes = Math.max(0, ((fatTotalNumLP - L_m) * 0.352) + (400000 / 3));
+                    const irpjTotServMes = (baseServMes * 0.15) + Math.max(0, (baseServMes - 20000) * 0.10);
+                    const csllTotServMes = baseServMes * 0.09;
+                    aliqIrpjServPlanilha = irpjTotServMes / fatTotalNumLP;
+                    aliqCsllServPlanilha = csllTotServMes / fatTotalNumLP;
+                }
+            }
+
             docs.forEach(d => {
                 let td = {};
                 if (d.tax_details && typeof d.tax_details === 'object') {
@@ -518,7 +542,7 @@
 
                 // ── Total Tributos = mesmo valor de "Total Tributos" do módulo de Impostos ─
                 // Usa BpoTaxEngine (taxes.js) com RBT12 real — resultado idêntico ao impostos.
-                const dasTotalCents = calcularTributosTotalDoc(d, td, fatTotalCents, rbt12Empresa);
+                const dasTotalCents = calcularTributosTotalDoc(d, td, fatTotalCents, rbt12Empresa, aliqIrpjServPlanilha, aliqCsllServPlanilha);
 
                 // 1. Mapa da Competência de Faturamento
                 if (d.competence_month === competenciaAtiva && contrato) {

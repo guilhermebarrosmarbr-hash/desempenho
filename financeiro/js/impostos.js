@@ -300,8 +300,28 @@ window.BpoFiscalUtils.calcularFaturamentoTotalDoc = function(doc, taxDetails) {
                         }
                     );
 
+                    // Alíquotas segregadas por atividade (Serviço vs Produto) conforme fórmulas da planilha
+                    const fatTotalMesNum = Number(fatEmpCents) / 100;
+                    const L_m = 1250000 / 3;
+                    const baseServMes = Math.max(0, ((fatTotalMesNum - L_m) * 0.352) + (400000 / 3));
+                    const irpjTotServMes = (baseServMes * 0.15) + Math.max(0, (baseServMes - 20000) * 0.10);
+                    const csllTotServMes = baseServMes * 0.09;
+
+                    const baseProdMes = Math.max(0, ((fatTotalMesNum - L_m) * 0.088) + (100000 / 3));
+                    const irpjTotProdMes = (baseProdMes * 0.15) + Math.max(0, (baseProdMes - 20000) * 0.10);
+                    const csllTotProdMes = Math.max(0, ((fatTotalMesNum - L_m) * 0.132) + (150000 / 3)) * 0.09;
+
+                    const aliqIrpjServPlanilha = fatTotalMesNum > 0 ? (irpjTotServMes / fatTotalMesNum) : 0.048;
+                    const aliqCsllServPlanilha = fatTotalMesNum > 0 ? (csllTotServMes / fatTotalMesNum) : 0.0288;
+                    const aliqIrpjProdPlanilha = fatTotalMesNum > 0 ? (irpjTotProdMes / fatTotalMesNum) : 0.012;
+                    const aliqCsllProdPlanilha = fatTotalMesNum > 0 ? (csllTotProdMes / fatTotalMesNum) : 0.0108;
+
                     apuracoesTrimestraisPorEmpresa.set(emp.id, {
                         ...apuracaoMensalLP,
+                        aliqIrpjServPlanilha,
+                        aliqCsllServPlanilha,
+                        aliqIrpjProdPlanilha,
+                        aliqCsllProdPlanilha,
                         servicosTrimCents: servicosCents,
                         produtosTrimCents: produtosCents,
                         irrfRetidoTrimCents: irrfRetidoMesCents,
@@ -316,18 +336,23 @@ window.BpoFiscalUtils.calcularFaturamentoTotalDoc = function(doc, taxDetails) {
                     const cofinsCents = BigInt(Math.round((Number(fatEmpCents) / 100) * 0.03 * 100));
                     const issCents = issTotalMesCents;
 
-                    // IRPJ Bruto e CSLL calculados pela fórmula oficial de presunção com adicional
-                    const irpjProvCents = BigInt(Math.round(Number(fatEmpCents) / 100 * apuracaoMensalLP.aliqEfetivaIRPJ * 100));
-                    const csllProvCents = BigInt(Math.round(Number(fatEmpCents) / 100 * apuracaoMensalLP.aliqEfetivaCSLL * 100));
+                    // IRPJ Bruto e CSLL calculados pela fórmula oficial da planilha por atividade
+                    const irpjServMesCents = BigInt(Math.round((Number(servicosCents) / 100) * aliqIrpjServPlanilha * 100));
+                    const irpjProdMesCents = BigInt(Math.round((Number(produtosCents) / 100) * aliqIrpjProdPlanilha * 100));
+                    const irpjProvCents = irpjServMesCents + irpjProdMesCents;
+
+                    const csllServMesCents = BigInt(Math.round((Number(servicosCents) / 100) * aliqCsllServPlanilha * 100));
+                    const csllProdMesCents = BigInt(Math.round((Number(produtosCents) / 100) * aliqCsllProdPlanilha * 100));
+                    const csllProvCents = csllServMesCents + csllProdMesCents;
 
                     // Total Impostos da Competência = PIS + COFINS + ISS + IRPJ Bruto + CSLL (R$ 109.554,12)
                     impostoApuradoEmpCents = pisCents + cofinsCents + issCents + irpjProvCents + csllProvCents;
-                    // Saldo a Recolher (Guias a pagar após abater retenção de IRRF) = R$ 80.978,96
+                    // Saldo a Recolher (Guias a pagar após abater retenção de IRRF)
                     saldoRecolherEmpCents = impostoApuradoEmpCents > retEmpCents ? impostoApuradoEmpCents - retEmpCents : 0n;
 
-                    const aliqIrpjPercent = (apuracaoMensalLP.aliqEfetivaIRPJ * 100).toFixed(2);
-                    const aliqCsllPercent = (apuracaoMensalLP.aliqEfetivaCSLL * 100).toFixed(2);
-                    const temAdicional = apuracaoMensalLP.IRPJ_adicional > 0;
+                    const aliqIrpjPercent = fatTotalMesNum > 0 ? ((Number(irpjProvCents) / Number(fatEmpCents)) * 100).toFixed(2) : '0.00';
+                    const aliqCsllPercent = fatTotalMesNum > 0 ? ((Number(csllProvCents) / Number(fatEmpCents)) * 100).toFixed(2) : '0.00';
+                    const temAdicional = baseServMes > 20000 || baseProdMes > 20000;
 
                     detalheCardHtml = `
                         <div style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 16px; border: 1px solid rgba(255,255,255,0.05);">
@@ -600,14 +625,20 @@ window.BpoFiscalUtils.calcularFaturamentoTotalDoc = function(doc, taxDetails) {
                         if (isLocacao) issIsento = true;
 
                         // IRPJ e CSLL calculados conforme a fórmula da nota / planilha
+                        const infoTri = apuracoesTrimestraisPorEmpresa.get(doc.company_id);
+                        const aliqIrpjSugeridaPlanilha = infoTri 
+                            ? (itemType === 'produto' ? infoTri.aliqIrpjProdPlanilha : infoTri.aliqIrpjServPlanilha)
+                            : (itemType === 'produto' ? 0.012 : 0.048);
+                        const aliqCsllSugeridaPlanilha = infoTri 
+                            ? (itemType === 'produto' ? infoTri.aliqCsllProdPlanilha : infoTri.aliqCsllServPlanilha)
+                            : (itemType === 'produto' ? 0.0108 : 0.0288);
+
                         if (taxDetails && taxDetails.irpj_valor !== undefined && taxDetails.irpj_valor !== null && String(taxDetails.irpj_valor).trim() !== '') {
                             irpjBrutoCents = window.BpoMoney.toCents(taxDetails.irpj_valor);
                         } else if (taxDetails && taxDetails.irpj_aliq !== undefined && taxDetails.irpj_aliq !== null) {
                             irpjBrutoCents = BigInt(Math.round(fatTotalNum * (Number(taxDetails.irpj_aliq) / 100) * 100));
                         } else {
-                            const infoTri = apuracoesTrimestraisPorEmpresa.get(doc.company_id);
-                            const aliqIrpjVar = infoTri ? infoTri.aliqEfetivaIRPJ : (itemType === 'servico' ? 0.048 : 0.012);
-                            irpjBrutoCents = BigInt(Math.round(fatTotalNum * aliqIrpjVar * 100));
+                            irpjBrutoCents = BigInt(Math.round(fatTotalNum * aliqIrpjSugeridaPlanilha * 100));
                         }
 
                         if (taxDetails && taxDetails.csll_valor !== undefined && taxDetails.csll_valor !== null && String(taxDetails.csll_valor).trim() !== '') {
@@ -615,9 +646,7 @@ window.BpoFiscalUtils.calcularFaturamentoTotalDoc = function(doc, taxDetails) {
                         } else if (taxDetails && taxDetails.csll_aliq !== undefined && taxDetails.csll_aliq !== null) {
                             csllCents = BigInt(Math.round(fatTotalNum * (Number(taxDetails.csll_aliq) / 100) * 100));
                         } else {
-                            const infoTri = apuracoesTrimestraisPorEmpresa.get(doc.company_id);
-                            const aliqCsllVar = infoTri ? infoTri.aliqEfetivaCSLL : (itemType === 'servico' ? 0.0288 : 0.0108);
-                            csllCents = BigInt(Math.round(fatTotalNum * aliqCsllVar * 100));
+                            csllCents = BigInt(Math.round(fatTotalNum * aliqCsllSugeridaPlanilha * 100));
                         }
 
                         // O IR retido deste documento (IRRF)
@@ -923,24 +952,52 @@ window.BpoFiscalUtils.calcularFaturamentoTotalDoc = function(doc, taxDetails) {
 
         secaoTrimestralMarBrasil.style.display = 'block';
 
-        // Determina o trimestre civil correspondente à competência ativa
+        // Determina o trimestre com base na data de emissão das notas da competência operacional.
+        // Como trabalhamos com regime de competência, as notas são emitidas no mês seguinte ao mês operacional:
+        // Ex.: notas da competência de agosto (08) são emitidas em setembro (09), pertencendo ao 3º Trimestre (Jul/Ago/Set).
+        // 1º Trimestre: notas emitidas em Jan, Fev, Mar
+        // 2º Trimestre: notas emitidas em Abr, Mai, Jun
+        // 3º Trimestre: notas emitidas em Jul, Ago, Set
+        // 4º Trimestre: notas emitidas em Out, Nov, Dez
         const [anoStr, mesStr] = competenciaAtiva.split('-');
-        const ano = parseInt(anoStr, 10);
-        const mes = parseInt(mesStr, 10);
-        const trimestre = Math.ceil(mes / 3);
-        const mesesTrimestre = [
-            `${ano}-${String((trimestre - 1) * 3 + 1).padStart(2, '0')}`,
-            `${ano}-${String((trimestre - 1) * 3 + 2).padStart(2, '0')}`,
-            `${ano}-${String((trimestre - 1) * 3 + 3).padStart(2, '0')}`
+        const anoOp = parseInt(anoStr, 10);
+        const mesOp = parseInt(mesStr, 10);
+
+        // Mês típico de emissão da competência operacional ativa (mês seguinte)
+        let mesEmissao = mesOp + 1;
+        let anoEmissao = anoOp;
+        if (mesEmissao > 12) {
+            mesEmissao = 1;
+            anoEmissao++;
+        }
+
+        const trimestre = Math.ceil(mesEmissao / 3);
+        const mesesEmissaoTrimestre = [
+            `${anoEmissao}-${String((trimestre - 1) * 3 + 1).padStart(2, '0')}`,
+            `${anoEmissao}-${String((trimestre - 1) * 3 + 2).padStart(2, '0')}`,
+            `${anoEmissao}-${String((trimestre - 1) * 3 + 3).padStart(2, '0')}`
         ];
 
-        // Busca documentos de todos os 3 meses do trimestre para a Mar Brasil (sem persistir nada)
+        // Competências operacionais cujas emissões caem neste trimestre (cada uma emitida no mês seguinte)
+        // Mês de emissão m -> competência operacional m - 1
+        const competenciasOperacionaisTrimestre = mesesEmissaoTrimestre.map(mStr => {
+            const [aE, mE] = mStr.split('-').map(Number);
+            let mComp = mE - 1;
+            let aComp = aE;
+            if (mComp < 1) {
+                mComp = 12;
+                aComp--;
+            }
+            return `${aComp}-${String(mComp).padStart(2, '0')}`;
+        });
+
+        // Busca documentos das competências correspondentes para a Mar Brasil (sem persistir nada)
         let servicosTrimestreCents = 0n;
         let produtosTrimestreCents = 0n;
         let irrfTrimestreCents = 0n;
         let mesesComDados = 0;
 
-        for (const m of mesesTrimestre) {
+        for (const m of competenciasOperacionaisTrimestre) {
             try {
                 const docsMes = await window.BpoSupabase.request(
                     `billing_documents?company_id=eq.${marBrasil.id}&competence_month=eq.${m}&status=neq.cancelled`,
@@ -969,7 +1026,7 @@ window.BpoFiscalUtils.calcularFaturamentoTotalDoc = function(doc, taxDetails) {
             Number(servicosTrimestreCents) / 100,
             Number(produtosTrimestreCents) / 100,
             { 
-                ano: ano, 
+                ano: anoEmissao, 
                 trimestre: trimestre,
                 irrfRetidoTrimestre: Number(irrfTrimestreCents) / 100
             }
