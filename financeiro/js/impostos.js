@@ -633,18 +633,16 @@ window.BpoFiscalUtils.calcularFaturamentoTotalDoc = function(doc, taxDetails) {
                             ? (itemType === 'produto' ? infoTri.aliqCsllProdPlanilha : infoTri.aliqCsllServPlanilha)
                             : (itemType === 'produto' ? 0.0108 : 0.0288);
 
+                        // IRPJ e CSLL: sempre calcula dinamicamente pela fórmula oficial da planilha da competência,
+                        // a menos que tenha sido digitado expressamente um valor manual em reais (irpj_valor / csll_valor)
                         if (taxDetails && taxDetails.irpj_valor !== undefined && taxDetails.irpj_valor !== null && String(taxDetails.irpj_valor).trim() !== '') {
                             irpjBrutoCents = window.BpoMoney.toCents(taxDetails.irpj_valor);
-                        } else if (taxDetails && taxDetails.irpj_aliq !== undefined && taxDetails.irpj_aliq !== null) {
-                            irpjBrutoCents = BigInt(Math.round(fatTotalNum * (Number(taxDetails.irpj_aliq) / 100) * 100));
                         } else {
                             irpjBrutoCents = BigInt(Math.round(fatTotalNum * aliqIrpjSugeridaPlanilha * 100));
                         }
 
                         if (taxDetails && taxDetails.csll_valor !== undefined && taxDetails.csll_valor !== null && String(taxDetails.csll_valor).trim() !== '') {
                             csllCents = window.BpoMoney.toCents(taxDetails.csll_valor);
-                        } else if (taxDetails && taxDetails.csll_aliq !== undefined && taxDetails.csll_aliq !== null) {
-                            csllCents = BigInt(Math.round(fatTotalNum * (Number(taxDetails.csll_aliq) / 100) * 100));
                         } else {
                             csllCents = BigInt(Math.round(fatTotalNum * aliqCsllSugeridaPlanilha * 100));
                         }

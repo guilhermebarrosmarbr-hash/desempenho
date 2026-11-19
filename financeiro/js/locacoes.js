@@ -384,8 +384,6 @@
             let irpjBrutoCents = 0n;
             if (td && td.irpj_valor !== undefined && td.irpj_valor !== null && String(td.irpj_valor).trim() !== '') {
                 irpjBrutoCents = window.BpoMoney.toCents(td.irpj_valor);
-            } else if (td && td.irpj_aliq !== undefined && td.irpj_aliq !== null) {
-                irpjBrutoCents = BigInt(Math.round(fatTotalNum * (Number(td.irpj_aliq) / 100) * 100));
             } else {
                 const aliqIrpjVar = aliqIrpjVarEmpresa !== undefined 
                     ? aliqIrpjVarEmpresa 
@@ -397,8 +395,6 @@
             let csllCents = 0n;
             if (td && td.csll_valor !== undefined && td.csll_valor !== null && String(td.csll_valor).trim() !== '') {
                 csllCents = window.BpoMoney.toCents(td.csll_valor);
-            } else if (td && td.csll_aliq !== undefined && td.csll_aliq !== null) {
-                csllCents = BigInt(Math.round(fatTotalNum * (Number(td.csll_aliq) / 100) * 100));
             } else {
                 const aliqCsllVar = aliqCsllVarEmpresa !== undefined 
                     ? aliqCsllVarEmpresa 
