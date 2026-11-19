@@ -457,21 +457,31 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
 
             // Comissões de cada colaborador para este documento
             const comissoesColabs = {};
+
+            // Lê configuração de escopo de comissão do campo notes do contrato (definido em Gerenciamento de Contratos)
+            const notesCtrd = (ctr && ctr.notes) || '';
+            let pctBaseComissionada = 1.0;
+            const mEscopoDin = notesCtrd.match(/\[ComissaoEscopo:\s*(.*?)\]/);
+            const mPctCustDin = notesCtrd.match(/\[ComissaoPctCustom:\s*(.*?)\]/);
+            if (mEscopoDin && mEscopoDin[1].trim() === 'custom' && mPctCustDin) {
+                pctBaseComissionada = (parseFloat(mPctCustDin[1]) || 100) / 100;
+            }
+            // Base do contrato com fator de customização aplicado sobre o valor líquido
+            const baseElegivelContrato = BigInt(Math.round(Number(liquidoCents) * pctBaseComissionada));
+
             colabsAtivos.forEach(colab => {
                 // Se já estiver gravada E PAGA no banco, respeita o valor histórico pago.
-                // Se não gravada ou ainda pendente, calcula com base no Valor Líquido exibido em tela.
+                // Se não gravada ou ainda pendente, calcula com base na regra do contrato sobre a base elegível.
                 const calcGravado = comissoesCalculadas.find(c => c.document_id === doc.id && c.collaborator_id === colab.id);
                 if (calcGravado && calcGravado.status === 'paid') {
                     const cCents = window.BpoMoney.toCents(calcGravado.commission_amount);
                     comissoesColabs[colab.id] = cCents;
                 } else if (ctr && ctr.commission_eligible) {
-                    // Calcula dinamicamente com base no valor líquido que mostra em tela
                     const regras = regrasPorContrato.get(ctr.id) || [];
                     const reg = regras.find(r => r.collaborator_id === colab.id);
                     if (reg) {
                         const pct = parseFloat(reg.percentage) || 0;
-                        // O cálculo da comissão é sobre o valor líquido exibido em tela
-                        const cNum = (Number(liquidoCents) / 100) * (pct / 100);
+                        const cNum = (Number(baseElegivelContrato) / 100) * (pct / 100);
                         comissoesColabs[colab.id] = BigInt(Math.round(cNum * 100));
                     } else {
                         comissoesColabs[colab.id] = 0n;
@@ -1138,8 +1148,8 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                         return;
                     }
 
-                    // Base de cálculo é o valor líquido recebido apurado
-                    const baseUso = liquidoCents;
+                    // Base de cálculo é o valor líquido recebido com a regra de customização do contrato aplicada
+                    const baseUso = BigInt(Math.round(Number(liquidoCents) * pctBaseComissionada));
                     const pct = parseFloat(reg.percentage) || 0;
 
                     const res = window.BpoCommissionEngine.calcularComissao({
