@@ -401,7 +401,7 @@
                         <div>
                             <label style="font-size: 0.75rem; color: #34d399; font-weight: 600; display: block; margin-bottom: 4px;">Alíquota DAS (%)</label>
                             <div style="display: flex; align-items: center; gap: 3px;">
-                                <input type="number" id="inpAliqDas" value="6.00" step="0.01" min="0" max="100" class="select-control" style="width: 100%; font-size: 0.85rem; font-weight: 700; text-align: right; color: #34d399;">
+                                <input type="number" id="inpAliqDas" value="6.00" step="0.001" min="0" max="100" class="select-control" style="width: 100%; font-size: 0.85rem; font-weight: 700; text-align: right; color: #34d399;">
                                 <span style="font-size: 0.75rem; color: #34d399;">%</span>
                             </div>
                         </div>
@@ -473,7 +473,7 @@
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                                 <label style="font-size: 0.78rem; font-weight: 600; color: #93c5fd; margin: 0;">PIS</label>
                                 <div style="display: flex; align-items: center; gap: 3px;">
-                                    <input type="number" id="inpAliqPis" value="0.65" step="0.01" min="0" max="100" class="select-control" style="width: 60px; padding: 2px 4px; font-size: 0.75rem; font-weight: 600; text-align: right;" title="Alíquota PIS (%)">
+                                    <input type="number" id="inpAliqPis" value="0.65" step="0.001" min="0" max="100" class="select-control" style="width: 60px; padding: 2px 4px; font-size: 0.75rem; font-weight: 600; text-align: right;" title="Alíquota PIS (%)">
                                     <span style="font-size: 0.75rem; color: #93c5fd;">%</span>
                                 </div>
                             </div>
@@ -485,7 +485,7 @@
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                                 <label style="font-size: 0.78rem; font-weight: 600; color: #93c5fd; margin: 0;">COFINS</label>
                                 <div style="display: flex; align-items: center; gap: 3px;">
-                                    <input type="number" id="inpAliqCofins" value="3.00" step="0.01" min="0" max="100" class="select-control" style="width: 60px; padding: 2px 4px; font-size: 0.75rem; font-weight: 600; text-align: right;" title="Alíquota COFINS (%)">
+                                    <input type="number" id="inpAliqCofins" value="3.00" step="0.001" min="0" max="100" class="select-control" style="width: 60px; padding: 2px 4px; font-size: 0.75rem; font-weight: 600; text-align: right;" title="Alíquota COFINS (%)">
                                     <span style="font-size: 0.75rem; color: #93c5fd;">%</span>
                                 </div>
                             </div>
@@ -500,7 +500,7 @@
                                     <span style="font-size:0.65rem; color:#f59e0b; background:rgba(245,158,11,0.15); padding:1px 4px; border-radius:3px;">Variável</span>
                                 </div>
                                 <div style="display: flex; align-items: center; gap: 3px;">
-                                    <input type="number" id="inpAliqIrpj" value="4.80" step="0.01" min="0" max="100" class="select-control" style="width: 60px; padding: 2px 4px; font-size: 0.75rem; font-weight: 600; text-align: right;" title="Alíquota efetiva estimada de IRPJ (%)">
+                                    <input type="number" id="inpAliqIrpj" value="4.80" step="0.001" min="0" max="100" class="select-control" style="width: 60px; padding: 2px 4px; font-size: 0.75rem; font-weight: 600; text-align: right;" title="Alíquota efetiva estimada de IRPJ (%)">
                                     <span style="font-size: 0.75rem; color: #f59e0b;">%</span>
                                 </div>
                             </div>
@@ -515,7 +515,7 @@
                                     <span style="font-size:0.65rem; color:#f59e0b; background:rgba(245,158,11,0.15); padding:1px 4px; border-radius:3px;">Variável</span>
                                 </div>
                                 <div style="display: flex; align-items: center; gap: 3px;">
-                                    <input type="number" id="inpAliqCsll" value="2.88" step="0.01" min="0" max="100" class="select-control" style="width: 60px; padding: 2px 4px; font-size: 0.75rem; font-weight: 600; text-align: right;" title="Alíquota efetiva estimada de CSLL (%)">
+                                    <input type="number" id="inpAliqCsll" value="2.88" step="0.001" min="0" max="100" class="select-control" style="width: 60px; padding: 2px 4px; font-size: 0.75rem; font-weight: 600; text-align: right;" title="Alíquota efetiva estimada de CSLL (%)">
                                     <span style="font-size: 0.75rem; color: #f59e0b;">%</span>
                                 </div>
                             </div>
@@ -545,7 +545,7 @@
                             </label>
                             <div id="boxIrrfConfig" style="display: none; margin-top: 8px;">
                                 <div style="display: flex; align-items: center; gap: 4px;">
-                                    <input type="number" id="aliqIrrf" value="4.8" step="0.01" min="0" max="100" class="select-control" style="padding: 4px 6px; font-size: 0.8rem; width: 65px;">
+                                    <input type="number" id="aliqIrrf" value="4.8" step="0.001" min="0" max="100" class="select-control" style="padding: 4px 6px; font-size: 0.8rem; width: 65px;">
                                     <span style="font-size: 0.78rem; color: var(--text-muted);">% (R$ <span id="valIrrfPreview">0,00</span>)</span>
                                 </div>
                             </div>
@@ -559,7 +559,7 @@
                             </label>
                             <div id="boxInssConfig" style="display: none; margin-top: 8px;">
                                 <div style="display: flex; align-items: center; gap: 4px;">
-                                    <input type="number" id="aliqInss" value="11" step="0.01" min="0" max="100" class="select-control" style="padding: 4px 6px; font-size: 0.8rem; width: 65px;">
+                                    <input type="number" id="aliqInss" value="11" step="0.001" min="0" max="100" class="select-control" style="padding: 4px 6px; font-size: 0.8rem; width: 65px;">
                                     <span style="font-size: 0.78rem; color: var(--text-muted);">% (R$ <span id="valInssPreview">0,00</span>)</span>
                                 </div>
                             </div>
@@ -569,7 +569,7 @@
                         <div id="boxIssCol" style="border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; padding: 10px; background: rgba(0,0,0,0.15);">
                             <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
                                 <span id="lblAliqIss" style="font-size: 0.82rem; font-weight: 500;">Alíquota ISS:</span>
-                                <input type="number" id="aliqIss" value="5.0" step="0.01" min="0" max="100" class="select-control" style="padding: 4px 6px; font-size: 0.8rem; width: 65px;">
+                                <input type="number" id="aliqIss" value="5.0" step="0.001" min="0" max="100" class="select-control" style="padding: 4px 6px; font-size: 0.8rem; width: 65px;">
                                 <span style="font-size: 0.78rem; color: var(--text-muted);">%</span>
                             </div>
                             <label id="lblWrapIssRetido" style="display: flex; align-items: center; gap: 6px; font-size: 0.78rem; cursor: pointer;">

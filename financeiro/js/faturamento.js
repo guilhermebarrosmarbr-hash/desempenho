@@ -1367,16 +1367,16 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                     const base_csll_prod = Math.max(0, ((recMes - L_m) * 0.132) + B0_prod_csll);
                     const csll_prod_tot = base_csll_prod * 0.09;
 
-                    aliqIrpjSugerida = (irpj_prod_tot / recMes * 100).toFixed(2);
-                    aliqCsllSugerida = (csll_prod_tot / recMes * 100).toFixed(2);
+                    aliqIrpjSugerida = (irpj_prod_tot / recMes * 100).toFixed(3);
+                    aliqCsllSugerida = (csll_prod_tot / recMes * 100).toFixed(3);
                 } else {
                     // Fórmula Oficial de Prestação de Serviço:
                     const B0_m = 400000 / 3;
                     const base_m = Math.max(0, ((recMes - L_m) * 0.352) + B0_m);
                     const irpj_tot = (base_m * 0.15) + Math.max(0, (base_m - 20000) * 0.10);
                     const csll_tot = base_m * 0.09;
-                    aliqIrpjSugerida = (irpj_tot / recMes * 100).toFixed(2);
-                    aliqCsllSugerida = (csll_tot / recMes * 100).toFixed(2);
+                    aliqIrpjSugerida = (irpj_tot / recMes * 100).toFixed(3);
+                    aliqCsllSugerida = (csll_tot / recMes * 100).toFixed(3);
                 }
             }
 
@@ -1398,7 +1398,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             if (origem === 'valor_pis' && elValorPis && elAliqPis) {
                 const vCents = window.BpoMoney.toCents(elValorPis.value);
                 if (brutoCents > 0n) {
-                    elAliqPis.value = (Number(vCents) / Number(brutoCents) * 100).toFixed(2);
+                    elAliqPis.value = (Number(vCents) / Number(brutoCents) * 100).toFixed(3);
                 }
             } else if (elAliqPis && elValorPis) {
                 const aliq = parseFloat(elAliqPis.value) || 0;
@@ -1412,7 +1412,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             if (origem === 'valor_cofins' && elValorCofins && elAliqCofins) {
                 const vCents = window.BpoMoney.toCents(elValorCofins.value);
                 if (brutoCents > 0n) {
-                    elAliqCofins.value = (Number(vCents) / Number(brutoCents) * 100).toFixed(2);
+                    elAliqCofins.value = (Number(vCents) / Number(brutoCents) * 100).toFixed(3);
                 }
             } else if (elAliqCofins && elValorCofins) {
                 const aliq = parseFloat(elAliqCofins.value) || 0;
@@ -1426,7 +1426,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             if (origem === 'valor_irpj' && elValorIrpj && elAliqIrpj) {
                 const vCents = window.BpoMoney.toCents(elValorIrpj.value);
                 if (brutoCents > 0n) {
-                    elAliqIrpj.value = (Number(vCents) / Number(brutoCents) * 100).toFixed(2);
+                    elAliqIrpj.value = (Number(vCents) / Number(brutoCents) * 100).toFixed(3);
                 }
             } else if (elAliqIrpj && elValorIrpj) {
                 const aliq = parseFloat(elAliqIrpj.value) || 0;
@@ -1440,7 +1440,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             if (origem === 'valor_csll' && elValorCsll && elAliqCsll) {
                 const vCents = window.BpoMoney.toCents(elValorCsll.value);
                 if (brutoCents > 0n) {
-                    elAliqCsll.value = (Number(vCents) / Number(brutoCents) * 100).toFixed(2);
+                    elAliqCsll.value = (Number(vCents) / Number(brutoCents) * 100).toFixed(3);
                 }
             } else if (elAliqCsll && elValorCsll) {
                 const aliq = parseFloat(elAliqCsll.value) || 0;

@@ -599,13 +599,26 @@ window.BpoFiscalUtils.calcularFaturamentoTotalDoc = function(doc, taxDetails) {
                         // Marcar isenção para exibição
                         if (isLocacao) issIsento = true;
 
-                        // IRPJ e CSLL calculados conforme a fórmula da planilha
-                        const infoTri = apuracoesTrimestraisPorEmpresa.get(doc.company_id);
-                        const aliqIrpjVar = infoTri ? infoTri.aliqEfetivaIRPJ : (itemType === 'servico' ? 0.048 : 0.012);
-                        const aliqCsllVar = infoTri ? infoTri.aliqEfetivaCSLL : (itemType === 'servico' ? 0.0288 : 0.0108);
+                        // IRPJ e CSLL calculados conforme a fórmula da nota / planilha
+                        if (taxDetails && taxDetails.irpj_valor !== undefined && taxDetails.irpj_valor !== null && String(taxDetails.irpj_valor).trim() !== '') {
+                            irpjBrutoCents = window.BpoMoney.toCents(taxDetails.irpj_valor);
+                        } else if (taxDetails && taxDetails.irpj_aliq !== undefined && taxDetails.irpj_aliq !== null) {
+                            irpjBrutoCents = BigInt(Math.round(fatTotalNum * (Number(taxDetails.irpj_aliq) / 100) * 100));
+                        } else {
+                            const infoTri = apuracoesTrimestraisPorEmpresa.get(doc.company_id);
+                            const aliqIrpjVar = infoTri ? infoTri.aliqEfetivaIRPJ : (itemType === 'servico' ? 0.048 : 0.012);
+                            irpjBrutoCents = BigInt(Math.round(fatTotalNum * aliqIrpjVar * 100));
+                        }
 
-                        irpjBrutoCents = BigInt(Math.round(fatTotalNum * aliqIrpjVar * 100));
-                        csllCents = BigInt(Math.round(fatTotalNum * aliqCsllVar * 100));
+                        if (taxDetails && taxDetails.csll_valor !== undefined && taxDetails.csll_valor !== null && String(taxDetails.csll_valor).trim() !== '') {
+                            csllCents = window.BpoMoney.toCents(taxDetails.csll_valor);
+                        } else if (taxDetails && taxDetails.csll_aliq !== undefined && taxDetails.csll_aliq !== null) {
+                            csllCents = BigInt(Math.round(fatTotalNum * (Number(taxDetails.csll_aliq) / 100) * 100));
+                        } else {
+                            const infoTri = apuracoesTrimestraisPorEmpresa.get(doc.company_id);
+                            const aliqCsllVar = infoTri ? infoTri.aliqEfetivaCSLL : (itemType === 'servico' ? 0.0288 : 0.0108);
+                            csllCents = BigInt(Math.round(fatTotalNum * aliqCsllVar * 100));
+                        }
 
                         // O IR retido deste documento (IRRF)
                         let irrfDocCents = 0n;
