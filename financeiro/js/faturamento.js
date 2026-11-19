@@ -609,7 +609,8 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
     }
 
     // Calcula o Valor Total do documento:
-    // Valor Total = Valor Base + Multa + Juros + Extras + IPTU (se locação) - Descontos
+    // Valor Total = Valor Base + Extras + IPTU (se locação) - Descontos
+    // Multas e juros não são somados no faturamento/emissão de nota (apenas no recebimento se houver).
     // O mesmo valor que consta na tela de criar/editar lançamento (docValorLiquido).
     function calcularValorTotalDocumento(doc) {
         const taxDetails = (doc.tax_details && typeof doc.tax_details === 'object')
@@ -624,13 +625,11 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         const eCents = doc._extrasCents !== undefined 
             ? doc._extrasCents 
             : ((taxDetails && taxDetails.extras != null) ? window.BpoMoney.toCents(taxDetails.extras) : 0n);
-        const multaCents = (taxDetails && taxDetails.multa != null) ? window.BpoMoney.toCents(taxDetails.multa) : 0n;
-        const jurosCents = (taxDetails && taxDetails.juros != null) ? window.BpoMoney.toCents(taxDetails.juros) : 0n;
         const iptuDocCents = doc._iptuCents !== undefined 
             ? doc._iptuCents 
             : ((taxDetails && taxDetails.iptu_valor != null) ? window.BpoMoney.toCents(taxDetails.iptu_valor) : 0n);
 
-        const subtotal = bCents + multaCents + jurosCents + eCents + iptuDocCents;
+        const subtotal = bCents + eCents + iptuDocCents;
         return subtotal > dCents ? (subtotal - dCents) : 0n;
     }
 
@@ -1524,10 +1523,11 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
 
         // =========================================================================
         // Valor Total (Item 01):
-        // Valor Total = Bruto + Multa + Juros + Extras + IPTU (se locação) - Desconto
+        // Valor Total da Nota = Bruto + Extras + IPTU (se locação) - Desconto
+        // Multa e juros não somam no faturamento da nota (apenas no recebimento se houver).
         // Retenções NÃO afetam o Valor Total — apenas o Valor Líquido
         // =========================================================================
-        const subtotalCents = brutoCents + multaCents + jurosCents + extrasCents + iptuCents;
+        const subtotalCents = brutoCents + extrasCents + iptuCents;
         const liquidoRecebCents = subtotalCents > descontoCents ? (subtotalCents - descontoCents) : 0n;
 
         // Líquido Econômico: deduz todos os tributos + retenções, sem duplicar ISS retido.
@@ -1864,13 +1864,13 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         // No Simples Nacional não há retenções de IRRF, INSS nem ISS
         const retCents = isSimples ? 0n : window.BpoMoney.toCents(document.getElementById('docRetencoes').value);
 
-        const subtotalCents = brutoCents + multaCents + jurosCents + extrasCents + iptuCents;
+        const subtotalCents = brutoCents + extrasCents + iptuCents;
 
         if (subtotalCents < descontoCents) {
             alert('O desconto não pode ser maior que o valor bruto e acréscimos.');
             return;
         }
-        const liqCents = subtotalCents - descontoCents;  // Valor Total = sem retenções
+        const liqCents = subtotalCents - descontoCents;  // Valor Total da Nota = sem retenções e sem multa/juros
 
         const descricao = document.getElementById('docDescricao').value.trim();
         const contratoId = document.getElementById('docContrato').value || null;
