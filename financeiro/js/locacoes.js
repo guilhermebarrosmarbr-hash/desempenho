@@ -364,24 +364,63 @@
         const fatTotalNum = Number(fatTotalCents) / 100;
         const isLP = empresaAtiva && empresaAtiva.tax_regime === 'lucro_presumido';
         const isLocacao = (doc.document_type === 'locacao') || !!(td && td.is_locacao);
+        const issRetido = !!(td && td.iss_retido);
+        const retCents = doc.retentions ? window.BpoMoney.toCents(doc.retentions) : 0n;
+        const itemType = (td && td.item_type) || 'servico';
 
         if (isLP) {
-            // Lucro Presumido: PIS(0,65%) + COFINS(3%) + ISS(0 p/ locação) + IRPJ + CSLL
+            // Lucro Presumido: idêntico ao impostos.js (linha 580-644)
             const pisCents = (td && td.pis_valor !== undefined && td.pis_valor !== null)
                 ? window.BpoMoney.toCents(td.pis_valor)
                 : BigInt(Math.round(fatTotalNum * 0.0065 * 100));
             const cofinsCents = (td && td.cofins_valor !== undefined && td.cofins_valor !== null)
                 ? window.BpoMoney.toCents(td.cofins_valor)
                 : BigInt(Math.round(fatTotalNum * 0.03 * 100));
+            const aliqIss = (td && td.iss_aliq !== undefined) ? Number(td.iss_aliq) : 3.0;
             const issCents = isLocacao ? 0n
-                : BigInt(Math.round(fatTotalNum * ((td && td.iss_aliq !== undefined) ? Number(td.iss_aliq) : 3.0) / 100 * 100));
-            const irpjCents = (td && td.irpj_valor !== undefined && td.irpj_valor !== null)
-                ? window.BpoMoney.toCents(td.irpj_valor)
-                : BigInt(Math.round(fatTotalNum * 0.048 * 100));
-            const csllCents = (td && td.csll_valor !== undefined && td.csll_valor !== null)
-                ? window.BpoMoney.toCents(td.csll_valor)
-                : BigInt(Math.round(fatTotalNum * 0.0288 * 100));
-            return pisCents + cofinsCents + issCents + irpjCents + csllCents;
+                : BigInt(Math.round(fatTotalNum * (aliqIss / 100) * 100));
+
+            // IRPJ bruto (valor calculado antes do abate do IRRF)
+            let irpjBrutoCents = 0n;
+            if (td && td.irpj_valor !== undefined && td.irpj_valor !== null && String(td.irpj_valor).trim() !== '') {
+                irpjBrutoCents = window.BpoMoney.toCents(td.irpj_valor);
+            } else if (td && td.irpj_aliq !== undefined && td.irpj_aliq !== null) {
+                irpjBrutoCents = BigInt(Math.round(fatTotalNum * (Number(td.irpj_aliq) / 100) * 100));
+            } else {
+                const aliqIrpjVar = itemType === 'produto' ? 0.012 : 0.048;
+                irpjBrutoCents = BigInt(Math.round(fatTotalNum * aliqIrpjVar * 100));
+            }
+
+            // CSLL
+            let csllCents = 0n;
+            if (td && td.csll_valor !== undefined && td.csll_valor !== null && String(td.csll_valor).trim() !== '') {
+                csllCents = window.BpoMoney.toCents(td.csll_valor);
+            } else if (td && td.csll_aliq !== undefined && td.csll_aliq !== null) {
+                csllCents = BigInt(Math.round(fatTotalNum * (Number(td.csll_aliq) / 100) * 100));
+            } else {
+                const aliqCsllVar = itemType === 'produto' ? 0.0108 : 0.0288;
+                csllCents = BigInt(Math.round(fatTotalNum * aliqCsllVar * 100));
+            }
+
+            // IRRF (retenção na fonte)
+            let irrfDocCents = 0n;
+            if (td && td.has_irrf) {
+                const aliqIrrf = (td.irrf_aliq !== undefined && td.irrf_aliq !== null)
+                    ? Number(td.irrf_aliq)
+                    : (itemType === 'produto' ? 1.2 : 4.8);
+                irrfDocCents = BigInt(Math.round(fatTotalNum * (aliqIrrf / 100) * 100));
+            } else if (retCents > 0n && !issRetido) {
+                irrfDocCents = retCents;
+            } else if (retCents > 0n && issRetido) {
+                irrfDocCents = retCents > issCents ? (retCents - issCents) : 0n;
+            }
+
+            // IRPJ líquido = IRPJ bruto − IRRF (igual ao impostos.js linha 638)
+            const irpjCents = irpjBrutoCents > irrfDocCents ? (irpjBrutoCents - irrfDocCents) : 0n;
+            const retencaoExibicaoCents = irrfDocCents;
+
+            // Total Tributos = PIS + COFINS + ISS + IRPJ líquido + CSLL + Retenções IRRF
+            return pisCents + cofinsCents + issCents + irpjCents + csllCents + retencaoExibicaoCents;
         } else {
             // Simples Nacional — idêntico ao impostos.js: fatTotalNum * aliqDasEfetiva
             const anexoKey = (td && td.das_anexo) || 'anexo_iii';
