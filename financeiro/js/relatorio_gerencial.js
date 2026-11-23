@@ -1,10 +1,9 @@
 /**
  * Módulo 10 — Relatório Gerencial
- * - Competência e cards superiores por empresa (Alíquota Efetiva: Total Impostos / Total Faturado * 100)
- * - Carrossel Coverflow 3D em perspectiva (Contratos Faturados vs Inadimplências)
- * - Três valores por card: Valor Faturado, Valor do Imposto Gerado, Valor Líquido (Critérios estritos do Faturamento)
- * - Ocultar/Mostrar valores monetários
- * - Seleção e filtragem de inadimplências
+ * - Competência e cards superiores por empresa (busca exatamente as informações de apuração do módulo de impostos)
+ * - Carrossel 3D em formato de Octógono com espaçamento para que os cards não se encostem
+ * - Valores faturado, imposto e líquido extraídos diretamente das apurações do sistema (Faturamento/Impostos)
+ * - Ocultar/Mostrar valores monetários e filtros de inadimplência
  */
 
 (function() {
@@ -16,15 +15,21 @@
     let companiesMap = new Map();
     let contratosMap = new Map();
 
+    // Cache de RBT12 real por empresa (calculado exatamente como no módulo de impostos)
+    let rbt12PorEmpresaMap = new Map();
+
+    // Map com a apuração oficial de cada empresa na competência ativa (mesmas variáveis do módulo de impostos)
+    let apuracaoPorEmpresaMap = new Map();
+
     let competenciaAtiva = '';
     let modoAtual = 'contratos'; // 'contratos' | 'inadimplencia'
     let valoresOcultos = false;
     let cardAtivoIndex = 0;
 
-    // Itens ativos no Coverflow
+    // Itens ativos no Carrossel
     let cardsParaExibir = [];
 
-    // Conjunto de IDs selecionados para exibição no modo inadimplência (manual selection)
+    // Seleção manual de inadimplências
     let idsInadimplenciaSelecionados = new Set();
     let listaInadimplenciaTotal = [];
 
@@ -37,7 +42,7 @@
     const iconeOlho = document.getElementById('iconeOlho');
     const labelToggleValores = document.getElementById('labelToggleValores');
     const coverflowStage = document.getElementById('coverflowStage');
-    const coverflowContainer = document.getElementById('coverflowContainer');
+    const coverflowCarousel3D = document.getElementById('coverflowCarousel3D');
     const coverflowCounter = document.getElementById('coverflowCounter');
     const btnCoverflowPrev = document.getElementById('btnCoverflowPrev');
     const btnCoverflowNext = document.getElementById('btnCoverflowNext');
@@ -74,6 +79,7 @@
         inputCompetencia.addEventListener('change', async (e) => {
             competenciaAtiva = e.target.value;
             await carregarDocumentosCompetencia();
+            await processarApuracaoFiscalEmpresas();
             processarDados();
         });
 
@@ -85,7 +91,7 @@
             barraFiltrosInadimplencia.style.display = 'none';
             btnFiltrarInadimplencias.style.display = 'none';
             cardAtivoIndex = 0;
-            montarCardsCoverflow();
+            montarCardsCarrossel();
         });
 
         tabModoInadimplencia.addEventListener('click', () => {
@@ -96,7 +102,7 @@
             barraFiltrosInadimplencia.style.display = 'flex';
             btnFiltrarInadimplencias.style.display = 'inline-flex';
             cardAtivoIndex = 0;
-            montarCardsCoverflow();
+            montarCardsCarrossel();
         });
 
         btnToggleValores.addEventListener('click', () => {
@@ -112,17 +118,17 @@
             }
         });
 
-        btnCoverflowPrev.addEventListener('click', () => navegarCoverflow(-1));
-        btnCoverflowNext.addEventListener('click', () => navegarCoverflow(1));
+        btnCoverflowPrev.addEventListener('click', () => navegarCarrossel(-1));
+        btnCoverflowNext.addEventListener('click', () => navegarCarrossel(1));
 
         window.addEventListener('keydown', (e) => {
-            if (e.key === 'ArrowLeft') navegarCoverflow(-1);
-            if (e.key === 'ArrowRight') navegarCoverflow(1);
+            if (e.key === 'ArrowLeft') navegarCarrossel(-1);
+            if (e.key === 'ArrowRight') navegarCarrossel(1);
         });
 
-        filtroEmpresa.addEventListener('change', () => { cardAtivoIndex = 0; montarCardsCoverflow(); });
-        filtroFaixaValor.addEventListener('change', () => { cardAtivoIndex = 0; montarCardsCoverflow(); });
-        filtroBuscaContrato.addEventListener('input', () => { cardAtivoIndex = 0; montarCardsCoverflow(); });
+        filtroEmpresa.addEventListener('change', () => { cardAtivoIndex = 0; montarCardsCarrossel(); });
+        filtroFaixaValor.addEventListener('change', () => { cardAtivoIndex = 0; montarCardsCarrossel(); });
+        filtroBuscaContrato.addEventListener('input', () => { cardAtivoIndex = 0; montarCardsCarrossel(); });
 
         btnFiltrarInadimplencias.addEventListener('click', abrirModalInadimplencias);
         btnFecharModalInadimplencias.addEventListener('click', fecharModalInadimplencias);
@@ -158,7 +164,7 @@
             filtroEmpresa.innerHTML = '<option value="all">Todas as empresas</option>' + 
                 empresas.map(e => `<option value="${escapeHtml(e.id)}">${escapeHtml(e.trade_name || e.name)}</option>`).join('');
 
-            // Busca clientes para os contratos
+            // Busca clientes
             try {
                 const clientes = await window.BpoSupabase.request('people', { method: 'GET' });
                 const clientesMap = new Map();
@@ -172,7 +178,7 @@
                 console.warn('Erro ao carregar clientes:', e);
             }
 
-            // Carrega todos os recibos para determinar quitações e saldos
+            // Recibos para verificação de quitação
             try {
                 const recs = await window.BpoSupabase.request('receipts', { method: 'GET' });
                 receiptsMap.clear();
@@ -191,10 +197,10 @@
                 console.warn('Erro ao carregar recibos:', e);
             }
 
-            // Carrega documentos da competência e histórico para inadimplências
             await carregarDocumentosCompetencia();
             await carregarTodosDocumentos();
 
+            await processarApuracaoFiscalEmpresas();
             processarDados();
 
         } catch (err) {
@@ -228,79 +234,279 @@
         }
     }
 
-    // =========================================================================
-    // FÓRMULAS E CRITÉRIOS IDÊNTICOS AO MÓDULO DE FATURAMENTO
-    // =========================================================================
+    // Calcula os 12 meses anteriores para RBT12 exatamente como no Módulo de Impostos
+    function obterMesesRbt12(comp) {
+        const [anoStr, mesStr] = comp.split('-');
+        let ano = parseInt(anoStr, 10);
+        let mes = parseInt(mesStr, 10);
+        const meses = [];
+        for (let i = 0; i < 12; i++) {
+            mes -= 1;
+            if (mes === 0) {
+                mes = 12;
+                ano -= 1;
+            }
+            meses.push(`${ano}-${String(mes).padStart(2, '0')}`);
+        }
+        return meses;
+    }
 
-    // Faturamento Total = gross_amount + extras - discounts
-    function calcularFaturamentoTotal(doc) {
-        const taxDetails = (doc.tax_details && typeof doc.tax_details === 'object')
-            ? doc.tax_details
-            : (window.BpoFiscalUtils ? window.BpoFiscalUtils.extrairTaxDetails(doc) : {});
+    async function calcularRbt12RealEmpresa(empresaId, comp) {
+        const meses12 = obterMesesRbt12(comp);
+        try {
+            const inQuery = meses12.join(',');
+            const docs12 = await window.BpoSupabase.request(
+                `billing_documents?company_id=eq.${empresaId}&competence_month=in.(${inQuery})&status=neq.cancelled`,
+                { method: 'GET' }
+            );
+            let totalCents = 0n;
+            (docs12 || []).forEach(d => {
+                const td = d.tax_details || (window.BpoFiscalUtils ? window.BpoFiscalUtils.extrairTaxDetails(d) : {});
+                totalCents += calcularFaturamentoTotalDoc(d, td);
+            });
+            return Number(totalCents) / 100;
+        } catch (e) {
+            console.warn(`Erro ao calcular RBT12 da empresa ${empresaId}:`, e);
+            return 0;
+        }
+    }
 
-        const bCents = window.BpoMoney.toCents(doc.gross_amount);
-        const dCents = (taxDetails && taxDetails.desconto != null)
-            ? window.BpoMoney.toCents(taxDetails.desconto)
+    function calcularFaturamentoTotalDoc(doc, taxDetails) {
+        const td = taxDetails || (doc.tax_details && typeof doc.tax_details === 'object' ? doc.tax_details : (window.BpoFiscalUtils ? window.BpoFiscalUtils.extrairTaxDetails(doc) : {}));
+        const b = window.BpoMoney.toCents(doc.gross_amount);
+        const d = (td && td.desconto != null)
+            ? window.BpoMoney.toCents(td.desconto)
             : (doc.discounts ? window.BpoMoney.toCents(doc.discounts) : 0n);
-        const eCents = (taxDetails && taxDetails.extras != null)
-            ? window.BpoMoney.toCents(taxDetails.extras)
+        const e = (td && td.extras != null)
+            ? window.BpoMoney.toCents(td.extras)
             : 0n;
-
-        const total = (bCents + eCents) > dCents ? (bCents + eCents - dCents) : 0n;
+        const total = (b + e) > d ? (b + e - d) : 0n;
         return total;
     }
 
-    // Imposto e Líquido calculados de acordo com os critérios do Faturamento
-    function calcularTributosELiquidoDoc(doc, emp) {
-        const taxDetails = (doc.tax_details && typeof doc.tax_details === 'object')
-            ? doc.tax_details
-            : (window.BpoFiscalUtils ? window.BpoFiscalUtils.extrairTaxDetails(doc) : {});
+    // =========================================================================
+    // APURAÇÃO FISCAL OFICIAL ESPELHADA DO MÓDULO DE IMPOSTOS
+    // =========================================================================
+    async function processarApuracaoFiscalEmpresas() {
+        apuracaoPorEmpresaMap.clear();
+        rbt12PorEmpresaMap.clear();
 
-        const fatTotalCents = calcularFaturamentoTotal(doc);
+        for (const emp of empresas) {
+            const docsEmp = documentosCompetencia.filter(d => d.company_id === emp.id);
+            let fatEmpCents = 0n;
+            let retEmpCents = 0n;
+            let servicosCents = 0n;
+            let produtosCents = 0n;
+
+            docsEmp.forEach(d => {
+                const r = window.BpoMoney.toCents(d.retentions);
+                const td = d.tax_details || (window.BpoFiscalUtils ? window.BpoFiscalUtils.extrairTaxDetails(d) : {});
+                const fatDoc = calcularFaturamentoTotalDoc(d, td);
+                fatEmpCents += fatDoc;
+                retEmpCents += r;
+
+                const itemType = (td && td.item_type) || 'servico';
+                if (itemType === 'produto') produtosCents += fatDoc;
+                else servicosCents += fatDoc;
+            });
+
+            const isLucroPresumido = emp.tax_regime === 'lucro_presumido';
+            let impostoApuradoEmpCents = 0n;
+            let cargaEfetivaTexto = 'Sem faturamento';
+
+            if (isLucroPresumido) {
+                // Lucro Presumido
+                const [anoStr, mesStr] = competenciaAtiva.split('-');
+                const ano = parseInt(anoStr, 10);
+                const mes = parseInt(mesStr, 10);
+                const numTrimestre = Math.ceil(mes / 3);
+
+                let irrfRetidoMesCents = 0n;
+                let issTotalMesCents = 0n;
+
+                docsEmp.forEach(d => {
+                    const td = d.tax_details || (window.BpoFiscalUtils ? window.BpoFiscalUtils.extrairTaxDetails(d) : {});
+                    const val = calcularFaturamentoTotalDoc(d, td);
+                    const valNum = Number(val) / 100;
+                    const isLoc = (d.document_type === 'locacao') || !!(td && td.is_locacao);
+                    const itemT = (td && td.item_type) || 'servico';
+                    const aIss = (td && td.iss_aliq !== undefined && td.iss_aliq !== null) ? Number(td.iss_aliq) : 3.0;
+
+                    if (itemT === 'servico' && !isLoc) {
+                        issTotalMesCents += BigInt(Math.round(valNum * (aIss / 100) * 100));
+                    }
+
+                    if (td && td.has_irrf) {
+                        const aliq = (td.irrf_aliq !== undefined && td.irrf_aliq !== null) ? td.irrf_aliq : 4.8;
+                        irrfRetidoMesCents += BigInt(Math.round(valNum * (aliq / 100) * 100));
+                    } else {
+                        const r = window.BpoMoney.toCents(d.retentions);
+                        const issRet = !!(td && td.iss_retained);
+                        if (r > 0n && !issRet) {
+                            irrfRetidoMesCents += r;
+                        }
+                    }
+                });
+
+                const fatTotalMesNum = Number(fatEmpCents) / 100;
+                const L_m = 1250000 / 3;
+                const baseServMes = Math.max(0, ((fatTotalMesNum - L_m) * 0.352) + (400000 / 3));
+                const irpjTotServMes = (baseServMes * 0.15) + Math.max(0, (baseServMes - 20000) * 0.10);
+                const csllTotServMes = baseServMes * 0.09;
+
+                const baseProdMes = Math.max(0, ((fatTotalMesNum - L_m) * 0.088) + (100000 / 3));
+                const irpjTotProdMes = (baseProdMes * 0.15) + Math.max(0, (baseProdMes - 20000) * 0.10);
+                const csllTotProdMes = Math.max(0, ((fatTotalMesNum - L_m) * 0.132) + (150000 / 3)) * 0.09;
+
+                const aliqIrpjServPlanilha = fatTotalMesNum > 0 ? (irpjTotServMes / fatTotalMesNum) : 0.048;
+                const aliqCsllServPlanilha = fatTotalMesNum > 0 ? (csllTotServMes / fatTotalMesNum) : 0.0288;
+                const aliqIrpjProdPlanilha = fatTotalMesNum > 0 ? (irpjTotProdMes / fatTotalMesNum) : 0.012;
+                const aliqCsllProdPlanilha = fatTotalMesNum > 0 ? (csllTotProdMes / fatTotalMesNum) : 0.0108;
+
+                const pisCents = BigInt(Math.round((Number(fatEmpCents) / 100) * 0.0065 * 100));
+                const cofinsCents = BigInt(Math.round((Number(fatEmpCents) / 100) * 0.03 * 100));
+                const issCents = issTotalMesCents;
+
+                const irpjServMesCents = BigInt(Math.round((Number(servicosCents) / 100) * aliqIrpjServPlanilha * 100));
+                const irpjProdMesCents = BigInt(Math.round((Number(produtosCents) / 100) * aliqIrpjProdPlanilha * 100));
+                const irpjProvCents = irpjServMesCents + irpjProdMesCents;
+
+                const csllServMesCents = BigInt(Math.round((Number(servicosCents) / 100) * aliqCsllServPlanilha * 100));
+                const csllProdMesCents = BigInt(Math.round((Number(produtosCents) / 100) * aliqCsllProdPlanilha * 100));
+                const csllProvCents = csllServMesCents + csllProdMesCents;
+
+                impostoApuradoEmpCents = pisCents + cofinsCents + issCents + irpjProvCents + csllProvCents;
+
+                if (fatEmpCents > 0n) {
+                    cargaEfetivaTexto = `${(Number(impostoApuradoEmpCents) / Number(fatEmpCents) * 100).toFixed(2)}%`;
+                }
+
+                apuracaoPorEmpresaMap.set(emp.id, {
+                    totalFaturadoCents: fatEmpCents,
+                    totalImpostosCents: impostoApuradoEmpCents,
+                    cargaEfetivaTexto: cargaEfetivaTexto,
+                    aliqIrpjServPlanilha,
+                    aliqCsllServPlanilha,
+                    aliqIrpjProdPlanilha,
+                    aliqCsllProdPlanilha
+                });
+
+            } else {
+                // Simples Nacional: DZM / YBOX
+                const rbt12Calculado = await calcularRbt12RealEmpresa(emp.id, competenciaAtiva);
+                rbt12PorEmpresaMap.set(emp.id, rbt12Calculado);
+
+                let anexoEmp = 'anexo_iii';
+                let rbt12Emp = rbt12Calculado > 0 ? rbt12Calculado : 180000;
+
+                let fatSemIsencaoIssCents = 0n;
+                let fatComIsencaoIssCents = 0n;
+
+                docsEmp.forEach(d => {
+                    const td = d.tax_details || (window.BpoFiscalUtils ? window.BpoFiscalUtils.extrairTaxDetails(d) : {});
+                    if (td) {
+                        if (td.das_anexo) anexoEmp = td.das_anexo;
+                        if (rbt12Calculado <= 0 && td.das_rbt12) {
+                            rbt12Emp = Number(window.BpoMoney.toCents(td.das_rbt12)) / 100;
+                        }
+                    }
+                    const isLoc = (d.document_type === 'locacao') || !!(td && td.is_locacao);
+                    const isIsentoIss = isLoc || !!(td && td.iss_isento_simples);
+                    const valDoc = calcularFaturamentoTotalDoc(d, td);
+                    if (isIsentoIss) {
+                        fatComIsencaoIssCents += valDoc;
+                    } else {
+                        fatSemIsencaoIssCents += valDoc;
+                    }
+                });
+
+                const fatSemIsencaoNum = Number(fatSemIsencaoIssCents) / 100;
+                const fatComIsencaoNum = Number(fatComIsencaoIssCents) / 100;
+
+                const apuracaoSemIsencao = window.BpoTaxEngine.apurarSimplesNacional(rbt12Emp, fatSemIsencaoNum, anexoEmp, {
+                    issIsento: false
+                });
+
+                const apuracaoComIsencao = fatComIsencaoNum > 0
+                    ? window.BpoTaxEngine.apurarSimplesNacional(rbt12Emp, fatComIsencaoNum, anexoEmp, { issIsento: true })
+                    : { valorDas: 0, componentes: {} };
+
+                const dasSemIsencaoCents = BigInt(Math.round(apuracaoSemIsencao.valorDas * 100));
+                const dasComIsencaoCents = BigInt(Math.round(apuracaoComIsencao.valorDas * 100));
+                const dasCents = dasSemIsencaoCents + dasComIsencaoCents;
+
+                impostoApuradoEmpCents = dasCents;
+
+                if (fatEmpCents > 0n) {
+                    cargaEfetivaTexto = `${(Number(impostoApuradoEmpCents) / Number(fatEmpCents) * 100).toFixed(2)}%`;
+                }
+
+                apuracaoPorEmpresaMap.set(emp.id, {
+                    totalFaturadoCents: fatEmpCents,
+                    totalImpostosCents: impostoApuradoEmpCents,
+                    cargaEfetivaTexto: cargaEfetivaTexto,
+                    rbt12Real: rbt12Emp,
+                    anexoEmp: anexoEmp
+                });
+            }
+        }
+    }
+
+    // Retorna os valores faturado, imposto gerado e líquido exatamente como constam na apuração de impostos e faturamento
+    function extrairValoresDoc(doc, emp) {
+        const td = doc.tax_details || (window.BpoFiscalUtils ? window.BpoFiscalUtils.extrairTaxDetails(doc) : {});
+        const fatTotalCents = calcularFaturamentoTotalDoc(doc, td);
         const fatTotalNum = Number(fatTotalCents) / 100;
         const isLP = emp && emp.tax_regime === 'lucro_presumido';
+        const isLocacao = (doc.document_type === 'locacao') || !!(td && td.is_locacao);
+        const itemType = (td && td.item_type) || 'servico';
+        const issRetido = !!(td && td.iss_retained);
         const retCents = window.BpoMoney.toCents(doc.retentions);
-        const isLocacao = (doc.document_type === 'locacao') || !!(taxDetails && taxDetails.is_locacao);
-        const itemType = (taxDetails && taxDetails.item_type) || 'servico';
-        const issRetido = !!(taxDetails && taxDetails.iss_retained);
+
+        let tributosCents = 0n;
+        let retencaoExibicaoCents = 0n;
 
         if (isLP) {
-            // Lucro Presumido
-            const pisCents = (taxDetails && taxDetails.pis_valor != null)
-                ? window.BpoMoney.toCents(taxDetails.pis_valor)
+            const aliqIss = (td && td.iss_aliq !== undefined && td.iss_aliq !== null) ? Number(td.iss_aliq) : 3.0;
+
+            const pisCents = (td && td.pis_valor !== undefined && td.pis_valor !== null)
+                ? window.BpoMoney.toCents(td.pis_valor)
                 : BigInt(Math.round(fatTotalNum * 0.0065 * 100));
-            const cofinsCents = (taxDetails && taxDetails.cofins_valor != null)
-                ? window.BpoMoney.toCents(taxDetails.cofins_valor)
+
+            const cofinsCents = (td && td.cofins_valor !== undefined && td.cofins_valor !== null)
+                ? window.BpoMoney.toCents(td.cofins_valor)
                 : BigInt(Math.round(fatTotalNum * 0.03 * 100));
 
-            const aliqIss = (taxDetails && taxDetails.iss_aliq != null) ? Number(taxDetails.iss_aliq) : 3.0;
-            const issCents = !isLocacao
-                ? (taxDetails && taxDetails.iss_valor != null
-                    ? window.BpoMoney.toCents(taxDetails.iss_valor)
-                    : BigInt(Math.round(fatTotalNum * (aliqIss / 100) * 100)))
-                : 0n;
-
-            let irpjBrutoCents;
-            let csllCents;
-
-            if (taxDetails && taxDetails.irpj_valor !== undefined && taxDetails.irpj_valor !== null && String(taxDetails.irpj_valor).trim() !== '') {
-                irpjBrutoCents = window.BpoMoney.toCents(taxDetails.irpj_valor);
-            } else {
-                const aliqIrpj = itemType === 'produto' ? 0.012 : 0.048;
-                irpjBrutoCents = BigInt(Math.round(fatTotalNum * aliqIrpj * 100));
+            let issCents = 0n;
+            if (itemType === 'produto') {
+                issCents = (td && td.iss_valor !== undefined && td.iss_valor !== null)
+                    ? window.BpoMoney.toCents(td.iss_valor)
+                    : BigInt(Math.round(fatTotalNum * (aliqIss / 100) * 100));
+            } else if (itemType === 'servico' && !isLocacao) {
+                issCents = BigInt(Math.round(fatTotalNum * (aliqIss / 100) * 100));
             }
 
-            if (taxDetails && taxDetails.csll_valor !== undefined && taxDetails.csll_valor !== null && String(taxDetails.csll_valor).trim() !== '') {
-                csllCents = window.BpoMoney.toCents(taxDetails.csll_valor);
-            } else {
-                const aliqCsll = itemType === 'produto' ? 0.0108 : 0.0288;
-                csllCents = BigInt(Math.round(fatTotalNum * aliqCsll * 100));
-            }
+            const apuracaoEmp = apuracaoPorEmpresaMap.get(doc.company_id);
+            const aliqIrpjSugerida = apuracaoEmp
+                ? (itemType === 'produto' ? apuracaoEmp.aliqIrpjProdPlanilha : apuracaoEmp.aliqIrpjServPlanilha)
+                : (itemType === 'produto' ? 0.012 : 0.048);
+            const aliqCsllSugerida = apuracaoEmp
+                ? (itemType === 'produto' ? apuracaoEmp.aliqCsllProdPlanilha : apuracaoEmp.aliqCsllServPlanilha)
+                : (itemType === 'produto' ? 0.0108 : 0.0288);
 
-            // IRRF retido do documento
+            let irpjBrutoCents = (td && td.irpj_valor !== undefined && td.irpj_valor !== null && String(td.irpj_valor).trim() !== '')
+                ? window.BpoMoney.toCents(td.irpj_valor)
+                : BigInt(Math.round(fatTotalNum * aliqIrpjSugerida * 100));
+
+            let csllCents = (td && td.csll_valor !== undefined && td.csll_valor !== null && String(td.csll_valor).trim() !== '')
+                ? window.BpoMoney.toCents(td.csll_valor)
+                : BigInt(Math.round(fatTotalNum * aliqCsllSugerida * 100));
+
             let irrfDocCents = 0n;
-            if (taxDetails && taxDetails.has_irrf) {
-                const aliqIrrf = (taxDetails.irrf_aliq != null) ? Number(taxDetails.irrf_aliq) : (itemType === 'produto' ? 1.2 : 4.8);
+            if (td && td.has_irrf) {
+                const aliqIrrf = (td.irrf_aliq !== undefined && td.irrf_aliq !== null)
+                    ? Number(td.irrf_aliq)
+                    : (itemType === 'produto' ? 1.2 : 4.8);
                 irrfDocCents = BigInt(Math.round(fatTotalNum * (aliqIrrf / 100) * 100));
             } else if (retCents > 0n && !issRetido) {
                 irrfDocCents = retCents;
@@ -308,79 +514,62 @@
                 irrfDocCents = retCents > issCents ? (retCents - issCents) : 0n;
             }
 
-            const irpjLiqCents = irpjBrutoCents > irrfDocCents ? (irpjBrutoCents - irrfDocCents) : 0n;
+            const irpjCents = irpjBrutoCents > irrfDocCents ? (irpjBrutoCents - irrfDocCents) : 0n;
+            retencaoExibicaoCents = irrfDocCents;
 
-            // Total do Imposto Gerado pelo lançamento
-            const impostoGeradoCents = pisCents + cofinsCents + issCents + irpjBrutoCents + csllCents;
+            tributosCents = pisCents + cofinsCents + issCents + irpjCents + csllCents + retencaoExibicaoCents;
 
-            // Líquido Econômico do Faturamento
-            const deducoesTotais = pisCents + cofinsCents + issCents + irpjLiqCents + csllCents + irrfDocCents;
-            const liquidoCents = fatTotalCents > deducoesTotais ? (fatTotalCents - deducoesTotais) : 0n;
+            const deducoesTotais = tributosCents;
+            const liquidoDocCents = fatTotalCents > deducoesTotais ? (fatTotalCents - deducoesTotais) : 0n;
 
             return {
                 faturadoCents: fatTotalCents,
-                impostoCents: impostoGeradoCents,
-                liquidoCents: liquidoCents
+                impostoCents: tributosCents,
+                liquidoCents: liquidoDocCents
             };
-        } else {
-            // Simples Nacional: DAS proporcional
-            const anexoKey = (taxDetails && taxDetails.das_anexo) || 'anexo_iii';
-            const issIsento = isLocacao || !!(taxDetails && taxDetails.iss_isento_simples);
-            const rbt12Num = (taxDetails && taxDetails.das_rbt12)
-                ? Number(window.BpoMoney.toCents(taxDetails.das_rbt12)) / 100
-                : 180000;
 
-            let aliquotaDas = 0.06;
+        } else {
+            // Simples Nacional
+            const anexoKey = (td && td.das_anexo) ? td.das_anexo : 'anexo_iii';
+            const issIsento = isLocacao || !!(td && td.iss_isento_simples);
+            const rbt12Real = rbt12PorEmpresaMap.get(doc.company_id) || 0;
+            const rbt12Num = rbt12Real > 0 
+                ? rbt12Real 
+                : ((td && td.das_rbt12) ? Number(window.BpoMoney.toCents(td.das_rbt12)) / 100 : 180000);
+
+            let aliqDasEfetiva = 0.06;
             if (window.BpoTaxEngine) {
-                try {
-                    const apuracao = window.BpoTaxEngine.apurarSimplesNacional(rbt12Num, fatTotalNum, anexoKey, {
-                        issRetidoTomador: issRetido,
-                        issIsento: issIsento
-                    });
-                    aliquotaDas = apuracao.aliquotaEfetivaNumero || 0.06;
-                } catch (e) {
-                    aliquotaDas = 0.06;
-                }
+                const previaSN = window.BpoTaxEngine.apurarSimplesNacional(rbt12Num, fatTotalNum, anexoKey, {
+                    issIsento: issIsento
+                });
+                aliqDasEfetiva = previaSN.aliquotaEfetivaNumero || 0.06;
             }
 
-            const impostoGeradoCents = BigInt(Math.round(fatTotalNum * aliquotaDas * 100));
-            const deducoesTotais = impostoGeradoCents + retCents;
-            const liquidoCents = fatTotalCents > deducoesTotais ? (fatTotalCents - deducoesTotais) : 0n;
+            retencaoExibicaoCents = retCents;
+            tributosCents = BigInt(Math.round(fatTotalNum * aliqDasEfetiva * 100));
+
+            const deducoesTotais = tributosCents + retencaoExibicaoCents;
+            const liquidoDocCents = fatTotalCents > deducoesTotais ? (fatTotalCents - deducoesTotais) : 0n;
 
             return {
                 faturadoCents: fatTotalCents,
-                impostoCents: impostoGeradoCents,
-                liquidoCents: liquidoCents
+                impostoCents: tributosCents,
+                liquidoCents: liquidoDocCents
             };
         }
     }
 
     // =========================================================================
-    // 1. CARDS SUPERIORES: ALÍQUOTA EFETIVA POR EMPRESA
+    // 1. CARDS SUPERIORES: ALÍQUOTA EFETIVA OFICIAL DO MÓDULO DE IMPOSTOS
     // =========================================================================
     function renderizarCardsSuperiores() {
         if (!containerCardsEmpresas) return;
 
-        const coresEmpresas = ['#3b82f6', '#10b981', '#f59e0b', '#a855f7'];
+        const coresEmpresas = ['#38bdf8', '#10b981', '#f59e0b', '#a855f7'];
 
         const cardsHtml = empresas.map((emp, idx) => {
-            const docsEmp = documentosCompetencia.filter(d => d.company_id === emp.id);
-
-            let totalFaturadoCents = 0n;
-            let totalImpostosCents = 0n;
-
-            docsEmp.forEach(d => {
-                const res = calcularTributosELiquidoDoc(d, emp);
-                totalFaturadoCents += res.faturadoCents;
-                totalImpostosCents += res.impostoCents;
-            });
-
-            let aliquotaTexto = 'Sem faturamento';
-            if (totalFaturadoCents > 0n) {
-                const aliq = (Number(totalImpostosCents) / Number(totalFaturadoCents) * 100).toFixed(2);
-                aliquotaTexto = `${aliq}%`;
-            }
-
+            const apuracao = apuracaoPorEmpresaMap.get(emp.id);
+            const aliquotaTexto = apuracao ? apuracao.cargaEfetivaTexto : 'Sem faturamento';
             const cor = coresEmpresas[idx % coresEmpresas.length];
 
             return `
@@ -403,14 +592,14 @@
     }
 
     // =========================================================================
-    // 2. EXTRAÇÃO E FILTRAGEM DE ITENS PARA O COVERFLOW
+    // 2. EXTRAÇÃO E FILTRAGEM DOS CARDS
     // =========================================================================
     function extrairContratosFaturados() {
         const itens = [];
         documentosCompetencia.forEach(d => {
             const emp = companiesMap.get(d.company_id);
             const ctr = contratosMap.get(d.contract_id);
-            const res = calcularTributosELiquidoDoc(d, emp);
+            const res = extrairValoresDoc(d, emp);
 
             const nomeEmpresa = emp ? (emp.trade_name || emp.name) : 'Empresa';
             const nomeContrato = ctr 
@@ -430,21 +619,18 @@
             });
         });
 
-        // Ordena por maior valor faturado
         itens.sort((a, b) => (b.faturadoCents > a.faturadoCents ? 1 : -1));
         return itens;
     }
 
-    // Identifica títulos vencidos em aberto (Inadimplências) usando a lógica do Faturamento
     function extrairInadimplencias() {
         const itens = [];
         const hojeStr = new Date().toISOString().split('T')[0];
 
         todosDocumentos.forEach(d => {
             if (d.status === 'cancelled') return;
-            if (!d.due_date || d.due_date >= hojeStr) return; // Apenas vencidos antes de hoje
+            if (!d.due_date || d.due_date >= hojeStr) return;
 
-            // Verifica recebimentos
             const docRecs = receiptsMap.get(d.id) || [];
             const totalRecebidoCents = docRecs.reduce((acc, r) => acc + window.BpoMoney.toCents(r.gross_amount), 0n);
             const liqEsperadoCents = window.BpoMoney.toCents(d.net_amount);
@@ -454,9 +640,8 @@
 
             const emp = companiesMap.get(d.company_id);
             const ctr = contratosMap.get(d.contract_id);
-            const res = calcularTributosELiquidoDoc(d, emp);
+            const res = extrairValoresDoc(d, emp);
 
-            // Saldo faturado devedor
             let saldoFaturadoCents = res.faturadoCents;
             if (totalRecebidoCents > 0n) {
                 saldoFaturadoCents = res.faturadoCents > totalRecebidoCents ? (res.faturadoCents - totalRecebidoCents) : 0n;
@@ -481,19 +666,16 @@
             });
         });
 
-        // Ordena por vencimento / maior valor
         itens.sort((a, b) => (b.faturadoCents > a.faturadoCents ? 1 : -1));
         return itens;
     }
 
-    function montarCardsCoverflow() {
+    function montarCardsCarrossel() {
         if (modoAtual === 'contratos') {
             cardsParaExibir = extrairContratosFaturados();
         } else {
-            // Modo Inadimplência: aplica filtros e seleção manual
             listaInadimplenciaTotal = extrairInadimplencias();
 
-            // Se ainda não inicializou os IDs selecionados, seleciona todos inicialmente
             if (idsInadimplenciaSelecionados.size === 0 && listaInadimplenciaTotal.length > 0) {
                 listaInadimplenciaTotal.forEach(item => idsInadimplenciaSelecionados.add(item.id));
             }
@@ -503,19 +685,14 @@
             const buscaFiltro = (filtroBuscaContrato.value || '').trim().toLowerCase();
 
             cardsParaExibir = listaInadimplenciaTotal.filter(item => {
-                // Filtro por seleção manual
                 if (!idsInadimplenciaSelecionados.has(item.id)) return false;
-
-                // Filtro Empresa
                 if (empFiltro !== 'all' && item.company_id !== empFiltro) return false;
 
-                // Filtro Faixa de Valor
                 const valorNum = Number(item.faturadoCents) / 100;
                 if (faixaFiltro === 'ate_5k' && valorNum > 5000) return false;
                 if (faixaFiltro === '5k_20k' && (valorNum <= 5000 || valorNum > 20000)) return false;
                 if (faixaFiltro === 'acima_20k' && valorNum <= 20000) return false;
 
-                // Busca textual
                 if (buscaFiltro) {
                     const texto = `${item.contratoNome} ${item.empresaNome} ${item.subtitulo}`.toLowerCase();
                     if (!texto.includes(buscaFiltro)) return false;
@@ -533,18 +710,25 @@
             cardAtivoIndex = Math.max(0, cardsParaExibir.length - 1);
         }
 
-        renderizarCoverflow();
+        renderizarCarrosselOctogonal();
     }
 
     // =========================================================================
-    // 3. RENDERIZAÇÃO DO CARROSSEL COVERFLOW 3D EM PERSPECTIVA
+    // 3. CARROSSEL 3D EM FORMATO DE OCTÓGONO ESPAÇADO
+    // Um octógono regular possui 8 lados e ângulos de 45° (360° / 8).
+    // Para que os cards de 380px fiquem com folga/espaçamento sem se encostar,
+    // o raio do cilindro apótema precisa ser aumentado: R = (largura / (2 * tan(22.5°))) + GAP.
+    // Largura = 380px => apótema mínimo colado = 458px. Com folga elegante: 560px.
     // =========================================================================
-    function renderizarCoverflow() {
-        if (!coverflowContainer) return;
+    const RAIO_OCTOGONO_PX = 560; // Espaçamento confortável que impede sobreposição física dos cards
+    const ANGULO_PASSO = 45; // 360 / 8 = 45 graus por face do octógono
+
+    function renderizarCarrosselOctogonal() {
+        if (!coverflowCarousel3D) return;
 
         if (cardsParaExibir.length === 0) {
-            coverflowContainer.innerHTML = `
-                <div style="text-align:center; color:var(--text-muted); padding:40px;">
+            coverflowCarousel3D.innerHTML = `
+                <div style="text-align:center; color:var(--text-muted); padding:40px; position:absolute; width:100%; top:20%;">
                     <div style="font-size:2.5rem; margin-bottom:12px;">📂</div>
                     <p style="font-size:1.05rem; font-weight:600; color:#fff;">Nenhum item disponível para exibição</p>
                     <p style="font-size:0.85rem;">Não foram encontrados ${modoAtual === 'contratos' ? 'contratos faturados na competência selecionada' : 'títulos inadimplentes com os filtros atuais'}.</p>
@@ -554,9 +738,12 @@
             return;
         }
 
-        coverflowContainer.innerHTML = cardsParaExibir.map((item, idx) => {
+        coverflowCarousel3D.innerHTML = cardsParaExibir.map((item, idx) => {
+            const anguloCard = idx * ANGULO_PASSO;
+            const transformInicial = `rotateY(${anguloCard}deg) translateZ(${RAIO_OCTOGONO_PX}px)`;
+
             return `
-                <div class="coverflow-card" data-index="${idx}">
+                <div class="coverflow-card ${idx === cardAtivoIndex ? 'active-card' : 'inactive-card'}" data-index="${idx}" style="transform: ${transformInicial};">
                     <div>
                         <div class="card-header-badge">
                             <span class="card-empresa-tag">${escapeHtml(item.empresaNome)}</span>
@@ -586,61 +773,36 @@
             `;
         }).join('');
 
-        // Adiciona clique aos cards para navegação direta
-        coverflowContainer.querySelectorAll('.coverflow-card').forEach(el => {
+        coverflowCarousel3D.querySelectorAll('.coverflow-card').forEach(el => {
             el.addEventListener('click', () => {
                 const idx = parseInt(el.dataset.index, 10);
                 if (!isNaN(idx) && idx !== cardAtivoIndex) {
                     cardAtivoIndex = idx;
-                    atualizarTransformacoesCoverflow();
+                    girarCarrosselOctogonal();
                 }
             });
         });
 
-        atualizarTransformacoesCoverflow();
+        girarCarrosselOctogonal();
     }
 
-    function atualizarTransformacoesCoverflow() {
-        const cards = coverflowContainer.querySelectorAll('.coverflow-card');
-        const total = cards.length;
+    function girarCarrosselOctogonal() {
+        const total = cardsParaExibir.length;
         if (total === 0) return;
 
+        // Rotaciona o palco octogonal para trazer o card selecionado exatamente para o ponto central frontal (0deg / translateZ)
+        const anguloAlvo = -(cardAtivoIndex * ANGULO_PASSO);
+        coverflowCarousel3D.style.transform = `translateZ(-${RAIO_OCTOGONO_PX}px) rotateY(${anguloAlvo}deg)`;
+
+        // Atualiza classes active/inactive para destaque de brilho
+        const cards = coverflowCarousel3D.querySelectorAll('.coverflow-card');
         cards.forEach((card, idx) => {
-            const diff = idx - cardAtivoIndex;
-
-            if (diff === 0) {
-                // Card Central em Destaque
-                card.className = 'coverflow-card center';
-                card.style.transform = `translateX(0px) translateZ(120px) rotateY(0deg) scale(1.05)`;
-                card.style.zIndex = '50';
-                card.style.opacity = '1';
-                card.style.filter = 'none';
-            } else if (diff < 0) {
-                // Cards à Esquerda (inclinados para a direita, rotacionados em Y)
-                const distance = Math.abs(diff);
-                const xOffset = -220 - (distance - 1) * 75;
-                const zOffset = -100 - (distance - 1) * 60;
-                const rotY = Math.min(45 + (distance - 1) * 5, 65);
-                const opacity = Math.max(0.2, 0.9 - distance * 0.18);
-
-                card.className = 'coverflow-card left';
-                card.style.transform = `translateX(${xOffset}px) translateZ(${zOffset}px) rotateY(${rotY}deg) scale(${Math.max(0.75, 0.9 - distance * 0.05)})`;
-                card.style.zIndex = `${50 - distance}`;
-                card.style.opacity = `${opacity}`;
-                card.style.filter = `brightness(${Math.max(0.4, 0.8 - distance * 0.1)})`;
+            if (idx === cardAtivoIndex) {
+                card.classList.add('active-card');
+                card.classList.remove('inactive-card');
             } else {
-                // Cards à Direita (inclinados para a esquerda, rotacionados em Y negativo)
-                const distance = Math.abs(diff);
-                const xOffset = 220 + (distance - 1) * 75;
-                const zOffset = -100 - (distance - 1) * 60;
-                const rotY = -Math.min(45 + (distance - 1) * 5, 65);
-                const opacity = Math.max(0.2, 0.9 - distance * 0.18);
-
-                card.className = 'coverflow-card right';
-                card.style.transform = `translateX(${xOffset}px) translateZ(${zOffset}px) rotateY(${rotY}deg) scale(${Math.max(0.75, 0.9 - distance * 0.05)})`;
-                card.style.zIndex = `${50 - distance}`;
-                card.style.opacity = `${opacity}`;
-                card.style.filter = `brightness(${Math.max(0.4, 0.8 - distance * 0.1)})`;
+                card.classList.remove('active-card');
+                card.classList.add('inactive-card');
             }
         });
 
@@ -649,13 +811,17 @@
         }
     }
 
-    function navegarCoverflow(direcao) {
+    function navegarCarrossel(direcao) {
         if (cardsParaExibir.length === 0) return;
-        const novoIdx = cardAtivoIndex + direcao;
-        if (novoIdx >= 0 && novoIdx < cardsParaExibir.length) {
-            cardAtivoIndex = novoIdx;
-            atualizarTransformacoesCoverflow();
-        }
+        const total = cardsParaExibir.length;
+        let novoIdx = cardAtivoIndex + direcao;
+
+        // Navegação circular contínua pelo octógono
+        if (novoIdx < 0) novoIdx = total - 1;
+        else if (novoIdx >= total) novoIdx = 0;
+
+        cardAtivoIndex = novoIdx;
+        girarCarrosselOctogonal();
     }
 
     // =========================================================================
@@ -694,12 +860,12 @@
 
         fecharModalInadimplencias();
         cardAtivoIndex = 0;
-        montarCardsCoverflow();
+        montarCardsCarrossel();
     }
 
     function processarDados() {
         renderizarCardsSuperiores();
-        montarCardsCoverflow();
+        montarCardsCarrossel();
     }
 
     function formatarData(dataStr) {

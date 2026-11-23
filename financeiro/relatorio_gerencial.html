@@ -143,13 +143,14 @@
             font-size: 0.85rem;
         }
 
-        /* Carrossel Coverflow 3D em Perspectiva */
+        /* Palco Carrossel 3D em Octógono */
         .coverflow-stage {
             position: relative;
             width: 100%;
-            min-height: 480px;
-            padding: 40px 10px 30px;
-            perspective: 1200px;
+            min-height: 540px;
+            padding: 30px 10px 40px;
+            perspective: 1400px;
+            perspective-origin: 50% 50%;
             overflow: hidden;
             display: flex;
             flex-direction: column;
@@ -157,40 +158,51 @@
             justify-content: center;
         }
 
-        .coverflow-container {
+        .coverflow-carousel-3d {
             position: relative;
-            width: 100%;
+            width: 380px;
             height: 400px;
             transform-style: preserve-3d;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            transition: transform 0.65s cubic-bezier(0.2, 0.85, 0.4, 1.05);
         }
 
         .coverflow-card {
             position: absolute;
-            width: 360px;
-            height: 380px;
+            top: 0;
+            left: 0;
+            width: 380px;
+            height: 400px;
             background: linear-gradient(160deg, #1e293b 0%, #0f172a 100%);
             border: 1px solid rgba(255, 255, 255, 0.12);
             border-radius: 20px;
             padding: 26px 24px;
-            box-shadow: 0 25px 40px -10px rgba(0, 0, 0, 0.6), 0 0 15px rgba(59, 130, 246, 0.1);
-            transition: transform 0.45s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.45s ease, filter 0.45s ease, box-shadow 0.45s ease;
-            transform-origin: center center;
+            box-shadow: 0 20px 35px -5px rgba(0, 0, 0, 0.6), 0 0 15px rgba(59, 130, 246, 0.1);
             user-select: none;
             cursor: pointer;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
             box-sizing: border-box;
-            backdrop-filter: blur(8px);
+            backdrop-filter: blur(10px);
+            backface-visibility: hidden;
+            transition: border-color 0.3s ease, box-shadow 0.3s ease, filter 0.3s ease, opacity 0.3s ease;
         }
 
-        .coverflow-card.center {
+        .coverflow-card.active-card {
+            border-color: rgba(59, 130, 246, 0.8);
+            box-shadow: 0 25px 50px -5px rgba(0, 0, 0, 0.85), 0 0 25px rgba(59, 130, 246, 0.4);
+            filter: brightness(1.08);
             cursor: default;
-            border-color: rgba(59, 130, 246, 0.55);
-            box-shadow: 0 30px 50px -10px rgba(0, 0, 0, 0.8), 0 0 25px rgba(59, 130, 246, 0.35);
+        }
+
+        .coverflow-card.inactive-card {
+            filter: brightness(0.65);
+            opacity: 0.88;
+        }
+
+        .coverflow-card.inactive-card:hover {
+            filter: brightness(0.85);
+            opacity: 1;
         }
 
         .coverflow-nav-btn {
@@ -200,8 +212,8 @@
             background: rgba(15, 23, 42, 0.85);
             border: 1px solid rgba(255, 255, 255, 0.15);
             color: #fff;
-            width: 50px;
-            height: 50px;
+            width: 52px;
+            height: 52px;
             border-radius: 50%;
             display: flex;
             align-items: center;
@@ -267,7 +279,7 @@
             display: flex;
             flex-direction: column;
             gap: 12px;
-            background: rgba(0, 0, 0, 0.3);
+            background: rgba(0, 0, 0, 0.35);
             padding: 16px;
             border-radius: 12px;
             border: 1px solid rgba(255, 255, 255, 0.05);
@@ -302,13 +314,14 @@
         }
 
         .coverflow-counter {
-            margin-top: 20px;
+            margin-top: 24px;
             color: var(--text-muted);
             font-size: 0.85rem;
             font-weight: 600;
             display: flex;
             align-items: center;
             gap: 8px;
+            z-index: 10;
         }
 
         /* Modal / Gaveta de Seleção de Inadimplências */
@@ -352,7 +365,7 @@
                 <div class="brand-logo" style="background: linear-gradient(135deg, #a855f7, #6366f1);">10</div>
                 <div>
                     <h1 class="brand-title">Relatório Gerencial</h1>
-                    <div class="brand-subtitle">Alíquotas Efetivas • Carrossel Coverflow 3D • Contratos &amp; Inadimplências</div>
+                    <div class="brand-subtitle">Alíquotas Efetivas Oficiais • Carrossel Octogonal 3D • Contratos &amp; Inadimplências</div>
                 </div>
             </a>
         </div>
@@ -420,14 +433,15 @@
             </div>
         </div>
 
-        <!-- 2. Carrossel Coverflow 3D em Perspectiva -->
+        <!-- 2. Carrossel Octogonal 3D em Perspectiva -->
         <section class="finance-card" style="padding: 10px 0; background: transparent; border: none; box-shadow: none;">
             <div class="coverflow-stage" id="coverflowStage">
                 <button type="button" class="coverflow-nav-btn prev" id="btnCoverflowPrev" title="Anterior (Seta Esquerda)">&#10094;</button>
                 <button type="button" class="coverflow-nav-btn next" id="btnCoverflowNext" title="Próximo (Seta Direita)">&#10095;</button>
 
-                <div class="coverflow-container" id="coverflowContainer">
-                    <!-- Cards 3D renderizados dinamicamente -->
+                <!-- Octógono 3D -->
+                <div class="coverflow-carousel-3d" id="coverflowCarousel3D">
+                    <!-- Cards octogonais gerados dinamicamente -->
                 </div>
 
                 <div class="coverflow-counter" id="coverflowCounter">
