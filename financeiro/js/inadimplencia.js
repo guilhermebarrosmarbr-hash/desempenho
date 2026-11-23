@@ -366,11 +366,16 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             try {
                 const recs = await window.BpoSupabase.request('receipts?order=receipt_date.asc', { method: 'GET' }) || [];
                 recs.forEach(r => {
-                    if (r.external_id) {
-                        if (!receiptsByDocMap.has(r.external_id)) {
-                            receiptsByDocMap.set(r.external_id, []);
+                    let docRelacionadoId = r.external_id || null;
+                    if (!docRelacionadoId && r.notes) {
+                        const m = r.notes.match(/\[doc_id:\s*([a-f0-9\-]+)\]/i);
+                        if (m) docRelacionadoId = m[1];
+                    }
+                    if (docRelacionadoId) {
+                        if (!receiptsByDocMap.has(docRelacionadoId)) {
+                            receiptsByDocMap.set(docRelacionadoId, []);
                         }
-                        receiptsByDocMap.get(r.external_id).push(r);
+                        receiptsByDocMap.get(docRelacionadoId).push(r);
                     }
                 });
             } catch (e) {

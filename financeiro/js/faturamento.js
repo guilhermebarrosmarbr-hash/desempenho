@@ -332,11 +332,17 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 }
                 const recs = await window.BpoSupabase.request(queryRecs, { method: 'GET' });
                 recs.forEach(r => {
-                    if (r.external_id) {
-                        if (!receiptsByDocMap.has(r.external_id)) {
-                            receiptsByDocMap.set(r.external_id, []);
+                    // Extrai ID do documento associado (external_id ou via tag [doc_id:...] em notes)
+                    let docRelacionadoId = r.external_id || null;
+                    if (!docRelacionadoId && r.notes) {
+                        const m = r.notes.match(/\[doc_id:\s*([a-f0-9\-]+)\]/i);
+                        if (m) docRelacionadoId = m[1];
+                    }
+                    if (docRelacionadoId) {
+                        if (!receiptsByDocMap.has(docRelacionadoId)) {
+                            receiptsByDocMap.set(docRelacionadoId, []);
                         }
-                        receiptsByDocMap.get(r.external_id).push(r);
+                        receiptsByDocMap.get(docRelacionadoId).push(r);
                     }
                 });
             } catch (e) {
@@ -2020,15 +2026,16 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             const idDocSalvo = (savedDoc && savedDoc.id) ? savedDoc.id : docId;
             if (dataRecebimento && idDocSalvo) {
                 try {
-                    const existingRecs = await window.BpoSupabase.request(`receipts?external_id=eq.${idDocSalvo}`, { method: 'GET' });
+                    // Busca por notes [doc_id:...]
+                    const existingRecs = await window.BpoSupabase.request(`receipts?notes=like.*[doc_id:${idDocSalvo}]*`, { method: 'GET' });
                     // F03: Se já existem recibos parciais gravados, não sobrescreve destrutivamente
                     if (!existingRecs || existingRecs.length === 0) {
                         const recPayload = {
                             company_id: companyId,
-                            external_id: idDocSalvo,
                             receipt_date: dataRecebimento,
                             gross_amount: window.BpoMoney.toDecimalString(liqCents),
                             account: 'conta_padrao',
+                            notes: `[doc_id:${idDocSalvo}]`,
                             idempotency_key: `rec_sync_${idDocSalvo}_${dataRecebimento}`
                         };
                         await window.BpoSupabase.request('receipts', {
@@ -2042,11 +2049,13 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             } else if (!dataRecebimento && docId) {
                 // F03: Não apaga recibos históricos se a data de recebimento for limpa sem confirmação
                 try {
-                    const existingRecs = await window.BpoSupabase.request(`receipts?external_id=eq.${docId}`, { method: 'GET' });
+                    const existingRecs = await window.BpoSupabase.request(`receipts?notes=like.*[doc_id:${docId}]*`, { method: 'GET' });
                     if (existingRecs && existingRecs.length > 0) {
                         const confirmar = confirm(`Este documento possui ${existingRecs.length} recibo(s) registrado(s) no caixa. Deseja realmente remover o histórico de recebimentos?`);
                         if (confirmar) {
-                            await window.BpoSupabase.request(`receipts?external_id=eq.${docId}`, { method: 'DELETE' });
+                            for (const er of existingRecs) {
+                                await window.BpoSupabase.request(`receipts?id=eq.${er.id}`, { method: 'DELETE' });
+                            }
                         }
                     }
                 } catch (_) {}
@@ -2148,15 +2157,15 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 })
             });
 
-            // 2. Grava um novo recebimento na tabela receipts (SEM A COLUNA 'amount') com chave idempotente
+            // 2. Grava um novo recebimento na tabela receipts com chave idempotente e vinculo via notes
             const contaBancaria = document.getElementById('recConta')?.value || 'conta_padrao';
             const idempotencyKey = `rec_${docId}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
             const recPayload = {
                 company_id: doc.company_id,
-                external_id: docId,
                 receipt_date: recData,
                 gross_amount: window.BpoMoney.toDecimalString(recValorCents),
                 account: contaBancaria,
+                notes: `[doc_id:${docId}]`,
                 idempotency_key: idempotencyKey
             };
 
@@ -2313,7 +2322,12 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         try {
             // Remove recibos vinculados se existirem
             try {
-                await window.BpoSupabase.request(`receipts?external_id=eq.${docId}`, { method: 'DELETE' });
+                const existingRecs = await window.BpoSupabase.request(`receipts?notes=like.*[doc_id:${docId}]*`, { method: 'GET' });
+                if (existingRecs && existingRecs.length > 0) {
+                    for (const er of existingRecs) {
+                        await window.BpoSupabase.request(`receipts?id=eq.${er.id}`, { method: 'DELETE' });
+                    }
+                }
             } catch (_) {}
 
             // Remove o documento
