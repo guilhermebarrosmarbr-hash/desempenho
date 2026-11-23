@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Módulo 10 — Relatório Gerencial</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        .layout-container {
+            max-width: 98% !important;
+            width: 98% !important;
+            padding: 24px 16px !important;
+        }
+
+        /* Controles Superiores */
+        .toolbar-gerencial {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+            background: rgba(17, 24, 39, 0.7);
+            border: 1px solid var(--border-color);
+            padding: 14px 20px;
+            border-radius: 12px;
+        }
+
+        .tabs-switcher {
+            display: inline-flex;
+            background: rgba(0, 0, 0, 0.35);
+            padding: 4px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            gap: 4px;
+        }
+
+        .tab-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            padding: 8px 18px;
+            border-radius: 8px;
+            font-size: 0.88rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .tab-btn:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .tab-btn.active {
+            background: var(--color-primary, #3b82f6);
+            color: #fff;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+
+        /* Cards Superiores das Empresas */
+        .cards-empresas-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-bottom: 28px;
+        }
+
+        .card-empresa-stat {
+            background: linear-gradient(145deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.9));
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 14px;
+            padding: 20px 24px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+            transition: transform 0.2s ease, border-color 0.2s ease;
+        }
+
+        .card-empresa-stat:hover {
+            transform: translateY(-2px);
+            border-color: rgba(59, 130, 246, 0.4);
+        }
+
+        .card-empresa-stat::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: var(--accent-color, #3b82f6);
+        }
+
+        .card-empresa-nome {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .card-empresa-aliq-label {
+            font-size: 0.76rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+
+        .card-empresa-aliq-val {
+            font-size: 1.7rem;
+            font-weight: 800;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--accent-color, #38bdf8);
+        }
+
+        /* Barra de Filtros e Seleção */
+        .filtro-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            padding: 12px 18px;
+            border-radius: 10px;
+            margin-bottom: 24px;
+        }
+
+        .filtro-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+        }
+
+        /* Carrossel Coverflow 3D em Perspectiva */
+        .coverflow-stage {
+            position: relative;
+            width: 100%;
+            min-height: 480px;
+            padding: 40px 10px 30px;
+            perspective: 1200px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .coverflow-container {
+            position: relative;
+            width: 100%;
+            height: 400px;
+            transform-style: preserve-3d;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .coverflow-card {
+            position: absolute;
+            width: 360px;
+            height: 380px;
+            background: linear-gradient(160deg, #1e293b 0%, #0f172a 100%);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 20px;
+            padding: 26px 24px;
+            box-shadow: 0 25px 40px -10px rgba(0, 0, 0, 0.6), 0 0 15px rgba(59, 130, 246, 0.1);
+            transition: transform 0.45s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.45s ease, filter 0.45s ease, box-shadow 0.45s ease;
+            transform-origin: center center;
+            user-select: none;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            box-sizing: border-box;
+            backdrop-filter: blur(8px);
+        }
+
+        .coverflow-card.center {
+            cursor: default;
+            border-color: rgba(59, 130, 246, 0.55);
+            box-shadow: 0 30px 50px -10px rgba(0, 0, 0, 0.8), 0 0 25px rgba(59, 130, 246, 0.35);
+        }
+
+        .coverflow-nav-btn {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #fff;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 100;
+            font-size: 1.4rem;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+
+        .coverflow-nav-btn:hover {
+            background: var(--color-primary, #3b82f6);
+            border-color: var(--color-primary, #3b82f6);
+            transform: translateY(-50%) scale(1.08);
+        }
+
+        .coverflow-nav-btn.prev {
+            left: 20px;
+        }
+
+        .coverflow-nav-btn.next {
+            right: 20px;
+        }
+
+        .card-header-badge {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 14px;
+        }
+
+        .card-empresa-tag {
+            font-size: 0.78rem;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 6px;
+            background: rgba(59, 130, 246, 0.15);
+            color: #60a5fa;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            text-transform: uppercase;
+        }
+
+        .card-contrato-title {
+            font-size: 1.15rem;
+            font-weight: 800;
+            color: #fff;
+            line-height: 1.3;
+            margin-bottom: 6px;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+        }
+
+        .card-contrato-sub {
+            font-size: 0.82rem;
+            color: var(--text-muted);
+            margin-bottom: 20px;
+        }
+
+        .card-metricas-trio {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 16px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .metrica-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .metrica-label {
+            font-size: 0.82rem;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .metrica-val {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.05rem;
+            font-weight: 700;
+        }
+
+        .val-faturado { color: #f8fafc; }
+        .val-imposto { color: #f59e0b; }
+        .val-liquido { color: #10b981; }
+
+        /* Ocultação de valores */
+        .blur-values .metrica-val {
+            filter: blur(6px);
+            user-select: none;
+        }
+
+        .coverflow-counter {
+            margin-top: 20px;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Modal / Gaveta de Seleção de Inadimplências */
+        .modal-checklist {
+            max-height: 380px;
+            overflow-y: auto;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.25);
+            padding: 8px;
+            margin-top: 12px;
+        }
+
+        .checklist-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.15s ease;
+            font-size: 0.85rem;
+        }
+
+        .checklist-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .checklist-item input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <!-- Top Navbar -->
+    <header class="top-navbar">
+        <div class="brand-section">
+            <a href="../index.html" style="text-decoration: none; display: flex; align-items: center; gap: 12px;">
+                <div class="brand-logo" style="background: linear-gradient(135deg, #a855f7, #6366f1);">10</div>
+                <div>
+                    <h1 class="brand-title">Relatório Gerencial</h1>
+                    <div class="brand-subtitle">Alíquotas Efetivas • Carrossel Coverflow 3D • Contratos &amp; Inadimplências</div>
+                </div>
+            </a>
+        </div>
+
+        <div class="company-selector-bar">
+            <div>
+                <label for="inputCompetencia" style="font-size: 0.75rem; color: var(--text-muted); display: block;">Competência:</label>
+                <input type="month" id="inputCompetencia" class="select-control" style="color-scheme: dark;">
+            </div>
+
+            <a href="faturamento.html" class="btn btn-secondary btn-sm">Faturamento (04)</a>
+            <a href="impostos.html" class="btn btn-secondary btn-sm">Impostos (05)</a>
+            <a href="inadimplencia.html" class="btn btn-secondary btn-sm">Inadimplência (09)</a>
+        </div>
+    </header>
+
+    <main class="layout-container">
+        <!-- 1. Cards Superiores das Empresas (Nome + Alíquota Efetiva) -->
+        <section class="cards-empresas-grid" id="containerCardsEmpresas">
+            <!-- Gerado dinamicamente: Card por empresa cadastrada -->
+        </section>
+
+        <!-- Barra de Modos e Ações -->
+        <div class="toolbar-gerencial">
+            <div class="tabs-switcher">
+                <button type="button" class="tab-btn active" id="tabModoContratos" data-modo="contratos">
+                    <span>📄</span> Contratos Faturados
+                </button>
+                <button type="button" class="tab-btn" id="tabModoInadimplencia" data-modo="inadimplencia">
+                    <span>⚠️</span> Inadimplências das Empresas
+                </button>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <button type="button" class="btn btn-secondary btn-sm" id="btnToggleValores">
+                    <span id="iconeOlho">👁️</span> <span id="labelToggleValores">Ocultar valores</span>
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm" id="btnFiltrarInadimplencias" style="display: none;">
+                    ⚙️ Selecionar Inadimplências (<span id="contagemSelecionados">0</span>)
+                </button>
+            </div>
+        </div>
+
+        <!-- Barra de Filtros para Inadimplências (Exibida no modo inadimplência) -->
+        <div class="filtro-bar" id="barraFiltrosInadimplencia" style="display: none;">
+            <div class="filtro-item">
+                <label for="filtroEmpresa" style="color: var(--text-muted);">Empresa:</label>
+                <select id="filtroEmpresa" class="select-control" style="font-size: 0.85rem; padding: 6px 12px;">
+                    <option value="all">Todas as empresas</option>
+                </select>
+            </div>
+
+            <div class="filtro-item">
+                <label for="filtroFaixaValor" style="color: var(--text-muted);">Faixa de Valor:</label>
+                <select id="filtroFaixaValor" class="select-control" style="font-size: 0.85rem; padding: 6px 12px;">
+                    <option value="all">Qualquer valor</option>
+                    <option value="ate_5k">Até R$ 5.000,00</option>
+                    <option value="5k_20k">R$ 5.000 a R$ 20.000</option>
+                    <option value="acima_20k">Acima de R$ 20.000,00</option>
+                </select>
+            </div>
+
+            <div class="filtro-item" style="flex: 1; min-width: 200px;">
+                <input type="text" id="filtroBuscaContrato" class="select-control" placeholder="Buscar por contrato ou cliente..." style="width: 100%; font-size: 0.85rem;">
+            </div>
+        </div>
+
+        <!-- 2. Carrossel Coverflow 3D em Perspectiva -->
+        <section class="finance-card" style="padding: 10px 0; background: transparent; border: none; box-shadow: none;">
+            <div class="coverflow-stage" id="coverflowStage">
+                <button type="button" class="coverflow-nav-btn prev" id="btnCoverflowPrev" title="Anterior (Seta Esquerda)">&#10094;</button>
+                <button type="button" class="coverflow-nav-btn next" id="btnCoverflowNext" title="Próximo (Seta Direita)">&#10095;</button>
+
+                <div class="coverflow-container" id="coverflowContainer">
+                    <!-- Cards 3D renderizados dinamicamente -->
+                </div>
+
+                <div class="coverflow-counter" id="coverflowCounter">
+                    <!-- 1 de 10 -->
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal para Seleção Manual de Inadimplências -->
+    <div id="modalSelecaoInadimplencias" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.75); backdrop-filter: blur(4px); z-index: 1000; align-items: center; justify-content: center;">
+        <div style="background: #111827; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 90%; max-width: 580px; padding: 24px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 style="font-size: 1.1rem; color: #fff; font-weight: 700;">Selecionar Inadimplências a Exibir</h3>
+                <button type="button" id="btnFecharModalInadimplencias" style="background: none; border: none; color: var(--text-muted); font-size: 1.4rem; cursor: pointer;">&times;</button>
+            </div>
+            <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 12px;">
+                Marque ou desmarque os títulos vencidos que deseja incluir na apresentação do carrossel:
+            </p>
+            <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                <button type="button" class="btn btn-secondary btn-sm" id="btnMarcarTodos">Marcar Todos</button>
+                <button type="button" class="btn btn-secondary btn-sm" id="btnDesmarcarTodos">Desmarcar Todos</button>
+            </div>
+            <div class="modal-checklist" id="checklistInadimplencias">
+                <!-- Itens com checkbox -->
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 18px;">
+                <button type="button" class="btn btn-primary btn-sm" id="btnSalvarSelecaoInadimplencias">Concluir Seleção</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/utils.js"></script>
+    <script src="js/supabase.js"></script>
+    <script src="js/money.js"></script>
+    <script src="js/taxes.js"></script>
+    <script src="js/relatorio_gerencial.js"></script>
+</body>
+</html>

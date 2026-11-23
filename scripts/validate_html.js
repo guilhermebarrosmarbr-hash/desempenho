@@ -49,6 +49,7 @@ const htmlFiles = [
   'financeiro/impostos.html',
   'financeiro/config.html',
   'financeiro/inadimplencia.html',
+  'financeiro/relatorio_gerencial.html',
   'bpo-financeiro-pgmei/public/index.html'
 ];
 
