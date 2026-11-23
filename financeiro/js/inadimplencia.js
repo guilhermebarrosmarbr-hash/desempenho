@@ -447,12 +447,10 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             // Se por qualquer arredondamento não houver saldo devedor, não entra
             if (valorTotalBrutoDevidoCents <= 0n) return;
 
-            // Identificação do Contrato vinculado
+            // Identificação do Contrato vinculado e Número do Documento (NFS-e)
             const ctr = contratosMap.get(d.contract_id);
             let nomeContrato = ctr ? (ctr.code ? `${ctr.code} — ${ctr.name}` : ctr.name) : 'Avulso';
-            if (d.document_number) {
-                nomeContrato += ` (NF ${d.document_number})`;
-            }
+            const numDocumento = d.document_number || '-';
 
             // Valor Líquido registrado/apurado no módulo de impostos
             const emp = companiesMap.get(d.company_id);
@@ -471,6 +469,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 id: d.id,
                 company_id: d.company_id,
                 contrato_nome: nomeContrato,
+                numero_documento: numDocumento,
                 contract_id: d.contract_id,
                 issue_date: d.issue_date,
                 due_date: d.due_date,
@@ -501,6 +500,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 id: m.id,
                 company_id: m.company_id,
                 contrato_nome: m.contract_name || 'Pendência Manual',
+                numero_documento: m.document_number || '-',
                 contract_id: null,
                 issue_date: m.issue_date,
                 due_date: m.due_date,
@@ -716,6 +716,9 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
 
                 return `
                     <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); transition: background 0.15s ease;">
+                        <td style="text-align: center; font-weight: 700; color: #38bdf8;">
+                            ${escapeHtml(p.numero_documento)}
+                        </td>
                         <td style="font-weight: 600; color: #fff;">
                             ${escapeHtml(p.contrato_nome)} ${tagManual} ${obsIcon}
                         </td>
@@ -760,9 +763,10 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 </div>
 
                 <div class="table-responsive" style="overflow-x: auto; width: 100%;">
-                    <table class="table-custom" style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                    <table class="table-custom tabela-inadimplencia-empresa" style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
                         <thead>
                             <tr style="background: #111827; color: #9ca3af; text-transform: uppercase; font-size: 0.72rem; letter-spacing: 0.05em;">
+                                <th style="padding: 10px; text-align: center; border-bottom: 2px solid rgba(255,255,255,0.1);">NFS-e / Doc</th>
                                 <th style="padding: 10px; text-align: left; border-bottom: 2px solid rgba(255,255,255,0.1);">Contrato</th>
                                 <th style="padding: 10px; text-align: center; border-bottom: 2px solid rgba(255,255,255,0.1);">Data de Emissão</th>
                                 <th style="padding: 10px; text-align: center; border-bottom: 2px solid rgba(255,255,255,0.1);">Vencimento</th>
@@ -777,7 +781,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                         </tbody>
                         <tfoot>
                             <tr style="background: rgba(15, 23, 42, 0.95); font-weight: 700; border-top: 2px solid rgba(255,255,255,0.15);">
-                                <td colspan="4" style="padding: 12px 10px; text-align: right; text-transform: uppercase; font-size: 0.78rem; color: #94a3b8; letter-spacing: 0.05em;">
+                                <td colspan="5" style="padding: 12px 10px; text-align: right; text-transform: uppercase; font-size: 0.78rem; color: #94a3b8; letter-spacing: 0.05em;">
                                     Total:
                                 </td>
                                 <td style="padding: 12px 10px; text-align: right; color: #f8fafc; font-size: 0.95rem;">
@@ -794,6 +798,10 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             `;
 
             containerTabelasEmpresas.appendChild(secaoCard);
+            const tabelaEl = secaoCard.querySelector('.tabela-inadimplencia-empresa');
+            if (tabelaEl && window.BpoUtils && window.BpoUtils.makeTableSortable) {
+                window.BpoUtils.makeTableSortable(tabelaEl);
+            }
         });
     }
 

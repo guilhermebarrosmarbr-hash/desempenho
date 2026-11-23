@@ -819,6 +819,9 @@
         });
 
         tbody.innerHTML = linhasCompetencia.join('');
+        if (window.BpoUtils?.makeTableSortable) {
+            window.BpoUtils.makeTableSortable(tbody.closest('table'));
+        }
 
         if (tfoot) {
             tfoot.innerHTML = `<tr style="background:#1e3a5f; border-top:2px solid #3b82f6; font-weight:700; font-size:0.82rem;">
@@ -952,6 +955,9 @@
                 });
 
                 tbodyCaixa.innerHTML = linhasCaixa.join('');
+                if (window.BpoUtils?.makeTableSortable) {
+                    window.BpoUtils.makeTableSortable(tbodyCaixa.closest('table'));
+                }
 
                 if (tfootCaixa) {
                     tfootCaixa.innerHTML = `<tr style="background:#1e3a5f; border-top:2px solid #3b82f6; font-weight:700; font-size:0.82rem;">

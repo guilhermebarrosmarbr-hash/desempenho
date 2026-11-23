@@ -459,6 +459,10 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             `;
         }).join('');
 
+        if (window.BpoUtils?.makeTableSortable) {
+            window.BpoUtils.makeTableSortable(listaIntermediacaoBody.closest('table'));
+        }
+
         document.querySelectorAll('.btn-quitar').forEach(btn => {
             btn.addEventListener('click', () => window.quitarRepasse(btn.dataset.id));
         });
@@ -498,6 +502,10 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 </tr>
             `;
         }).join('');
+
+        if (window.BpoUtils?.makeTableSortable) {
+            window.BpoUtils.makeTableSortable(listaAcordosBody.closest('table'));
+        }
 
         document.querySelectorAll('.btn-excluir-acordo').forEach(btn => {
             btn.addEventListener('click', () => window.excluirAcordo(btn.dataset.id));

@@ -515,6 +515,7 @@ window.BpoFiscalUtils.calcularFaturamentoTotalDoc = function(doc, taxDetails) {
 
             painelDetalhamentoEmpresas.innerHTML = cardsHtml.join('');
             listaHistoricoBody.innerHTML = rowsHistorico.join('');
+            if (window.BpoUtils?.makeTableSortable) window.BpoUtils.makeTableSortable(listaHistoricoBody.closest('table'));
 
             // =================================================================
             // TABELA DE DETALHAMENTO DE TRIBUTOS POR FATURAMENTO INDIVIDUAL
@@ -774,7 +775,10 @@ window.BpoFiscalUtils.calcularFaturamentoTotalDoc = function(doc, taxDetails) {
                     `;
                 }).join('');
 
-                if (listaDocumentosTributosBody) listaDocumentosTributosBody.innerHTML = rowsDocs;
+                if (listaDocumentosTributosBody) {
+                    listaDocumentosTributosBody.innerHTML = rowsDocs;
+                    if (window.BpoUtils?.makeTableSortable) window.BpoUtils.makeTableSortable(listaDocumentosTributosBody.closest('table'));
+                }
 
                 if (tfootDocumentosTributos) {
                     tfootDocumentosTributos.innerHTML = `
