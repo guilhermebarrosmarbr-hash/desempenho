@@ -354,23 +354,56 @@ window.BpoFiscalUtils.calcularFaturamentoTotalDoc = function(doc, taxDetails) {
                     const aliqCsllPercent = fatTotalMesNum > 0 ? ((Number(csllProvCents) / Number(fatEmpCents)) * 100).toFixed(2) : '0.00';
                     const temAdicional = baseServMes > 20000 || baseProdMes > 20000;
 
+                    const cargaEfetivaLP = fatEmpCents > 0n 
+                        ? (Number(impostoApuradoEmpCents) / Number(fatEmpCents) * 100).toFixed(2)
+                        : '0.00';
+
                     detalheCardHtml = `
-                        <div style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 16px; border: 1px solid rgba(255,255,255,0.05);">
-                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
-                                <strong style="font-size:1rem; color:#fff;">${escapeHtml(emp.name)}</strong>
-                                <span class="badge badge-primary">Lucro Presumido</span>
+                        <div style="background: rgba(15, 23, 42, 0.65); border-radius: 12px; padding: 20px; border: 1px solid rgba(255,255,255,0.08); display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                            <div>
+                                <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 12px;">
+                                    <div>
+                                        <strong style="font-size:1.05rem; color:#fff; display:block;">${escapeHtml(emp.name)}</strong>
+                                        <span style="font-size:0.75rem; color:var(--text-muted);">CNPJ: ${escapeHtml(emp.cnpj || '—')}</span>
+                                    </div>
+                                    <span class="badge badge-primary" style="font-size:0.75rem;">Lucro Presumido</span>
+                                </div>
+                                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size:0.85rem; margin-bottom: 16px;">
+                                    <div style="background:rgba(255,255,255,0.02); padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.03);">
+                                        <div style="color:var(--text-muted); font-size:0.74rem;">PIS (0,65%)</div>
+                                        <strong style="color:#fff;">${window.BpoMoney.formatBRL(pisCents)}</strong>
+                                    </div>
+                                    <div style="background:rgba(255,255,255,0.02); padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.03);">
+                                        <div style="color:var(--text-muted); font-size:0.74rem;">COFINS (3,00%)</div>
+                                        <strong style="color:#fff;">${window.BpoMoney.formatBRL(cofinsCents)}</strong>
+                                    </div>
+                                    <div style="background:rgba(255,255,255,0.02); padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.03);">
+                                        <div style="color:var(--text-muted); font-size:0.74rem;">ISS Municipal</div>
+                                        <strong style="color:#fff;">${window.BpoMoney.formatBRL(issCents)}</strong>
+                                    </div>
+                                    <div style="background:rgba(255,255,255,0.02); padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.03);">
+                                        <div style="color:var(--text-muted); font-size:0.74rem;">IRPJ (${aliqIrpjPercent}%${temAdicional ? ' +10%' : ''})</div>
+                                        <strong style="color:#f59e0b;">${window.BpoMoney.formatBRL(irpjProvCents)}</strong>
+                                    </div>
+                                    <div style="background:rgba(255,255,255,0.02); padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.03);">
+                                        <div style="color:var(--text-muted); font-size:0.74rem;">CSLL (${aliqCsllPercent}%)</div>
+                                        <strong style="color:#f59e0b;">${window.BpoMoney.formatBRL(csllProvCents)}</strong>
+                                    </div>
+                                    <div style="background:rgba(255,255,255,0.02); padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.03);">
+                                        <div style="color:var(--text-muted); font-size:0.74rem;">Retenções (IRRF)</div>
+                                        <strong style="color:var(--color-danger);">${window.BpoMoney.formatBRL(retEmpCents)}</strong>
+                                    </div>
+                                </div>
                             </div>
-                            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; font-size:0.85rem;">
-                                <div><span style="color:var(--text-muted);">PIS (0,65%):</span> <strong>${window.BpoMoney.formatBRL(pisCents)}</strong></div>
-                                <div><span style="color:var(--text-muted);">COFINS (3,00%):</span> <strong>${window.BpoMoney.formatBRL(cofinsCents)}</strong></div>
-                                <div><span style="color:var(--text-muted);">ISS Municipal:</span> <strong>${window.BpoMoney.formatBRL(issCents)}</strong></div>
-                                <div><span style="color:var(--text-muted);">IRPJ Variável (${aliqIrpjPercent}%${temAdicional ? ' com +10%' : ''}):</span> <strong style="color:#f59e0b;">${window.BpoMoney.formatBRL(irpjProvCents)}</strong></div>
-                                <div><span style="color:var(--text-muted);">CSLL Variável (${aliqCsllPercent}%):</span> <strong style="color:#f59e0b;">${window.BpoMoney.formatBRL(csllProvCents)}</strong></div>
-                                <div><span style="color:var(--text-muted);">Retenções a Compensar (IRRF):</span> <strong style="color:var(--color-danger);">${window.BpoMoney.formatBRL(retEmpCents)}</strong></div>
-                            </div>
-                            <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between;">
-                                <span>Total Impostos Competência: <strong>${window.BpoMoney.formatBRL(impostoApuradoEmpCents)}</strong></span>
-                                <span style="color:var(--color-success); font-weight:700;">Saldo a Recolher: ${window.BpoMoney.formatBRL(saldoRecolherEmpCents)}</span>
+                            <div style="padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.08);">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px; font-size:0.85rem;">
+                                    <span style="color:var(--text-muted);">Total Impostos:</span>
+                                    <strong style="color:#fff;">${window.BpoMoney.formatBRL(impostoApuradoEmpCents)}</strong>
+                                </div>
+                                <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.95rem;">
+                                    <span style="color:var(--text-muted); font-weight:500;">Carga Efetiva:</span>
+                                    <strong style="color:#38bdf8; font-size:1.15rem;">${cargaEfetivaLP}%</strong>
+                                </div>
                             </div>
                         </div>
                     `;
@@ -380,8 +413,6 @@ window.BpoFiscalUtils.calcularFaturamentoTotalDoc = function(doc, taxDetails) {
                     const rbt12Calculado = await calcularRbt12RealEmpresa(emp.id, competenciaAtiva);
 
                     // 2. Verifica anexo e segrega faturamento por tipo conforme PGDAS:
-                    // Linha 1: Anexo III - Serviço (Sem isenção ISS)
-                    // Linha 2: Anexo III - Serviço (Com isenção ISS) / Locação
                     let anexoEmp = 'anexo_iii';
                     let rbt12Emp = rbt12Calculado > 0 ? rbt12Calculado : 180000;
 
@@ -423,11 +454,13 @@ window.BpoFiscalUtils.calcularFaturamentoTotalDoc = function(doc, taxDetails) {
                     const dasComIsencaoCents = BigInt(Math.round(apuracaoComIsencao.valorDas * 100));
                     const dasCents = dasSemIsencaoCents + dasComIsencaoCents;
 
-                    // Alíquota efetiva de referência do Anexo III (15,62% na 5ª faixa)
-                    const aliqEfetivaNum = apuracaoSemIsencao.aliquotaEfetivaNumero || 0.06;
-
                     impostoApuradoEmpCents = dasCents;
                     saldoRecolherEmpCents = dasCents;
+
+                    // Carga Efetiva Gerencial da empresa: Total Impostos / Faturamento Total * 100
+                    const cargaEfetivaSN = fatEmpCents > 0n
+                        ? (Number(impostoApuradoEmpCents) / Number(fatEmpCents) * 100).toFixed(2)
+                        : '0.00';
 
                     // Componentes consolidados oficiais
                     const compSem = apuracaoSemIsencao.componentes || {};
@@ -442,25 +475,51 @@ window.BpoFiscalUtils.calcularFaturamentoTotalDoc = function(doc, taxDetails) {
                     const rbt12Formatado = window.BpoMoney.formatBRL(BigInt(Math.round(rbt12Emp * 100)));
 
                     detalheCardHtml = `
-                        <div style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 16px; border: 1px solid rgba(255,255,255,0.05);">
-                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
-                                <strong style="font-size:1rem; color:#fff;">${escapeHtml(emp.name)}</strong>
-                                <div>
-                                    <span class="badge badge-success">Simples Nacional (${anexoNome})</span>
+                        <div style="background: rgba(15, 23, 42, 0.65); border-radius: 12px; padding: 20px; border: 1px solid rgba(255,255,255,0.08); display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                            <div>
+                                <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 12px;">
+                                    <div>
+                                        <strong style="font-size:1.05rem; color:#fff; display:block;">${escapeHtml(emp.name)}</strong>
+                                        <span style="font-size:0.75rem; color:var(--text-muted);">CNPJ: ${escapeHtml(emp.cnpj || '—')}</span>
+                                    </div>
+                                    <span class="badge badge-success" style="font-size:0.75rem;">Simples Nacional (${anexoNome})</span>
+                                </div>
+                                <div style="margin-bottom: 14px; background: rgba(56,189,248,0.06); border: 1px solid rgba(56,189,248,0.15); padding: 8px 12px; border-radius: 6px; display:flex; justify-content:space-between; align-items:center;">
+                                    <span style="font-size:0.8rem; color:var(--text-muted);">IRTB12 (12m Anteriores):</span>
+                                    <strong style="color:#38bdf8; font-size:0.95rem;">${rbt12Formatado}</strong>
+                                </div>
+                                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size:0.85rem; margin-bottom: 16px;">
+                                    <div style="background:rgba(255,255,255,0.02); padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.03);">
+                                        <div style="color:var(--text-muted); font-size:0.74rem;">Parcela CPP (INSS)</div>
+                                        <strong style="color:#fff;">${window.BpoMoney.formatBRL(cppCents)}</strong>
+                                    </div>
+                                    <div style="background:rgba(255,255,255,0.02); padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.03);">
+                                        <div style="color:var(--text-muted); font-size:0.74rem;">Parcela ISS</div>
+                                        <strong style="color:#fff;">${window.BpoMoney.formatBRL(issSNCents)}</strong>
+                                    </div>
+                                    <div style="background:rgba(255,255,255,0.02); padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.03);">
+                                        <div style="color:var(--text-muted); font-size:0.74rem;">Parcela PIS</div>
+                                        <strong style="color:#fff;">${window.BpoMoney.formatBRL(pisSNCents)}</strong>
+                                    </div>
+                                    <div style="background:rgba(255,255,255,0.02); padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.03);">
+                                        <div style="color:var(--text-muted); font-size:0.74rem;">Parcela COFINS</div>
+                                        <strong style="color:#fff;">${window.BpoMoney.formatBRL(cofinsSNCents)}</strong>
+                                    </div>
+                                    <div style="grid-column: span 2; background:rgba(255,255,255,0.02); padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.03); display:flex; justify-content:space-between; align-items:center;">
+                                        <span style="color:var(--text-muted); font-size:0.74rem;">Parcela IRPJ/CSLL</span>
+                                        <strong style="color:#fff;">${window.BpoMoney.formatBRL(irpjCsllSNCents)}</strong>
+                                    </div>
                                 </div>
                             </div>
-                            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; font-size:0.85rem;">
-                                <div><span style="color:var(--text-muted);">RBT12 (12m Anteriores):</span> <strong style="color:#38bdf8;">${rbt12Formatado}</strong></div>
-                                <div><span style="color:var(--text-muted);">Alíquota Efetiva DAS:</span> <strong>${(aliqEfetivaNum * 100).toFixed(2)}%</strong></div>
-                                <div><span style="color:var(--text-muted);">Parcela CPP (INSS):</span> <strong>${window.BpoMoney.formatBRL(cppCents)}</strong></div>
-                                <div><span style="color:var(--text-muted);">Parcela ISS:</span> <strong>${window.BpoMoney.formatBRL(issSNCents)}</strong></div>
-                                <div><span style="color:var(--text-muted);">Parcela PIS:</span> <strong>${window.BpoMoney.formatBRL(pisSNCents)}</strong></div>
-                                <div><span style="color:var(--text-muted);">Parcela COFINS:</span> <strong>${window.BpoMoney.formatBRL(cofinsSNCents)}</strong></div>
-                                <div><span style="color:var(--text-muted);">Parcela IRPJ/CSLL:</span> <strong>${window.BpoMoney.formatBRL(irpjCsllSNCents)}</strong></div>
-                            </div>
-                            <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between;">
-                                <span style="font-size:0.82rem; color:var(--text-muted);">* Tributos apurados com RBT12 real das competências de faturamento (com segregação oficial de receitas com/sem isenção de ISS)</span>
-                                <span style="color:#f59e0b; font-weight:700;">DAS Estimado a Recolher: ${window.BpoMoney.formatBRL(impostoApuradoEmpCents)}</span>
+                            <div style="padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.08);">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px; font-size:0.85rem;">
+                                    <span style="color:var(--text-muted);">DAS Estimado a Recolher:</span>
+                                    <strong style="color:#f59e0b;">${window.BpoMoney.formatBRL(impostoApuradoEmpCents)}</strong>
+                                </div>
+                                <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.95rem;">
+                                    <span style="color:var(--text-muted); font-weight:500;">Carga Efetiva:</span>
+                                    <strong style="color:#38bdf8; font-size:1.15rem;">${cargaEfetivaSN}%</strong>
+                                </div>
                             </div>
                         </div>
                     `;
@@ -503,15 +562,15 @@ window.BpoFiscalUtils.calcularFaturamentoTotalDoc = function(doc, taxDetails) {
             }
             if (valImpostoApurado) valImpostoApurado.textContent = window.BpoMoney.formatBRL(totalImpostosConsolidado);
             if (valRetencoesCompensaveis) valRetencoesCompensaveis.textContent = window.BpoMoney.formatBRL(totalRetencoesConsolidado);
-            if (valSaldoRecolher) valSaldoRecolher.textContent = window.BpoMoney.formatBRL(totalSaldoConsolidado);
-
-            // Requisito 2: "Preserve a fórmula da carga efetiva gerencial: impostos atribuídos / faturamento correspondente × 100. No consolidado, use a razão entre as somas, sem média simples das alíquotas. Denominador zero exige estado explícito."
+            // Requisito: "Além disso, o último card mostra o saldo líquido a recolher, mas alterar para que seja a carga efetiva (a mesma da razão entre faturamento e imposto)."
+            let cargaConsolidada = '0,00%';
             if (totalFaturamentoConsolidado > 0n) {
-                const cargaConsolidada = (Number(totalImpostosConsolidado) / Number(totalFaturamentoConsolidado) * 100).toFixed(2);
-                labelCargaEfetiva.textContent = `${cargaConsolidada}%`;
+                cargaConsolidada = `${(Number(totalImpostosConsolidado) / Number(totalFaturamentoConsolidado) * 100).toFixed(2)}%`;
             } else {
-                labelCargaEfetiva.textContent = '0,00% (Sem faturamento)';
+                cargaConsolidada = '0,00% (Sem faturamento)';
             }
+            if (valSaldoRecolher) valSaldoRecolher.textContent = cargaConsolidada;
+            if (labelCargaEfetiva) labelCargaEfetiva.textContent = cargaConsolidada;
 
             painelDetalhamentoEmpresas.innerHTML = cardsHtml.join('');
             listaHistoricoBody.innerHTML = rowsHistorico.join('');
@@ -816,6 +875,8 @@ window.BpoFiscalUtils.calcularFaturamentoTotalDoc = function(doc, taxDetails) {
     async function renderizarPainelRbt12() {
         if (!secaoRbt12Simples) return;
 
+        const containerQuadroERbt12 = document.getElementById('containerQuadroERbt12');
+
         // Só exibe se uma empresa Simples Nacional específica estiver selecionada
         const empSelecionada = empresaAtivaId !== 'all'
             ? empresas.find(e => e.id === empresaAtivaId)
@@ -823,10 +884,16 @@ window.BpoFiscalUtils.calcularFaturamentoTotalDoc = function(doc, taxDetails) {
 
         if (!empSelecionada || empSelecionada.tax_regime !== 'simples_nacional') {
             secaoRbt12Simples.style.display = 'none';
+            if (containerQuadroERbt12) {
+                containerQuadroERbt12.style.gridTemplateColumns = '1fr';
+            }
             return;
         }
 
         secaoRbt12Simples.style.display = 'block';
+        if (containerQuadroERbt12) {
+            containerQuadroERbt12.style.gridTemplateColumns = 'repeat(auto-fit, minmax(420px, 1fr))';
+        }
         if (tituloRbt12) {
             tituloRbt12.textContent = `IRTB12 — ${empSelecionada.name} (Últimos 12 Meses)`;
         }
