@@ -751,19 +751,32 @@
     }
 
     // =========================================================================
-    // 3. CARROSSEL 3D EM FORMATO DE OCTÓGONO ESPAÇADO
-    // Um octógono regular possui 8 lados e ângulos de 45° (360° / 8).
-    // Para que os cards de 380px fiquem com folga/espaçamento sem se encostar,
-    // o raio do cilindro apótema precisa ser aumentado: R = (largura / (2 * tan(22.5°))) + GAP.
-    // Largura = 380px => apótema mínimo colado = 458px. Com folga elegante: 560px.
+    // 3. CARROSSEL 3D EM POLÍGONO FECHADO EQUIDISTANTE (SEM LACUNAS)
+    // Distribui exatamente 360° pelo número N de cards a exibir:
+    // Passo = 360° / N. Assim, o último card (N) conecta diretamente com o primeiro (1).
+    // O raio apótema é calculado para garantir o espaçamento elegante sem sobreposição.
     // =========================================================================
-    const RAIO_OCTOGONO_PX = 560; // Espaçamento confortável que impede sobreposição física dos cards
-    const ANGULO_PASSO = 45; // 360 / 8 = 45 graus por face do octógono
+    let raioCarrosselAtual = 560;
+    let anguloPassoAtual = 45;
+
+    function calcularGeometriaPoligono(totalCards) {
+        const n = Math.max(totalCards, 3);
+        const anguloPasso = 360 / n;
+        const larguraCard = 380;
+        const gapExtra = 70; // Espaçamento entre os cards para que não se toquem
+
+        // Apótema de um polígono regular: r = (largura + gap) / (2 * tan(PI / n))
+        const raioMinimo = (larguraCard + gapExtra) / (2 * Math.tan(Math.PI / n));
+        const raioFinal = Math.max(raioMinimo, 450);
+
+        return { anguloPasso, raioFinal };
+    }
 
     function renderizarCarrosselOctogonal() {
         if (!coverflowCarousel3D) return;
 
-        if (cardsParaExibir.length === 0) {
+        const total = cardsParaExibir.length;
+        if (total === 0) {
             coverflowCarousel3D.innerHTML = `
                 <div style="text-align:center; color:var(--text-muted); padding:40px; position:absolute; width:100%; top:20%;">
                     <div style="font-size:2.5rem; margin-bottom:12px;">📂</div>
@@ -775,9 +788,13 @@
             return;
         }
 
+        const geo = calcularGeometriaPoligono(total);
+        anguloPassoAtual = geo.anguloPasso;
+        raioCarrosselAtual = geo.raioFinal;
+
         coverflowCarousel3D.innerHTML = cardsParaExibir.map((item, idx) => {
-            const anguloCard = idx * ANGULO_PASSO;
-            const transformInicial = `rotateY(${anguloCard}deg) translateZ(${RAIO_OCTOGONO_PX}px)`;
+            const anguloCard = idx * anguloPassoAtual;
+            const transformInicial = `rotateY(${anguloCard}deg) translateZ(${raioCarrosselAtual}px)`;
 
             return `
                 <div class="coverflow-card ${idx === cardAtivoIndex ? 'active-card' : 'inactive-card'}" data-index="${idx}" style="transform: ${transformInicial};">
@@ -816,6 +833,7 @@
                 if (!isNaN(idx) && idx !== cardAtivoIndex) {
                     reiniciarAutoplay();
                     cardAtivoIndex = idx;
+                    anguloAtualGraus = -(cardAtivoIndex * anguloPassoAtual);
                     girarCarrosselOctogonal();
                 }
             });
@@ -829,21 +847,19 @@
         const total = cardsParaExibir.length;
         if (total === 0) return;
 
-        // Atualiza a posição visual no espaço 3D
-        coverflowCarousel3D.style.transform = `translateZ(-${RAIO_OCTOGONO_PX}px) rotateY(${anguloAtualGraus}deg)`;
+        // Atualiza a posição visual no espaço 3D usando o raio dinâmico perfeito
+        coverflowCarousel3D.style.transform = `translateZ(-${raioCarrosselAtual}px) rotateY(${anguloAtualGraus}deg)`;
 
-        // Calcula qual card está mais próximo do centro frontal (-anguloAtualGraus)
-        // O ângulo normalizado de frente é (-anguloAtualGraus) mod 360
+        // Calcula qual card está de frente
         let anguloFrente = ((-anguloAtualGraus) % 360);
         if (anguloFrente < 0) anguloFrente += 360;
 
-        // O card 'idx' está posicionado em (idx * ANGULO_PASSO) % 360
         let idxMaisProximo = 0;
         let menorDistancia = 999999;
 
         const cards = coverflowCarousel3D.querySelectorAll('.coverflow-card');
         cards.forEach((card, idx) => {
-            let anguloCard = (idx * ANGULO_PASSO) % 360;
+            let anguloCard = (idx * anguloPassoAtual) % 360;
             let diff = Math.abs(anguloFrente - anguloCard);
             if (diff > 180) diff = 360 - diff;
 
@@ -852,8 +868,8 @@
                 idxMaisProximo = idx;
             }
 
-            // Destaque visual suave para o card mais frontal (ângulo próximo a zero)
-            if (diff < 22.5) {
+            // Destaque visual
+            if (diff < (anguloPassoAtual / 2)) {
                 card.classList.add('active-card');
                 card.classList.remove('inactive-card');
             } else {
@@ -871,8 +887,7 @@
 
     function navegarCarrossel(direcao) {
         if (cardsParaExibir.length === 0) return;
-        // Ao clicar nos botões ou teclas, ajusta suavemente o ângulo alvo para o próximo card (45° por passo)
-        anguloAlvoGraus = Math.round((anguloAtualGraus - (direcao * ANGULO_PASSO)) / ANGULO_PASSO) * ANGULO_PASSO;
+        anguloAlvoGraus = Math.round((anguloAtualGraus - (direcao * anguloPassoAtual)) / anguloPassoAtual) * anguloPassoAtual;
         anguloAtualGraus = anguloAlvoGraus;
         girarCarrosselOctogonal();
     }
