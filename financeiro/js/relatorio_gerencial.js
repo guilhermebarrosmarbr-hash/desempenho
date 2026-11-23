@@ -26,6 +26,11 @@
     let valoresOcultos = false;
     let cardAtivoIndex = 0;
 
+    // Autoplay do carrossel
+    let autoplayTimer = null;
+    const AUTOPLAY_INTERVALO_MS = 3500; // Tempo de exibição de cada card antes de passar automaticamente
+    let autoplayPausado = false;
+
     // Itens ativos no Carrossel
     let cardsParaExibir = [];
 
@@ -118,13 +123,42 @@
             }
         });
 
-        btnCoverflowPrev.addEventListener('click', () => navegarCarrossel(-1));
-        btnCoverflowNext.addEventListener('click', () => navegarCarrossel(1));
+        btnCoverflowPrev.addEventListener('click', () => {
+            reiniciarAutoplay();
+            navegarCarrossel(-1);
+        });
+        btnCoverflowNext.addEventListener('click', () => {
+            reiniciarAutoplay();
+            navegarCarrossel(1);
+        });
 
         window.addEventListener('keydown', (e) => {
-            if (e.key === 'ArrowLeft') navegarCarrossel(-1);
-            if (e.key === 'ArrowRight') navegarCarrossel(1);
+            if (e.key === 'ArrowLeft') {
+                reiniciarAutoplay();
+                navegarCarrossel(-1);
+            }
+            if (e.key === 'ArrowRight') {
+                reiniciarAutoplay();
+                navegarCarrossel(1);
+            }
         });
+
+        // Pausa automática quando o usuário passa o mouse por cima do palco para leitura
+        if (coverflowStage) {
+            coverflowStage.addEventListener('mouseenter', () => {
+                autoplayPausado = true;
+            });
+            coverflowStage.addEventListener('mouseleave', () => {
+                autoplayPausado = false;
+            });
+            // Suporte para touch em telas sensíveis
+            coverflowStage.addEventListener('touchstart', () => {
+                autoplayPausado = true;
+            }, { passive: true });
+            coverflowStage.addEventListener('touchend', () => {
+                setTimeout(() => { autoplayPausado = false; }, 2000);
+            }, { passive: true });
+        }
 
         filtroEmpresa.addEventListener('change', () => { cardAtivoIndex = 0; montarCardsCarrossel(); });
         filtroFaixaValor.addEventListener('change', () => { cardAtivoIndex = 0; montarCardsCarrossel(); });
@@ -777,6 +811,7 @@
             el.addEventListener('click', () => {
                 const idx = parseInt(el.dataset.index, 10);
                 if (!isNaN(idx) && idx !== cardAtivoIndex) {
+                    reiniciarAutoplay();
                     cardAtivoIndex = idx;
                     girarCarrosselOctogonal();
                 }
@@ -784,6 +819,7 @@
         });
 
         girarCarrosselOctogonal();
+        iniciarAutoplay();
     }
 
     function girarCarrosselOctogonal() {
@@ -822,6 +858,30 @@
 
         cardAtivoIndex = novoIdx;
         girarCarrosselOctogonal();
+    }
+
+    // =========================================================================
+    // CONTROLE DE AUTOPLAY (ANIMAÇÃO AUTOMÁTICA DO OCTÓGONO)
+    // =========================================================================
+    function iniciarAutoplay() {
+        pararAutoplay();
+        autoplayTimer = setInterval(() => {
+            if (!autoplayPausado && cardsParaExibir.length > 1) {
+                navegarCarrossel(1);
+            }
+        }, AUTOPLAY_INTERVALO_MS);
+    }
+
+    function pararAutoplay() {
+        if (autoplayTimer) {
+            clearInterval(autoplayTimer);
+            autoplayTimer = null;
+        }
+    }
+
+    function reiniciarAutoplay() {
+        pararAutoplay();
+        iniciarAutoplay();
     }
 
     // =========================================================================
