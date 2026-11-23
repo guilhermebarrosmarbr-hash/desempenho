@@ -26,10 +26,13 @@
     let valoresOcultos = false;
     let cardAtivoIndex = 0;
 
-    // Autoplay do carrossel
-    let autoplayTimer = null;
-    const AUTOPLAY_INTERVALO_MS = 3500; // Tempo de exibição de cada card antes de passar automaticamente
+    // Animação fluida e contínua do octógono (via requestAnimationFrame a 60fps)
+    let anguloAtualGraus = 0;
+    let anguloAlvoGraus = 0;
+    let animacaoFrameId = null;
     let autoplayPausado = false;
+    let velocidadeContinuaGrausPorSegundo = 10; // Velocidade suave e constante de rotação contínua (360° em 36s)
+    let ultimoTimestamp = 0;
 
     // Itens ativos no Carrossel
     let cardsParaExibir = [];
@@ -826,14 +829,31 @@
         const total = cardsParaExibir.length;
         if (total === 0) return;
 
-        // Rotaciona o palco octogonal para trazer o card selecionado exatamente para o ponto central frontal (0deg / translateZ)
-        const anguloAlvo = -(cardAtivoIndex * ANGULO_PASSO);
-        coverflowCarousel3D.style.transform = `translateZ(-${RAIO_OCTOGONO_PX}px) rotateY(${anguloAlvo}deg)`;
+        // Atualiza a posição visual no espaço 3D
+        coverflowCarousel3D.style.transform = `translateZ(-${RAIO_OCTOGONO_PX}px) rotateY(${anguloAtualGraus}deg)`;
 
-        // Atualiza classes active/inactive para destaque de brilho
+        // Calcula qual card está mais próximo do centro frontal (-anguloAtualGraus)
+        // O ângulo normalizado de frente é (-anguloAtualGraus) mod 360
+        let anguloFrente = ((-anguloAtualGraus) % 360);
+        if (anguloFrente < 0) anguloFrente += 360;
+
+        // O card 'idx' está posicionado em (idx * ANGULO_PASSO) % 360
+        let idxMaisProximo = 0;
+        let menorDistancia = 999999;
+
         const cards = coverflowCarousel3D.querySelectorAll('.coverflow-card');
         cards.forEach((card, idx) => {
-            if (idx === cardAtivoIndex) {
+            let anguloCard = (idx * ANGULO_PASSO) % 360;
+            let diff = Math.abs(anguloFrente - anguloCard);
+            if (diff > 180) diff = 360 - diff;
+
+            if (diff < menorDistancia) {
+                menorDistancia = diff;
+                idxMaisProximo = idx;
+            }
+
+            // Destaque visual suave para o card mais frontal (ângulo próximo a zero)
+            if (diff < 22.5) {
                 card.classList.add('active-card');
                 card.classList.remove('inactive-card');
             } else {
@@ -842,6 +862,8 @@
             }
         });
 
+        cardAtivoIndex = idxMaisProximo;
+
         if (coverflowCounter) {
             coverflowCounter.textContent = `${cardAtivoIndex + 1} de ${total}`;
         }
@@ -849,39 +871,45 @@
 
     function navegarCarrossel(direcao) {
         if (cardsParaExibir.length === 0) return;
-        const total = cardsParaExibir.length;
-        let novoIdx = cardAtivoIndex + direcao;
-
-        // Navegação circular contínua pelo octógono
-        if (novoIdx < 0) novoIdx = total - 1;
-        else if (novoIdx >= total) novoIdx = 0;
-
-        cardAtivoIndex = novoIdx;
+        // Ao clicar nos botões ou teclas, ajusta suavemente o ângulo alvo para o próximo card (45° por passo)
+        anguloAlvoGraus = Math.round((anguloAtualGraus - (direcao * ANGULO_PASSO)) / ANGULO_PASSO) * ANGULO_PASSO;
+        anguloAtualGraus = anguloAlvoGraus;
         girarCarrosselOctogonal();
     }
 
     // =========================================================================
-    // CONTROLE DE AUTOPLAY (ANIMAÇÃO AUTOMÁTICA DO OCTÓGONO)
+    // CONTROLE DE ANIMAÇÃO CONTÍNUA E FLUIDA (OCTÓGONO 3D A 60FPS)
     // =========================================================================
+    function animarLoopContinuo(timestamp) {
+        if (!ultimoTimestamp) ultimoTimestamp = timestamp;
+        const deltaSegundos = Math.min((timestamp - ultimoTimestamp) / 1000, 0.1);
+        ultimoTimestamp = timestamp;
+
+        if (!autoplayPausado && cardsParaExibir.length > 1) {
+            // Rotação suave constante
+            anguloAtualGraus -= velocidadeContinuaGrausPorSegundo * deltaSegundos;
+            girarCarrosselOctogonal();
+        }
+
+        animacaoFrameId = requestAnimationFrame(animarLoopContinuo);
+    }
+
     function iniciarAutoplay() {
-        pararAutoplay();
-        autoplayTimer = setInterval(() => {
-            if (!autoplayPausado && cardsParaExibir.length > 1) {
-                navegarCarrossel(1);
-            }
-        }, AUTOPLAY_INTERVALO_MS);
+        if (!animacaoFrameId) {
+            ultimoTimestamp = 0;
+            animacaoFrameId = requestAnimationFrame(animarLoopContinuo);
+        }
     }
 
     function pararAutoplay() {
-        if (autoplayTimer) {
-            clearInterval(autoplayTimer);
-            autoplayTimer = null;
+        if (animacaoFrameId) {
+            cancelAnimationFrame(animacaoFrameId);
+            animacaoFrameId = null;
         }
     }
 
     function reiniciarAutoplay() {
-        pararAutoplay();
-        iniciarAutoplay();
+        // Nada a interromper, a animação é fluida contínua
     }
 
     // =========================================================================
