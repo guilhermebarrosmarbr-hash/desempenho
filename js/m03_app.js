@@ -299,21 +299,39 @@
           }
 
           // Verifica a competência detectada na planilha (ex: "01/2026")
+          let competenciaAlvo = this.competencia;
           if (parsed.metadata && parsed.metadata.competencia) {
             const compParts = parsed.metadata.competencia.split('/');
             if (compParts.length === 2) {
               const compPlanilha = `${compParts[1]}-${compParts[0].padStart(2, '0')}`;
-              // Se a planilha pertence a uma competência diferente da tela atual, sincroniza a competência ativa
+              
+              // Se a competência da planilha for diferente da competência selecionada na tela:
               if (compPlanilha !== this.competencia) {
-                this.competencia = compPlanilha;
-                const inputComp = document.getElementById('inputCompetenciaNav');
-                if (inputComp) inputComp.value = this.competencia;
-                this.updateUrlForCompetencia(this.competencia);
+                const mesNomePlanilha = parsed.metadata.competencia; // ex: "01/2026"
+                const [anoAtivo, mesAtivo] = this.competencia.split('-');
+                const compAtivaFormatada = `${mesAtivo}/${anoAtivo}`;
+
+                const desejaImportar = confirm(
+                  `⚠️ Atenção: Divergência de Competência detectada!\n\n` +
+                  `• Competência selecionada na tela: ${compAtivaFormatada}\n` +
+                  `• Competência detectada na planilha: ${mesNomePlanilha}\n\n` +
+                  `Deseja prosseguir com a importação na competência selecionada (${compAtivaFormatada})?`
+                );
+
+                if (!desejaImportar) {
+                  const fileInput = document.getElementById('excelFileInput');
+                  if (fileInput) fileInput.value = '';
+                  return;
+                }
+
+                // Usuário confirmou que deseja importar na competência selecionada
+                competenciaAlvo = this.competencia;
               }
             }
           }
 
-          // Salvar faturamento do técnico com o arquivo em base64
+          // Salvar faturamento do técnico com o arquivo em base64 na competência selecionada
+          this.competencia = competenciaAlvo;
           this.processarFaturamentoTecnico(tecEscolhido, parsed, file.name, fileBase64);
 
           // Limpa o valor do input file para permitir selecionar o mesmo arquivo novamente se desejar
