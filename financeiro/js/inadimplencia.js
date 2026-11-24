@@ -220,11 +220,12 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
     }
 
     // =========================================================================
-    // CÁLCULO DE VALOR LÍQUIDO DOS IMPOSTOS
+    // CÁLCULO DE TRIBUTOS E VALOR LÍQUIDO DOS IMPOSTOS
+    // Espelha exatamente a mesma regra oficial do módulo de Impostos
     // =========================================================================
 
-    function calcularValorLiquidoImpostosDoc(doc, empresa) {
-        if (!doc) return null;
+    function calcularTributosELiquidoImpostosDoc(doc, empresa) {
+        if (!doc) return { tributosCents: 0n, liquidoCents: null };
         try {
             const taxDetails = doc.tax_details || (window.BpoFiscalUtils && window.BpoFiscalUtils.extrairTaxDetails(doc));
             const itemType = (taxDetails && taxDetails.item_type) || 'servico';
@@ -301,26 +302,51 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 }
 
                 const irpjLiqCents = irpjBrutoCents > irrfDocCents ? (irpjBrutoCents - irrfDocCents) : 0n;
-                const tributosCents = pisCents + cofinsCents + issCents + irpjLiqCents + csllCents + irrfDocCents;
-                return fatTotalCents > tributosCents ? (fatTotalCents - tributosCents) : 0n;
+                const retencaoExibicaoCents = irrfDocCents;
+
+                // Total Tributos exatamente como no módulo de impostos (linha 733 do impostos.js):
+                // tributosCents = pis + cofins + iss + irpjLiq + csll + retencaoExibicao
+                const tributosCents = pisCents + cofinsCents + issCents + irpjLiqCents + csllCents + retencaoExibicaoCents;
+
+                // No Lucro Presumido, o Valor Líquido no módulo de impostos (linha 777-782 do impostos.js) é:
+                // deducoesTotais = tributosCents; liquido = fatTotal - deducoesTotais
+                const deducoesTotais = tributosCents;
+                const liquidoCents = fatTotalCents > deducoesTotais ? (fatTotalCents - deducoesTotais) : 0n;
+
+                return { tributosCents, liquidoCents };
 
             } else {
-                // Simples Nacional: DAS estimado + retenções
+                // Simples Nacional: DAS estimado pelo RBT12/faixa
                 const anexoKey = (taxDetails && taxDetails.das_anexo) ? taxDetails.das_anexo : 'anexo_iii';
                 const issIsento = isLocacao || !!(taxDetails && taxDetails.iss_isento_simples);
+                const rbt12Num = (taxDetails && taxDetails.das_rbt12) 
+                    ? Number(window.BpoMoney.toCents(taxDetails.das_rbt12)) / 100 
+                    : 180000;
+
                 let aliqDasEfetiva = 0.06;
                 if (window.BpoTaxEngine && window.BpoTaxEngine.apurarSimplesNacional) {
-                    const previaSN = window.BpoTaxEngine.apurarSimplesNacional(180000, fatTotalNum, anexoKey, { issIsento });
+                    const previaSN = window.BpoTaxEngine.apurarSimplesNacional(rbt12Num, fatTotalNum, anexoKey, { issIsento });
                     aliqDasEfetiva = previaSN.aliquotaEfetivaNumero || 0.06;
                 }
+
                 const tributosCents = BigInt(Math.round(fatTotalNum * aliqDasEfetiva * 100));
-                const deducoes = tributosCents + retCents;
-                return fatTotalCents > deducoes ? (fatTotalCents - deducoes) : 0n;
+                const retencaoExibicaoCents = retCents;
+
+                // No Simples Nacional, no módulo de impostos (linha 777-782 do impostos.js):
+                // deducoesTotais = tributosCents + retencaoExibicaoCents
+                const deducoesTotais = tributosCents + retencaoExibicaoCents;
+                const liquidoCents = fatTotalCents > deducoesTotais ? (fatTotalCents - deducoesTotais) : 0n;
+
+                return { tributosCents, liquidoCents };
             }
         } catch (e) {
-            console.warn('Erro ao calcular valor líquido de impostos:', e);
-            return null;
+            console.warn('Erro ao calcular tributos e valor líquido de impostos:', e);
+            return { tributosCents: 0n, liquidoCents: null };
         }
+    }
+
+    function calcularValorLiquidoImpostosDoc(doc, empresa) {
+        return calcularTributosELiquidoImpostosDoc(doc, empresa).liquidoCents;
     }
 
     // =========================================================================
@@ -452,15 +478,15 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             let nomeContrato = ctr ? (ctr.code ? `${ctr.code} — ${ctr.name}` : ctr.name) : 'Avulso';
             const numDocumento = d.document_number || '-';
 
-            // Valor Líquido registrado/apurado no módulo de impostos
+            // Valor Líquido e Impostos registrados/apurados no módulo de impostos
             const emp = companiesMap.get(d.company_id);
-            const liquidoImpostosCents = calcularValorLiquidoImpostosDoc(d, emp);
+            const { tributosCents, liquidoCents } = calcularTributosELiquidoImpostosDoc(d, emp);
             let liquidoDevidoCents = null;
-            if (liquidoImpostosCents !== null) {
+            if (liquidoCents !== null) {
                 if (totalRecebidoCents > 0n) {
-                    liquidoDevidoCents = liquidoImpostosCents > totalRecebidoCents ? (liquidoImpostosCents - totalRecebidoCents) : 0n;
+                    liquidoDevidoCents = liquidoCents > totalRecebidoCents ? (liquidoCents - totalRecebidoCents) : 0n;
                 } else {
-                    liquidoDevidoCents = liquidoImpostosCents;
+                    liquidoDevidoCents = liquidoCents;
                 }
             }
 
@@ -475,6 +501,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 due_date: d.due_date,
                 dias_atraso: diasAtraso,
                 valor_total_cents: valorTotalBrutoDevidoCents,
+                imposto_cents: tributosCents,
                 valor_liquido_cents: liquidoDevidoCents,
                 observacoes: (taxDetails && taxDetails.inadimplencia_obs) ? taxDetails.inadimplencia_obs : '',
                 raw_doc: d
@@ -506,6 +533,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 due_date: m.due_date,
                 dias_atraso: diasAtraso,
                 valor_total_cents: brutoCents,
+                imposto_cents: 0n,
                 valor_liquido_cents: liqCents,
                 observacoes: m.notes || '',
                 raw_manual: m
@@ -683,11 +711,13 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
 
             // Totais da empresa
             let totalBrutoCents = 0n;
+            let totalImpostosCents = 0n;
             let totalLiquidoCents = 0n;
             let temLiquidoIncompleto = false;
 
             const linhasHtml = itensEmpresa.map(p => {
                 totalBrutoCents += p.valor_total_cents;
+                totalImpostosCents += (p.imposto_cents || 0n);
                 if (p.valor_liquido_cents !== null && p.valor_liquido_cents !== undefined) {
                     totalLiquidoCents += p.valor_liquido_cents;
                 } else {
@@ -698,6 +728,11 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 const tagManual = p.origem === 'manual'
                     ? `<span style="font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; background: rgba(147, 51, 234, 0.2); color: #c084fc; border: 1px solid rgba(147, 51, 234, 0.4); margin-left: 6px;">Manual</span>`
                     : '';
+
+                // Coluna Imposto
+                const impostoTxt = (p.imposto_cents !== null && p.imposto_cents !== undefined && p.imposto_cents > 0n)
+                    ? `<span style="color: #f59e0b; font-weight: 600;">${window.BpoMoney.formatBRL(p.imposto_cents)}</span>`
+                    : `<span style="color: var(--text-muted); font-size: 0.82rem;">R$ 0,00</span>`;
 
                 // Coluna Valor Líquido
                 const liqTxt = (p.valor_liquido_cents !== null && p.valor_liquido_cents !== undefined)
@@ -726,6 +761,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                         <td style="text-align: center; color: #fbbf24; font-weight: 600;">${formatarDataBR(p.due_date)}</td>
                         <td style="text-align: center;">${badgeAtraso}</td>
                         <td style="text-align: right; font-weight: 700; color: #f8fafc;">${window.BpoMoney.formatBRL(p.valor_total_cents)}</td>
+                        <td style="text-align: right;">${impostoTxt}</td>
                         <td style="text-align: right;">${liqTxt}</td>
                         <td style="text-align: center; white-space: nowrap;">
                             <button class="btn btn-secondary btn-sm" onclick="window.abrirModalEditarInadimplencia('${p.origem}', '${p.id}')" style="padding: 4px 8px; font-size: 0.78rem;">
@@ -772,6 +808,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                                 <th style="padding: 10px; text-align: center; border-bottom: 2px solid rgba(255,255,255,0.1);">Vencimento</th>
                                 <th style="padding: 10px; text-align: center; border-bottom: 2px solid rgba(255,255,255,0.1);">Dias de Atraso</th>
                                 <th style="padding: 10px; text-align: right; border-bottom: 2px solid rgba(255,255,255,0.1);">Valor Total</th>
+                                <th style="padding: 10px; text-align: right; border-bottom: 2px solid rgba(255,255,255,0.1); color: #f59e0b;">Imposto</th>
                                 <th style="padding: 10px; text-align: right; border-bottom: 2px solid rgba(255,255,255,0.1);">Valor Líquido</th>
                                 <th style="padding: 10px; text-align: center; border-bottom: 2px solid rgba(255,255,255,0.1);">Ações</th>
                             </tr>
@@ -786,6 +823,9 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                                 </td>
                                 <td style="padding: 12px 10px; text-align: right; color: #f8fafc; font-size: 0.95rem;">
                                     ${window.BpoMoney.formatBRL(totalBrutoCents)}
+                                </td>
+                                <td style="padding: 12px 10px; text-align: right; color: #f59e0b; font-size: 0.95rem;">
+                                    ${window.BpoMoney.formatBRL(totalImpostosCents)}
                                 </td>
                                 <td style="padding: 12px 10px; text-align: right; color: #38bdf8; font-size: 0.95rem;">
                                     ${footerLiquidoTxt}
