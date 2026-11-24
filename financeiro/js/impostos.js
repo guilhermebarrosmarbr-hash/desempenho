@@ -105,6 +105,13 @@ window.BpoFiscalUtils.calcularFaturamentoTotalDoc = function(doc, taxDetails) {
             competenciaAtiva = e.target.value;
             await carregarDadosFiscal();
         });
+
+        const btnSincronizarBanco = document.getElementById('btnSincronizarBanco');
+        if (btnSincronizarBanco) {
+            btnSincronizarBanco.addEventListener('click', async () => {
+                await sincronizarApuraçãoComBancoManual();
+            });
+        }
     });
 
     // Repartição padrão aproximada dos 5 anexos do Simples Nacional
@@ -1168,6 +1175,87 @@ window.BpoFiscalUtils.calcularFaturamentoTotalDoc = function(doc, taxDetails) {
                 </div>
             </div>
         `;
+    }
+
+    async function sincronizarApuraçãoComBancoManual() {
+        if (!documentosCompetencia || documentosCompetencia.length === 0) {
+            alert('Não há documentos nesta competência para sincronizar.');
+            return;
+        }
+
+        const btn = document.getElementById('btnSincronizarBanco');
+        const txtOriginal = btn ? btn.innerHTML : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span>⏳ Gravando no banco...</span>';
+        }
+
+        let atualizados = 0;
+        try {
+            for (const doc of documentosCompetencia) {
+                if (doc.status === 'cancelled') continue;
+                const emp = companiesMap.get(doc.company_id);
+                if (!emp) continue;
+
+                let ctx = null;
+                if (emp.tax_regime === 'lucro_presumido') {
+                    const infoTri = apuracoesTrimestraisPorEmpresa.get(emp.id);
+                    ctx = {
+                        aliqIrpjServPlanilha: infoTri?.aliqIrpjServPlanilha || 0.048,
+                        aliqCsllServPlanilha: infoTri?.aliqCsllServPlanilha || 0.0288,
+                        aliqIrpjProdPlanilha: infoTri?.aliqIrpjProdPlanilha || 0.012,
+                        aliqCsllProdPlanilha: infoTri?.aliqCsllProdPlanilha || 0.0108
+                    };
+                } else {
+                    const rbt12Real = rbt12PorEmpresaMap.get(emp.id) || 0;
+                    ctx = { rbt12: rbt12Real };
+                }
+
+                const res = window.BpoFiscalUtils.calcularTributosELiquidoOficial(doc, emp, ctx);
+                const tdAtual = doc.tax_details || window.BpoFiscalUtils.extrairTaxDetails(doc) || {};
+                const tributosNovoStr = window.BpoMoney.toDecimalString(res.tributosCents);
+                const liquidoNovoStr = window.BpoMoney.toDecimalString(res.liquidoCents);
+
+                const tdAtualizado = {
+                    ...tdAtual,
+                    imposto_apurado: tributosNovoStr,
+                    liquido_apurado: liquidoNovoStr,
+                    aliquota_efetiva: res.aliquotaEfetivaStr,
+                    total_tax: tributosNovoStr
+                };
+
+                doc.tax_details = tdAtualizado;
+                const descLimpa = window.BpoFiscalUtils.limparDescricao(doc.description);
+                const descComMeta = window.BpoFiscalUtils.anexarTaxDetailsNaDescricao(descLimpa, tdAtualizado);
+                doc.description = descComMeta;
+
+                await window.BpoSupabase.request(`billing_documents?id=eq.${doc.id}`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({
+                        description: descComMeta
+                    })
+                });
+                atualizados++;
+            }
+
+            // Alerta se a competência sincronizada impactar o RBT12 de competências seguintes
+            const compAtual = competenciaAtiva;
+            const hojeStr = new Date().toISOString().slice(0, 7);
+            let avisoRbt12 = '';
+            if (compAtual < hojeStr) {
+                avisoRbt12 = `\n\n📌 Aviso de RBT12: Como a competência ${compAtual} é anterior à atual, os valores consolidados aqui compõem o RBT12 dos 12 meses seguintes (ex: Simples Nacional).`;
+            }
+
+            alert(`Apuração fiscal sincronizada e gravada com sucesso no banco de dados!\nTotal de lançamentos atualizados: ${atualizados}.${avisoRbt12}`);
+        } catch (e) {
+            console.error('Erro ao sincronizar com banco:', e);
+            alert('Erro ao gravar apuração no banco: ' + (e.message || e));
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = txtOriginal;
+            }
+        }
     }
 
     function formatarData(dataStr) {

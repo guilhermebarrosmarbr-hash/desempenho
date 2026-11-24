@@ -450,8 +450,27 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
     }
 
     function calcularTributosELiquidoImpostosDoc(doc, empresa) {
+        if (!doc) return { tributosCents: 0n, liquidoCents: null };
+
+        // 1. Prioridade absoluta: Lê diretamente os valores gravados no banco de dados (SELECT direto)
+        const td = doc.tax_details || (window.BpoFiscalUtils && window.BpoFiscalUtils.extrairTaxDetails(doc));
+        if (td && td.imposto_apurado !== undefined && td.liquido_apurado !== undefined) {
+            return {
+                tributosCents: window.BpoMoney.toCents(td.imposto_apurado),
+                liquidoCents: window.BpoMoney.toCents(td.liquido_apurado)
+            };
+        }
+
+        // 2. Fallback dinâmico: se a nota ainda não tiver sido gravada pelo Faturamento ou Impostos
         const chave = doc && doc.company_id && doc.competence_month ? `${doc.company_id}_${doc.competence_month}` : '';
         const ctx = chave ? fiscalContextCache.get(chave) : null;
+        if (window.BpoFiscalUtils && window.BpoFiscalUtils.calcularTributosELiquidoOficial) {
+            const res = window.BpoFiscalUtils.calcularTributosELiquidoOficial(doc, empresa, ctx);
+            return {
+                tributosCents: res.tributosCents,
+                liquidoCents: res.liquidoCents
+            };
+        }
         return calcularTributosELiquidoImpostosDocComContexto(doc, empresa, ctx);
     }
 

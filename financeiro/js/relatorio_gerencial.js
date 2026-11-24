@@ -604,16 +604,28 @@
     function extrairValoresDoc(doc, emp) {
         const td = doc.tax_details || (window.BpoFiscalUtils ? window.BpoFiscalUtils.extrairTaxDetails(doc) : {});
         const fatTotalCents = calcularFaturamentoTotalDoc(doc, td);
-        const fatTotalNum = Number(fatTotalCents) / 100;
-        const isLP = emp && emp.tax_regime === 'lucro_presumido';
-        const isLocacao = (doc.document_type === 'locacao') || !!(td && td.is_locacao);
-        const itemType = (td && td.item_type) || 'servico';
-        const issRetido = !!(td && td.iss_retained);
-        const retCents = window.BpoMoney.toCents(doc.retentions);
 
-        // Busca o contexto fiscal específico da competência do documento (ou da ativa como fallback)
+        // 1. Prioridade absoluta: Lê diretamente os valores gravados no banco de dados (SELECT direto)
+        if (td && td.imposto_apurado !== undefined && td.liquido_apurado !== undefined) {
+            return {
+                faturadoCents: fatTotalCents,
+                impostoCents: window.BpoMoney.toCents(td.imposto_apurado),
+                liquidoCents: window.BpoMoney.toCents(td.liquido_apurado)
+            };
+        }
+
+        // 2. Fallback dinâmico: se a nota ainda não tiver sido sincronizada no banco
         const chaveCtx = doc && doc.company_id && doc.competence_month ? `${doc.company_id}_${doc.competence_month}` : '';
         const fiscalCtx = fiscalContextCache.get(chaveCtx);
+
+        if (window.BpoFiscalUtils && window.BpoFiscalUtils.calcularTributosELiquidoOficial) {
+            const res = window.BpoFiscalUtils.calcularTributosELiquidoOficial(doc, emp, fiscalCtx);
+            return {
+                faturadoCents: res.faturadoCents,
+                impostoCents: res.tributosCents,
+                liquidoCents: res.liquidoCents
+            };
+        }
 
         let tributosCents = 0n;
         let retencaoExibicaoCents = 0n;

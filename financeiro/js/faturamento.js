@@ -46,6 +46,8 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
     let companiesMap = new Map();
     // RBT12 real por empresa (Simples Nacional): populado a cada carregamento de competência
     let rbt12PorEmpresaFat = new Map();
+    // Contexto fiscal oficial completo da competência (mesmas variáveis do Módulo de Impostos)
+    let contextoFiscalEmpresasFat = new Map();
 
     // Elementos DOM
     const selectEmpresa = document.getElementById('selectEmpresa');
@@ -430,9 +432,9 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             atualizarDropdownFiltroContratos();
             renderizarMetricas();
 
-            // Calcula RBT12 real das empresas Simples Nacional (12 meses anteriores à competência)
-            // para uso correto no cálculo do Valor Líquido da tabela de lançamentos
-            rbt12PorEmpresaFat = new Map();
+            // Calcula contexto fiscal completo (RBT12 Simples e alíquotas oficiais LP)
+            // espelhando 100% a apuração oficial do Módulo de Impostos
+            contextoFiscalEmpresasFat = new Map();
             try {
                 if (competenciaAtiva && competenciaAtiva.includes('-')) {
                     const [anoStr, mesStr] = competenciaAtiva.split('-');
@@ -445,27 +447,71 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                         meses12.push(`${a}-${String(m).padStart(2, '0')}`);
                     }
                     const inQuery = meses12.join(',');
-                    // Identifica empresas Simples Nacional presentes nos documentos
-                    const empresasSN = [...companiesMap.values()].filter(e => e.tax_regime === 'simples_nacional');
-                    for (const empSN of empresasSN) {
-                        try {
-                            const docs12 = await window.BpoSupabase.request(
-                                `billing_documents?company_id=eq.${empSN.id}&competence_month=in.(${inQuery})&status=neq.cancelled`,
-                                { method: 'GET' }
-                            );
-                            let totalCents = 0n;
-                            (docs12 || []).forEach(d => {
-                                totalCents += window.BpoMoney.toCents(d.gross_amount);
+
+                    for (const emp of companiesMap.values()) {
+                        const ctx = {
+                            rbt12: 0,
+                            aliqIrpjServPlanilha: 0.048,
+                            aliqCsllServPlanilha: 0.0288,
+                            aliqIrpjProdPlanilha: 0.012,
+                            aliqCsllProdPlanilha: 0.0108
+                        };
+
+                        if (emp.tax_regime === 'simples_nacional') {
+                            try {
+                                const docs12 = await window.BpoSupabase.request(
+                                    `billing_documents?company_id=eq.${emp.id}&competence_month=in.(${inQuery})&status=neq.cancelled`,
+                                    { method: 'GET' }
+                                );
+                                let totalCents = 0n;
+                                (docs12 || []).forEach(d => {
+                                    const td = d.tax_details || window.BpoFiscalUtils.extrairTaxDetails(d);
+                                    totalCents += window.BpoFiscalUtils.calcularFaturamentoTotalDoc(d, td);
+                                });
+                                ctx.rbt12 = Number(totalCents) / 100;
+                                rbt12PorEmpresaFat.set(emp.id, ctx.rbt12);
+                            } catch (e) {
+                                console.warn('RBT12 faturamento: erro empresa', emp.id, e);
+                            }
+                        } else if (emp.tax_regime === 'lucro_presumido') {
+                            const docsEmp = (documentos || []).filter(d => d.company_id === emp.id && d.status !== 'cancelled');
+                            let fatTotalCents = 0n;
+                            let servicosCents = 0n;
+                            let produtosCents = 0n;
+
+                            docsEmp.forEach(d => {
+                                const td = d.tax_details || window.BpoFiscalUtils.extrairTaxDetails(d);
+                                const fatDoc = window.BpoFiscalUtils.calcularFaturamentoTotalDoc(d, td);
+                                fatTotalCents += fatDoc;
+                                const itemType = (td && td.item_type) || 'servico';
+                                if (itemType === 'produto') produtosCents += fatDoc;
+                                else servicosCents += fatDoc;
                             });
-                            rbt12PorEmpresaFat.set(empSN.id, Number(totalCents) / 100);
-                        } catch (e) {
-                            console.warn('RBT12 faturamento: erro empresa', empSN.id, e);
+
+                            const fatTotalMesNum = Number(fatTotalCents) / 100;
+                            const L_m = 1250000 / 3;
+                            const baseServMes = Math.max(0, ((fatTotalMesNum - L_m) * 0.352) + (400000 / 3));
+                            const irpjTotServMes = (baseServMes * 0.15) + Math.max(0, (baseServMes - 20000) * 0.10);
+                            const csllTotServMes = baseServMes * 0.09;
+
+                            const baseProdMes = Math.max(0, ((fatTotalMesNum - L_m) * 0.088) + (100000 / 3));
+                            const irpjTotProdMes = (baseProdMes * 0.15) + Math.max(0, (baseProdMes - 20000) * 0.10);
+                            const csllTotProdMes = Math.max(0, ((fatTotalMesNum - L_m) * 0.132) + (150000 / 3)) * 0.09;
+
+                            ctx.aliqIrpjServPlanilha = fatTotalMesNum > 0 ? (irpjTotServMes / fatTotalMesNum) : 0.048;
+                            ctx.aliqCsllServPlanilha = fatTotalMesNum > 0 ? (csllTotServMes / fatTotalMesNum) : 0.0288;
+                            ctx.aliqIrpjProdPlanilha = fatTotalMesNum > 0 ? (irpjTotProdMes / fatTotalMesNum) : 0.012;
+                            ctx.aliqCsllProdPlanilha = fatTotalMesNum > 0 ? (csllTotProdMes / fatTotalMesNum) : 0.0108;
                         }
+                        contextoFiscalEmpresasFat.set(emp.id, ctx);
                     }
                 }
             } catch (e) {
-                console.warn('RBT12 faturamento: erro geral', e);
+                console.warn('Contexto fiscal faturamento: erro geral', e);
             }
+
+            // Sincroniza e consolida automaticamente os tributos oficiais no banco de dados (se houver pendências não persistidas)
+            sincronizarTributosOficiaisDocumentosSilencioso();
 
             renderizarDocumentos();
             renderizarContratos();
@@ -640,172 +686,60 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
     }
 
     // Calcula o Valor Líquido Econômico de um documento para exibição na tabela.
-    // Deduz todos os tributos (PIS, COFINS, IRPJ, CSLL, ISS próprio, DAS) + retenções,
-    // sem duplicar o ISS quando este for retido pelo tomador.
+    // Utiliza o motor fiscal oficial compartilhado BpoFiscalUtils.calcularTributosELiquidoOficial
     // Retorna BigInt em centavos. NÃO altera net_amount no banco.
     function calcularLiquidoEconomicoDoc(doc, emp) {
-        const taxDetails = (doc.tax_details && typeof doc.tax_details === 'object')
-            ? doc.tax_details
-            : window.BpoFiscalUtils.extrairTaxDetails(doc);
-        const isLP = emp && emp.tax_regime === 'lucro_presumido';
+        const ctx = emp ? contextoFiscalEmpresasFat.get(emp.id) : null;
+        const res = window.BpoFiscalUtils.calcularTributosELiquidoOficial(doc, emp, ctx);
+        return res.liquidoCents;
+    }
 
-        // Faturamento total = bruto + extras - descontos
-        const bCents = window.BpoMoney.toCents(doc.gross_amount);
-        const dCents = (taxDetails && taxDetails.desconto != null)
-            ? window.BpoMoney.toCents(taxDetails.desconto)
-            : (doc.discounts ? window.BpoMoney.toCents(doc.discounts) : 0n);
-        const eCents = (taxDetails && taxDetails.extras != null)
-            ? window.BpoMoney.toCents(taxDetails.extras)
-            : 0n;
-        const fatTotalCents = (bCents + eCents) > dCents ? (bCents + eCents - dCents) : 0n;
-        const fatTotalNum = Number(fatTotalCents) / 100;
+    // Sincroniza silenciosamente a apuração oficial no campo tax_details de cada documento no banco de dados.
+    // Preserva 100% de todos os campos existentes da nota (document_number, contract_id, datas, retenções, baixas, etc.)
+    async function sincronizarTributosOficiaisDocumentosSilencioso() {
+        if (!documentos || documentos.length === 0) return;
+        try {
+            for (const doc of documentos) {
+                if (doc.status === 'cancelled') continue;
+                const emp = companiesMap.get(doc.company_id);
+                if (!emp) continue;
+                const ctx = contextoFiscalEmpresasFat.get(emp.id);
+                const res = window.BpoFiscalUtils.calcularTributosELiquidoOficial(doc, emp, ctx);
 
-        const retCents = window.BpoMoney.toCents(doc.retentions);
-        const isLocacao = (doc.document_type === 'locacao') || !!(taxDetails && taxDetails.is_locacao);
-        const itemType = (taxDetails && taxDetails.item_type) || 'servico';
-        const issRetido = !!(taxDetails && taxDetails.iss_retained);
-        const aliqIss = (taxDetails && taxDetails.iss_aliq != null)
-            ? Number(taxDetails.iss_aliq)
-            : (isLP ? 3.0 : 5.0);
+                const tdAtual = doc.tax_details || window.BpoFiscalUtils.extrairTaxDetails(doc) || {};
+                const tributosNovoStr = window.BpoMoney.toDecimalString(res.tributosCents);
+                const liquidoNovoStr = window.BpoMoney.toDecimalString(res.liquidoCents);
 
-        if (isLP) {
-            // PIS e COFINS: usa valor salvo ou calcula pelas alíquotas padrão
-            const pisCents = (taxDetails && taxDetails.pis_valor != null)
-                ? window.BpoMoney.toCents(taxDetails.pis_valor)
-                : BigInt(Math.round(fatTotalNum * 0.0065 * 100));
-            const cofinsCents = (taxDetails && taxDetails.cofins_valor != null)
-                ? window.BpoMoney.toCents(taxDetails.cofins_valor)
-                : BigInt(Math.round(fatTotalNum * 0.03 * 100));
-
-            // ISS ou ICMS
-            const issCents = !isLocacao
-                ? (taxDetails && taxDetails.iss_valor != null
-                    ? window.BpoMoney.toCents(taxDetails.iss_valor)
-                    : BigInt(Math.round(fatTotalNum * (aliqIss / 100) * 100)))
-                : 0n;
-
-            // IRPJ e CSLL: fórmula oficial da planilha segregada por atividade (serviço vs produto),
-            // espelhando exatamente a lógica do módulo de Impostos.
-            // Prioridade: irpj_valor/csll_valor manual (R$) > fórmula dinâmica por atividade.
-            let irpjBrutoCents;
-            let csllCents;
-
-            if (taxDetails && taxDetails.irpj_valor !== undefined && taxDetails.irpj_valor !== null && String(taxDetails.irpj_valor).trim() !== '') {
-                irpjBrutoCents = window.BpoMoney.toCents(taxDetails.irpj_valor);
-            } else {
-                // Calcula alíquota efetiva segregada por atividade com a fórmula da planilha
-                const L_m = 1250000 / 3;
-                let aliqIrpjPlanilha;
-                if (documentos && documentos.length > 0) {
-                    const docsEmpMes = documentos.filter(d => d.company_id === doc.company_id && d.status !== 'cancelled');
-                    let recServMes = 0;
-                    let recProdMes = 0;
-                    docsEmpMes.forEach(d => {
-                        const td = d.tax_details || window.BpoFiscalUtils.extrairTaxDetails(d);
-                        const it = (td && td.item_type) || 'servico';
-                        const valorD = Number(window.BpoMoney.toCents(d.gross_amount)) / 100;
-                        if (it === 'produto') recProdMes += valorD;
-                        else recServMes += valorD;
-                    });
-                    const fatTotalMesNum = recServMes + recProdMes;
-                    if (fatTotalMesNum > 0) {
-                        if (itemType === 'produto') {
-                            const baseProd = Math.max(0, ((fatTotalMesNum - L_m) * 0.088) + (100000 / 3));
-                            const irpjProd = (baseProd * 0.15) + Math.max(0, (baseProd - 20000) * 0.10);
-                            aliqIrpjPlanilha = irpjProd / fatTotalMesNum;
-                        } else {
-                            const baseServ = Math.max(0, ((fatTotalMesNum - L_m) * 0.352) + (400000 / 3));
-                            const irpjServ = (baseServ * 0.15) + Math.max(0, (baseServ - 20000) * 0.10);
-                            aliqIrpjPlanilha = irpjServ / fatTotalMesNum;
-                        }
-                    } else {
-                        aliqIrpjPlanilha = itemType === 'produto' ? 0.012 : 0.048;
-                    }
-                } else {
-                    aliqIrpjPlanilha = itemType === 'produto' ? 0.012 : 0.048;
+                // Verifica se já está atualizado no tax_details para não fazer requisições desnecessárias
+                if (tdAtual.imposto_apurado === tributosNovoStr && tdAtual.liquido_apurado === liquidoNovoStr) {
+                    continue;
                 }
-                irpjBrutoCents = BigInt(Math.round(fatTotalNum * aliqIrpjPlanilha * 100));
+
+                // Preserva 100% dos dados originais de taxDetails e apenas atualiza as chaves oficiais de apuração
+                const tdAtualizado = {
+                    ...tdAtual,
+                    imposto_apurado: tributosNovoStr,
+                    liquido_apurado: liquidoNovoStr,
+                    aliquota_efetiva: res.aliquotaEfetivaStr,
+                    // Mantém compatibilidade com campo legado total_tax
+                    total_tax: tributosNovoStr
+                };
+
+                doc.tax_details = tdAtualizado;
+                const descLimpa = window.BpoFiscalUtils.limparDescricao(doc.description);
+                const descComMeta = window.BpoFiscalUtils.anexarTaxDetailsNaDescricao(descLimpa, tdAtualizado);
+                doc.description = descComMeta;
+
+                // Executa PATCH isolado preservando todo o restante da linha no Supabase
+                await window.BpoSupabase.request(`billing_documents?id=eq.${doc.id}`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({
+                        description: descComMeta
+                    })
+                });
             }
-
-            if (taxDetails && taxDetails.csll_valor !== undefined && taxDetails.csll_valor !== null && String(taxDetails.csll_valor).trim() !== '') {
-                csllCents = window.BpoMoney.toCents(taxDetails.csll_valor);
-            } else {
-                const L_m = 1250000 / 3;
-                let aliqCsllPlanilha;
-                if (documentos && documentos.length > 0) {
-                    const docsEmpMes = documentos.filter(d => d.company_id === doc.company_id && d.status !== 'cancelled');
-                    let recServMes = 0;
-                    let recProdMes = 0;
-                    docsEmpMes.forEach(d => {
-                        const td = d.tax_details || window.BpoFiscalUtils.extrairTaxDetails(d);
-                        const it = (td && td.item_type) || 'servico';
-                        const valorD = Number(window.BpoMoney.toCents(d.gross_amount)) / 100;
-                        if (it === 'produto') recProdMes += valorD;
-                        else recServMes += valorD;
-                    });
-                    const fatTotalMesNum = recServMes + recProdMes;
-                    if (fatTotalMesNum > 0) {
-                        if (itemType === 'produto') {
-                            const baseCsllProd = Math.max(0, ((fatTotalMesNum - L_m) * 0.132) + (150000 / 3));
-                            aliqCsllPlanilha = (baseCsllProd * 0.09) / fatTotalMesNum;
-                        } else {
-                            const baseServ = Math.max(0, ((fatTotalMesNum - L_m) * 0.352) + (400000 / 3));
-                            aliqCsllPlanilha = (baseServ * 0.09) / fatTotalMesNum;
-                        }
-                    } else {
-                        aliqCsllPlanilha = itemType === 'produto' ? 0.0108 : 0.0288;
-                    }
-                } else {
-                    aliqCsllPlanilha = itemType === 'produto' ? 0.0108 : 0.0288;
-                }
-                csllCents = BigInt(Math.round(fatTotalNum * aliqCsllPlanilha * 100));
-            }
-
-            // IRRF retido do documento
-            let irrfDocCents = 0n;
-            if (taxDetails && taxDetails.has_irrf) {
-                const aliqIrrf = (taxDetails.irrf_aliq != null) ? Number(taxDetails.irrf_aliq) : (itemType === 'produto' ? 1.2 : 4.8);
-                irrfDocCents = BigInt(Math.round(fatTotalNum * (aliqIrrf / 100) * 100));
-            } else if (retCents > 0n && !issRetido) {
-                irrfDocCents = retCents;
-            } else if (retCents > 0n && issRetido) {
-                irrfDocCents = retCents > issCents ? (retCents - issCents) : 0n;
-            }
-
-            const irpjLiqCents = irpjBrutoCents > irrfDocCents ? (irpjBrutoCents - irrfDocCents) : 0n;
-
-            // Anti-duplicação (OBS 2): Faturamento Total - Soma de todos os impostos devidos da linha
-            // Tributos = PIS + COFINS + ISS + IRPJ Líquido + CSLL + Retenções (IRRF)
-            const deducoesTotais = pisCents + cofinsCents + issCents + irpjLiqCents + csllCents + irrfDocCents;
-            return fatTotalCents > deducoesTotais ? (fatTotalCents - deducoesTotais) : 0n;
-        } else {
-            // Simples Nacional: DAS calculado sempre pelo RBT12 real (nunca usa das_valor/das_aliq desatualizados)
-            const rbt12Real = rbt12PorEmpresaFat.get(doc.company_id) || 0;
-            const rbt12Num = rbt12Real > 0
-                ? rbt12Real
-                : ((taxDetails && taxDetails.das_rbt12)
-                    ? Number(window.BpoMoney.toCents(taxDetails.das_rbt12)) / 100
-                    : 180000);
-            const anexoKey = (taxDetails && taxDetails.das_anexo) || 'anexo_iii';
-            const issIsento = isLocacao || !!(taxDetails && taxDetails.iss_isento_simples);
-
-            let tributosCents = 0n;
-            if (window.BpoTaxEngine) {
-                try {
-                    const apuracao = window.BpoTaxEngine.apurarSimplesNacional(rbt12Num, fatTotalNum, anexoKey, {
-                        issRetidoTomador: issRetido,
-                        issIsento: issIsento
-                    });
-                    // tributosCents = DAS proporcional ao documento
-                    tributosCents = BigInt(Math.round(fatTotalNum * (apuracao.aliquotaEfetivaNumero || 0.06) * 100));
-                } catch (e) {
-                    tributosCents = BigInt(Math.round(fatTotalNum * 0.06 * 100));
-                }
-            } else {
-                tributosCents = BigInt(Math.round(fatTotalNum * 0.06 * 100));
-            }
-            const deducoesTotais = tributosCents + retCents;
-            return fatTotalCents > deducoesTotais ? (fatTotalCents - deducoesTotais) : 0n;
+        } catch (e) {
+            console.warn('Sincronização de tributos em segundo plano:', e);
         }
     }
 
@@ -849,41 +783,13 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 `;
             }
 
-            // Impostos atribuídos (campo tax_details ou estimativa gerencial)
-            let impostosAtrib = '<span style="color:var(--text-muted);font-size:0.8rem;">—</span>';
-            if (doc.tax_details && doc.tax_details.total_tax) {
-                impostosAtrib = window.BpoMoney.formatBRL(doc.tax_details.total_tax);
-            } else if (doc.tax_details && window.BpoTaxEngine && emp) {
-                const bNum = Number(window.BpoMoney.toCents(doc.gross_amount)) / 100;
-                // Busca faturamento mensal total da empresa na competência para aplicar alíquota exata da planilha
-                let recMensalTotal = 0;
-                if (documentos && documentos.length > 0) {
-                    recMensalTotal = documentos
-                        .filter(d => d.company_id === doc.company_id && d.status !== 'cancelled')
-                        .reduce((acc, d) => acc + (Number(window.BpoMoney.toCents(d.gross_amount)) / 100), 0);
-                }
+            // Impostos atribuídos (apurados oficialmente pelo motor compartilhado do Módulo de Impostos)
+            const ctxEmp = emp ? contextoFiscalEmpresasFat.get(emp.id) : null;
+            const resFiscal = window.BpoFiscalUtils.calcularTributosELiquidoOficial(doc, emp, ctxEmp);
+            const impostosAtrib = window.BpoMoney.formatBRL(resFiscal.tributosCents);
 
-                const p = window.BpoTaxEngine.calcularPreviaNota({
-                    gross_amount: bNum,
-                    company_tax_regime: emp.tax_regime,
-                    item_type: doc.tax_details.item_type || 'servico',
-                    receitaMensalTotal: recMensalTotal > 0 ? recMensalTotal : bNum,
-                    temIrrf: !!doc.tax_details.has_irrf,
-                    aliquotaIrrf: doc.tax_details.irrf_aliq,
-                    temInss: !!doc.tax_details.has_inss,
-                    aliquotaInss: doc.tax_details.inss_aliq,
-                    issRetido: !!doc.tax_details.iss_retained,
-                    aliquotaIss: doc.tax_details.iss_aliq || 5.0,
-                    isLocacao: !!(doc.document_type === 'locacao' || doc.tax_details.is_locacao)
-                });
-                if (p) {
-                    const tot = (p.impostosMensais ? ((p.impostosMensais.pis?.valor || 0) + (p.impostosMensais.cofins?.valor || 0) + (p.impostosMensais.iss?.valor || 0)) : (p.impostosEconomicos?.valorTotal || 0)) + (p.provisaoTrimestral ? ((p.provisaoTrimestral.irpjProvisao || 0) + (p.provisaoTrimestral.csllProvisao || 0)) : 0);
-                    impostosAtrib = window.BpoMoney.formatBRL(BigInt(Math.round(tot * 100)));
-                }
-            }
-
-            // Valor Líquido Econômico: bruto - todos tributos - retenções (sem duplicar ISS retido)
-            const liquidoEconomicoRealCents = calcularLiquidoEconomicoDoc(doc, emp);
+            // Valor Líquido Econômico: calculado oficialmente de forma idêntica
+            const liquidoEconomicoRealCents = resFiscal.liquidoCents;
 
             // Valor Total: idêntico ao campo "Valor Total" da tela de criar/editar lançamento
             const valorTotalExibicaoCents = calcularValorTotalDocumento(doc);
