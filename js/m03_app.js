@@ -108,40 +108,47 @@
     initCompetenciaSelector() {
       this.competencia = this.detectCompetenciaFromUrl();
 
-      const select = document.getElementById('selectCompetenciaNav');
-      if (!select) return;
+      const inputComp = document.getElementById('inputCompetenciaNav');
+      const selectOld = document.getElementById('selectCompetenciaNav');
 
-      // Monta opções dos últimos 6 meses até próximos 3 meses
-      const meses = [
-        { val: '2026-07', label: 'Julho / 2026' },
-        { val: '2026-08', label: 'Agosto / 2026' },
-        { val: '2026-09', label: 'Setembro / 2026' },
-        { val: '2026-10', label: 'Outubro / 2026' },
-        { val: '2026-11', label: 'Novembro / 2026' },
-        { val: '2026-12', label: 'Dezembro / 2026' }
-      ];
+      if (inputComp) {
+        inputComp.value = this.competencia;
 
-      select.innerHTML = meses.map(m => `
-        <option value="${m.val}" ${m.val === this.competencia ? 'selected' : ''}>${m.label}</option>
-      `).join('');
-
-      select.addEventListener('change', async (e) => {
-        this.competencia = e.target.value;
-        this.updateUrlForCompetencia(this.competencia);
-        this.renderTecnicosStatusList();
-        this.renderCentralCards();
-
-        if (window.M03Cadastros && window.M03Cadastros.sincronizarDoSupabase) {
-          await window.M03Cadastros.sincronizarDoSupabase(this.competencia);
+        inputComp.addEventListener('change', async (e) => {
+          if (!e.target.value) return;
+          this.competencia = e.target.value;
+          this.updateUrlForCompetencia(this.competencia);
           this.renderTecnicosStatusList();
           this.renderCentralCards();
-        }
-      });
+
+          if (window.M03Cadastros && window.M03Cadastros.sincronizarDoSupabase) {
+            await window.M03Cadastros.sincronizarDoSupabase(this.competencia);
+            this.renderTecnicosStatusList();
+            this.renderCentralCards();
+          }
+        });
+      } else if (selectOld) {
+        // Fallback caso algum contexto legado ainda utilize select
+        selectOld.value = this.competencia;
+        selectOld.addEventListener('change', async (e) => {
+          this.competencia = e.target.value;
+          this.updateUrlForCompetencia(this.competencia);
+          this.renderTecnicosStatusList();
+          this.renderCentralCards();
+
+          if (window.M03Cadastros && window.M03Cadastros.sincronizarDoSupabase) {
+            await window.M03Cadastros.sincronizarDoSupabase(this.competencia);
+            this.renderTecnicosStatusList();
+            this.renderCentralCards();
+          }
+        });
+      }
 
       // Suporte para botão voltar/avançar do navegador
       window.addEventListener('popstate', async () => {
         this.competencia = this.detectCompetenciaFromUrl();
-        if (select) select.value = this.competencia;
+        if (inputComp) inputComp.value = this.competencia;
+        if (selectOld) selectOld.value = this.competencia;
         this.renderTecnicosStatusList();
         this.renderCentralCards();
 
