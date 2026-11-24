@@ -62,6 +62,9 @@ window.BpoFiscalUtils.calcularFaturamentoTotalDoc = function(doc, taxDetails) {
     let empresaAtivaId = 'all'; // Padrão: "Todas as empresas"
     let competenciaAtiva = '';
     let companiesMap = new Map();
+    let documentosCompetencia = [];
+    let apuracoesTrimestraisPorEmpresa = new Map();
+    let rbt12PorEmpresaMap = new Map();
 
     // Elementos DOM
     const selectEmpresa = document.getElementById('selectEmpresa');
@@ -216,7 +219,8 @@ window.BpoFiscalUtils.calcularFaturamentoTotalDoc = function(doc, taxDetails) {
             if (empresaAtivaId !== 'all') {
                 queryDocs += `&company_id=eq.${empresaAtivaId}`;
             }
-            const docsCompetencia = await window.BpoSupabase.request(queryDocs, { method: 'GET' });
+            const docsCompetencia = await window.BpoSupabase.request(queryDocs, { method: 'GET' }) || [];
+            documentosCompetencia = docsCompetencia;
 
             // Empresas a processar (todas ou a selecionada)
             const empresasProcessar = empresaAtivaId === 'all' 
@@ -230,7 +234,8 @@ window.BpoFiscalUtils.calcularFaturamentoTotalDoc = function(doc, taxDetails) {
 
             const cardsHtml = [];
             const rowsHistorico = [];
-            const apuracoesTrimestraisPorEmpresa = new Map();
+            apuracoesTrimestraisPorEmpresa.clear();
+            rbt12PorEmpresaMap.clear();
 
             // Processa empresa por empresa (sem jamais misturar RBT12 ou bases de CNPJs distintos)
             for (const emp of empresasProcessar) {
@@ -604,7 +609,6 @@ window.BpoFiscalUtils.calcularFaturamentoTotalDoc = function(doc, taxDetails) {
             } catch (e) {}
 
             // Mapeia RBT12 real calculado de cada empresa do Simples Nacional
-            const rbt12PorEmpresaMap = new Map();
             for (const emp of empresasProcessar) {
                 if (emp.tax_regime === 'simples_nacional') {
                     const rbt12 = await calcularRbt12RealEmpresa(emp.id, competenciaAtiva);
@@ -1178,6 +1182,17 @@ window.BpoFiscalUtils.calcularFaturamentoTotalDoc = function(doc, taxDetails) {
     }
 
     async function sincronizarApuraçãoComBancoManual() {
+        // Se documentosCompetencia ainda não estiver carregado, busca diretamente da competência ativa
+        if (!documentosCompetencia || documentosCompetencia.length === 0) {
+            try {
+                let queryDocs = `billing_documents?competence_month=eq.${competenciaAtiva}&status=neq.cancelled`;
+                if (empresaAtivaId !== 'all') queryDocs += `&company_id=eq.${empresaAtivaId}`;
+                documentosCompetencia = await window.BpoSupabase.request(queryDocs, { method: 'GET' }) || [];
+            } catch (err) {
+                console.warn('Erro ao obter documentos da competência:', err);
+            }
+        }
+
         if (!documentosCompetencia || documentosCompetencia.length === 0) {
             alert('Não há documentos nesta competência para sincronizar.');
             return;
@@ -1192,6 +1207,14 @@ window.BpoFiscalUtils.calcularFaturamentoTotalDoc = function(doc, taxDetails) {
 
         let atualizados = 0;
         try {
+            // Garante que o RBT12 esteja preenchido para empresas do Simples
+            for (const emp of companiesMap.values()) {
+                if (emp.tax_regime === 'simples_nacional' && !rbt12PorEmpresaMap.has(emp.id)) {
+                    const rbt12 = await calcularRbt12RealEmpresa(emp.id, competenciaAtiva);
+                    rbt12PorEmpresaMap.set(emp.id, rbt12);
+                }
+            }
+
             for (const doc of documentosCompetencia) {
                 if (doc.status === 'cancelled') continue;
                 const emp = companiesMap.get(doc.company_id);
