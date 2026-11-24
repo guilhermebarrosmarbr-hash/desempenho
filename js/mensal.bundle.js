@@ -366,7 +366,26 @@
             fullTitle = val;
             if (val.includes('STS36693/22')) contrato = 'STS36693/22';
             if (val.toUpperCase().includes('SETOR 01')) setor = 'Setor 01';
-            if (val.toUpperCase().includes('AGOSTO')) competencia = '08/2026';
+            
+            // Detecta mês e ano no título
+            const valUpper = val.toUpperCase();
+            const mesesNomes = [
+              { nome: 'JANEIRO', num: '01' }, { nome: 'FEVEREIRO', num: '02' },
+              { nome: 'MARÇO', num: '03' }, { nome: 'MARCO', num: '03' },
+              { nome: 'ABRIL', num: '04' }, { nome: 'MAIO', num: '05' },
+              { nome: 'JUNHO', num: '06' }, { nome: 'JULHO', num: '07' },
+              { nome: 'AGOSTO', num: '08' }, { nome: 'SETEMBRO', num: '09' },
+              { nome: 'OUTUBRO', num: '10' }, { nome: 'NOVEMBRO', num: '11' },
+              { nome: 'DEZEMBRO', num: '12' }
+            ];
+            for (const m of mesesNomes) {
+              if (valUpper.includes(m.nome)) {
+                const anoMatch = valUpper.match(/\b(20\d\d)\b/);
+                const ano = anoMatch ? anoMatch[1] : '2026';
+                competencia = `${m.num}/${ano}`;
+                break;
+              }
+            }
           }
 
           const norm = Formatter.normalizeStr(val);

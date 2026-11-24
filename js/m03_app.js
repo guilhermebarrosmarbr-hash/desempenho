@@ -298,6 +298,21 @@
             }
           }
 
+          // Verifica a competência detectada na planilha (ex: "01/2026")
+          if (parsed.metadata && parsed.metadata.competencia) {
+            const compParts = parsed.metadata.competencia.split('/');
+            if (compParts.length === 2) {
+              const compPlanilha = `${compParts[1]}-${compParts[0].padStart(2, '0')}`;
+              // Se a planilha pertence a uma competência diferente da tela atual, sincroniza a competência ativa
+              if (compPlanilha !== this.competencia) {
+                this.competencia = compPlanilha;
+                const inputComp = document.getElementById('inputCompetenciaNav');
+                if (inputComp) inputComp.value = this.competencia;
+                this.updateUrlForCompetencia(this.competencia);
+              }
+            }
+          }
+
           // Salvar faturamento do técnico com o arquivo em base64
           this.processarFaturamentoTecnico(tecEscolhido, parsed, file.name, fileBase64);
 
