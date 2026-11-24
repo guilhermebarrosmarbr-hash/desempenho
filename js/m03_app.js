@@ -276,20 +276,32 @@
           }
           const fileBase64 = window.btoa(binary);
 
-          // Verifica se encontrou nome de técnico na planilha para auto-associar
-          let matchTec = null;
-          if (parsed.metadata && parsed.metadata.oficiais && parsed.metadata.oficiais.length > 0) {
-            for (const ofc of parsed.metadata.oficiais) {
-              const ofcNorm = ofc.toUpperCase();
-              matchTec = tecnicos.find(t => ofcNorm.includes(t.nome.toUpperCase()) || t.nome.toUpperCase().includes(ofcNorm));
-              if (matchTec) break;
+          // 1. Prioridade: Se o usuário selecionou ou clicou em "Importar Planilha" de um técnico/credenciado específico,
+          // a importação DEVE ser atribuída exatamente a esse credenciado selecionado!
+          let tecEscolhido = targetTec;
+
+          // 2. Se nenhum técnico estava previamente selecionado, tenta auto-identificar pelo prestador ou oficiais da planilha
+          if (!tecEscolhido) {
+            let matchTec = null;
+            // Verifica prestador / credenciado da planilha (ex: "GB CLIMATIZAÇÃO (GABRIEL)")
+            if (parsed.metadata && parsed.metadata.prestador) {
+              const prestNorm = parsed.metadata.prestador.toUpperCase();
+              matchTec = tecnicos.find(t => prestNorm.includes(t.nome.toUpperCase()) || t.nome.toUpperCase().includes(prestNorm));
             }
+            // Verifica oficiais da planilha (ex: "FLÁVIO", "VICTOR HUGO")
+            if (!matchTec && parsed.metadata && parsed.metadata.oficiais && parsed.metadata.oficiais.length > 0) {
+              for (const ofc of parsed.metadata.oficiais) {
+                const ofcNorm = ofc.toUpperCase();
+                matchTec = tecnicos.find(t => ofcNorm.includes(t.nome.toUpperCase()) || t.nome.toUpperCase().includes(ofcNorm));
+                if (matchTec) break;
+              }
+            }
+            tecEscolhido = matchTec;
           }
 
-          let tecEscolhido = matchTec || targetTec;
           if (!tecEscolhido) {
             const opcoes = tecnicos.map((t, i) => `${i + 1} - ${t.nome}`).join('\n');
-            const resp = prompt(`Selecione o número do técnico para esta planilha:\n${opcoes}`, '1');
+            const resp = prompt(`Selecione o número do técnico/credenciado para esta planilha:\n${opcoes}`, '1');
             const idx = parseInt(resp, 10) - 1;
             if (tecnicos[idx]) {
               tecEscolhido = tecnicos[idx];

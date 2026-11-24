@@ -73,7 +73,24 @@
     try {
       localStorage.setItem(key, JSON.stringify(val));
     } catch (e) {
-      console.error('Falha ao salvar localStorage:', key, e);
+      console.warn('Aviso ao salvar localStorage:', key, e);
+      // Se estourar a cota de 5MB do localStorage (QuotaExceededError),
+      // remove campos binários pesados (como fileBase64) e salva apenas os cálculos numéricos essenciais
+      if (key === STORAGE_KEYS.FATURAMENTOS && val && typeof val === 'object') {
+        try {
+          const stripped = {};
+          Object.keys(val).forEach(k => {
+            const item = { ...val[k] };
+            delete item.fileBase64;
+            delete item.parsedFull;
+            stripped[k] = item;
+          });
+          localStorage.setItem(key, JSON.stringify(stripped));
+          console.info('Faturamentos salvos com sucesso sem cache binário para evitar estouro de cota.');
+        } catch (err) {
+          console.error('Falha crítica ao salvar faturamentos no localStorage:', err);
+        }
+      }
     }
   }
 
@@ -224,6 +241,11 @@
       if (window.BpoSupabase && window.BpoSupabase.isConfigured()) {
         try {
           const tec = this.getTecnicos().find(t => t.id === tecnicoId);
+          // Remove campos binários gigantes para o payload do Supabase para não estourar payload HTTP
+          const dadosClean = { ...dados };
+          delete dadosClean.fileBase64;
+          delete dadosClean.parsedFull;
+
           const payload = {
             idempotency_key: `fat_m03_${competencia}_${tecnicoId}`,
             competence_month: competencia,
@@ -232,7 +254,7 @@
             total_apurado: dados.totalGeral || 0.0,
             report_data: {
               tecnico: tec,
-              dados: dados,
+              dados: dadosClean,
               updatedAt: new Date().toISOString()
             }
           };
