@@ -96,10 +96,9 @@
 
     updateUrlForCompetencia(comp) {
       try {
-        const mesNum = comp.split('-')[1];
-        const slugMes = this.mesesReverso[mesNum] || comp;
-        const newUrl = `${window.location.origin}/medicao_mensal/${slugMes}`;
-        window.history.pushState({ comp }, '', newUrl);
+        const url = new URL(window.location.href);
+        url.searchParams.set('comp', comp);
+        window.history.replaceState({ comp }, '', url.toString());
       } catch (e) {
         // Fallback em ambientes com restrição de pushState
       }
@@ -235,6 +234,18 @@
     // Planilha Excel e Atribuição de Faturamento
     // -------------------------------------------------------------
     handleExcelFile(file) {
+      if (!file) return;
+
+      if (typeof XLSX === 'undefined') {
+        alert('A biblioteca de leitura de planilhas (XLSX) não pôde ser carregada. Por favor, recarregue a página.');
+        return;
+      }
+
+      if (!window.MensalExcelParser || typeof window.MensalExcelParser.parseWorkbook !== 'function') {
+        alert('O motor de leitura do Módulo 03 não está disponível. Por favor, recarregue a página.');
+        return;
+      }
+
       const tecnicos = window.M03Cadastros.getTecnicos();
       if (tecnicos.length === 0) {
         alert('Nenhum técnico cadastrado! Cadastre técnicos primeiro.');
@@ -257,8 +268,11 @@
           // Converte o arquivo original para Base64 para permitir download posterior
           let binary = '';
           const len = data.byteLength;
-          for (let i = 0; i < len; i++) {
-            binary += String.fromCharCode(data[i]);
+          // Chunking para evitar stack overflow em arquivos maiores
+          const chunkSize = 8192;
+          for (let i = 0; i < len; i += chunkSize) {
+            const chunk = data.subarray(i, Math.min(i + chunkSize, len));
+            binary += String.fromCharCode.apply(null, chunk);
           }
           const fileBase64 = window.btoa(binary);
 
@@ -287,6 +301,10 @@
           // Salvar faturamento do técnico com o arquivo em base64
           this.processarFaturamentoTecnico(tecEscolhido, parsed, file.name, fileBase64);
 
+          // Limpa o valor do input file para permitir selecionar o mesmo arquivo novamente se desejar
+          const fileInput = document.getElementById('excelFileInput');
+          if (fileInput) fileInput.value = '';
+
           const notice = document.getElementById('fileInfoNotice');
           const fileNameEl = document.getElementById('activeFileName');
           const fileBadge = document.getElementById('fileBadge');
@@ -300,10 +318,16 @@
           this.renderTecnicosStatusList();
           this.renderCentralCards();
         } catch (err) {
-          console.error(err);
-          alert('Erro ao processar planilha: ' + err.message);
+          console.error('Erro ao processar planilha no M03:', err);
+          alert('Erro ao processar planilha: ' + (err.message || err));
         }
       };
+
+      reader.onerror = (err) => {
+        console.error('Erro no FileReader:', err);
+        alert('Não foi possível ler o arquivo selecionado.');
+      };
+
       reader.readAsArrayBuffer(file);
     },
 
