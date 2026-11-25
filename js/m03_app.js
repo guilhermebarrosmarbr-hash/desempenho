@@ -1698,13 +1698,15 @@
 
         meses.forEach(m => {
           const fat = window.M03Cadastros.getFaturamento(m, tec.id);
-          if (fat && fat.apurado && Array.isArray(fat.itens) && fat.itens.length > 0) {
+          const itens = (fat && Array.isArray(fat.itens)) ? fat.itens : ((fat && fat.dados && Array.isArray(fat.dados.itens)) ? fat.dados.itens : []);
+          if (fat && fat.apurado && itens.length > 0) {
             mesesApuradosCount++;
 
             // Tarefas individuais
-            fat.itens.forEach(it => {
-              const exec = Number(it.executado) || 0;
-              const nome = (it.nome || '').toUpperCase();
+            itens.forEach(it => {
+              let exec = Number(it.executado) || 0;
+              if (exec > 1.0) exec = exec / 100; // Normaliza se salvo na escala 0-100%
+              const nome = (it.descricao || it.nome || '').toUpperCase();
 
               if (nome.includes('MENSAL')) {
                 tSomaMensal += exec;
