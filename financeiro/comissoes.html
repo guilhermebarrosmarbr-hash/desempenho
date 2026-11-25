@@ -169,11 +169,11 @@
         <!-- Métricas Rápidas -->
         <section class="metrics-grid">
             <div class="metric-card primary">
-                <div class="metric-label">Faturamento Bruto</div>
+                <div class="metric-label">Valor Total Faturado</div>
                 <div class="metric-value" id="valFaturamentoBrutoComissao">R$ 0,00</div>
             </div>
             <div class="metric-card info">
-                <div class="metric-label">Faturamento Líquido</div>
+                <div class="metric-label">Valor Líquido</div>
                 <div class="metric-value" id="valBaseComissao">R$ 0,00</div>
             </div>
             <div class="metric-card warning">
@@ -438,6 +438,17 @@
                     </select>
                 </div>
 
+                <div id="boxValoresContratoRegra" style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; background: rgba(255,255,255,0.03); padding: 10px; border-radius: 6px;">
+                    <div>
+                        <span style="font-size: 0.75rem; color: var(--text-muted); display: block;">Valor Total (Contrato):</span>
+                        <strong id="regraContratoValorBruto" style="font-size: 0.95rem; color: #fff;">R$ 0,00</strong>
+                    </div>
+                    <div>
+                        <span style="font-size: 0.75rem; color: var(--text-muted); display: block;">Valor Líquido (Estimado):</span>
+                        <strong id="regraContratoValorLiquido" style="font-size: 0.95rem; color: var(--color-success, #22c55e);">R$ 0,00</strong>
+                    </div>
+                </div>
+
                 <div style="margin-bottom: 14px;">
                     <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Colaborador *</label>
                     <select id="regraColaborador" required class="select-control" style="width: 100%;">
@@ -455,8 +466,8 @@
                         <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Base de Cálculo</label>
                         <select id="regraBase" class="select-control" style="width: 100%;">
                             <option value="net_proportional" selected>Valor Líquido (Recebido s/ Impostos)</option>
-                            <option value="gross_invoiced">Valor Bruto Faturado</option>
-                            <option value="gross_liquidated">Valor Recebido (Bruto)</option>
+                            <option value="gross_invoiced">Valor Total Faturado</option>
+                            <option value="gross_liquidated">Valor Recebido (Total)</option>
                         </select>
                     </div>
                 </div>

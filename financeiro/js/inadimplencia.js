@@ -950,7 +950,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                                 <th style="padding: 10px; text-align: center; border-bottom: 2px solid rgba(255,255,255,0.1);">Vencimento</th>
                                 <th style="padding: 10px; text-align: center; border-bottom: 2px solid rgba(255,255,255,0.1);">Dias de Atraso</th>
                                 <th style="padding: 10px; text-align: right; border-bottom: 2px solid rgba(255,255,255,0.1);">Valor Total</th>
-                                <th style="padding: 10px; text-align: right; border-bottom: 2px solid rgba(255,255,255,0.1); color: #f59e0b;">Imposto</th>
+                                <th style="padding: 10px; text-align: right; border-bottom: 2px solid rgba(255,255,255,0.1); color: #f59e0b;">Total de Impostos</th>
                                 <th style="padding: 10px; text-align: right; border-bottom: 2px solid rgba(255,255,255,0.1);">Valor Líquido</th>
                                 <th style="padding: 10px; text-align: center; border-bottom: 2px solid rgba(255,255,255,0.1);">Ações</th>
                             </tr>

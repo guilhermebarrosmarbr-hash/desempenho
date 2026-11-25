@@ -92,7 +92,7 @@
                             <th>Competência</th>
                             <th>Faturadora (Pagadora)</th>
                             <th>Contrato</th>
-                            <th>Valor Base (Contrato)</th>
+                            <th>Valor Total</th>
                             <th>Valor Líquido</th>
                             <th>Taxa (%)</th>
                             <th>Valor a Repassar</th>
@@ -164,15 +164,31 @@
                     </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                <div style="margin-bottom: 16px;">
+                    <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Contrato Vinculado (Opcional):</label>
+                    <select id="repasseManualContrato" class="select-control" style="width: 100%;">
+                        <option value="">— Sem vínculo de contrato / Avulso —</option>
+                    </select>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px;">
                     <div>
-                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Valor do Repasse (R$) *</label>
-                        <input type="text" id="repasseManualValor" required class="select-control" style="width: 100%;" placeholder="0,00">
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Valor Total (R$)</label>
+                        <input type="text" id="repasseManualValorBruto" class="select-control" style="width: 100%;" placeholder="0,00">
                     </div>
                     <div>
-                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Competência *</label>
-                        <input type="month" id="repasseManualCompetencia" required class="select-control" style="width: 100%; color-scheme: dark;">
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Valor Líquido (R$)</label>
+                        <input type="text" id="repasseManualValorLiquido" class="select-control" style="width: 100%;" placeholder="0,00">
                     </div>
+                    <div>
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Valor a Repassar (R$) *</label>
+                        <input type="text" id="repasseManualValor" required class="select-control" style="width: 100%; font-weight: 700; color: #f59e0b;" placeholder="0,00">
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 16px;">
+                    <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Competência *</label>
+                    <input type="month" id="repasseManualCompetencia" required class="select-control" style="width: 100%; color-scheme: dark;">
                 </div>
 
                 <div style="margin-bottom: 16px;">

@@ -570,8 +570,11 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
     function abrirModalRepasseManual() {
         const selPag = document.getElementById('repasseManualPagadora');
         const selRec = document.getElementById('repasseManualRecebedora');
+        const selCtr = document.getElementById('repasseManualContrato');
         const inputComp = document.getElementById('repasseManualCompetencia');
         const inputValor = document.getElementById('repasseManualValor');
+        const inputBruto = document.getElementById('repasseManualValorBruto');
+        const inputLiq = document.getElementById('repasseManualValorLiquido');
 
         selPag.innerHTML = empresas.map(e => `<option value="${escapeHtml(e.id)}">${escapeHtml(e.name)}</option>`).join('');
         selRec.innerHTML = empresas.map(e => `<option value="${escapeHtml(e.id)}">${escapeHtml(e.name)}</option>`).join('');
@@ -582,8 +585,49 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             if (outra) selRec.value = outra.id;
         }
 
+        // Popula e atualiza Contratos vinculados à empresa pagadora com busca de Valor Total e Valor Líquido
+        function atualizarSelectContratosManual() {
+            if (!selCtr) return;
+            const pagId = selPag.value;
+            const contratosPag = Array.from(contratosMap.values()).filter(c => c.company_id === pagId);
+            selCtr.innerHTML = '<option value="">— Sem vínculo de contrato / Avulso —</option>' +
+                contratosPag.map(c => {
+                    const desc = c._clientName ? `${c.code || ''} — ${c.name} (${c._clientName})` : `${c.code || ''} — ${c.name}`;
+                    return `<option value="${escapeHtml(c.id)}">${escapeHtml(desc)}</option>`;
+                }).join('');
+        }
+
+        selPag.onchange = function() {
+            atualizarSelectContratosManual();
+        };
+
+        if (selCtr) {
+            selCtr.onchange = function() {
+                const ctrId = this.value;
+                if (!ctrId) return;
+                const ctr = contratosMap.get(ctrId);
+                if (ctr && ctr.reference_value) {
+                    const refCents = window.BpoMoney.toCents(ctr.reference_value);
+                    if (inputBruto) inputBruto.value = window.BpoMoney.toDecimalString(refCents);
+                    if (inputLiq) inputLiq.value = window.BpoMoney.toDecimalString(refCents);
+                    if (inputValor && (!inputValor.value || inputValor.value === '0,00')) {
+                        // Aplica taxa padrão de 10%
+                        const repCents = window.BpoCommissionEngine.calcularIntermediacao({
+                            baseAmount: refCents,
+                            ratePercentage: 10.0
+                        }).intermediacaoCents;
+                        inputValor.value = window.BpoMoney.toDecimalString(repCents);
+                    }
+                }
+            };
+        }
+
+        atualizarSelectContratosManual();
+
         inputComp.value = competenciaAtiva;
         inputValor.value = '';
+        if (inputBruto) inputBruto.value = '';
+        if (inputLiq) inputLiq.value = '';
         modalRepasseManual.style.display = 'flex';
     }
 
@@ -593,6 +637,9 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         const rec = document.getElementById('repasseManualRecebedora').value;
         const valorRaw = document.getElementById('repasseManualValor').value;
         const comp = document.getElementById('repasseManualCompetencia').value;
+        const contratoId = document.getElementById('repasseManualContrato')?.value || null;
+        const brutoRaw = document.getElementById('repasseManualValorBruto')?.value || '';
+        const liqRaw = document.getElementById('repasseManualValorLiquido')?.value || '';
 
         if (pag === rec) {
             alert('A empresa pagadora e a recebedora não podem ser a mesma.');
@@ -636,16 +683,18 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             // F14: Campo Valor do Repasse representa o valor final exato informado pelo usuário
             const valorRepasseCents = valorCents;
 
-            // Grava o cálculo incluindo company_id (F12)
+            // Grava o cálculo incluindo company_id (F12) e contract_id se vinculado
+            const baseAmountSalvar = liqRaw ? window.BpoMoney.toDecimalString(window.BpoMoney.toCents(liqRaw)) : (brutoRaw ? window.BpoMoney.toDecimalString(window.BpoMoney.toCents(brutoRaw)) : valorDecimal);
+
             await window.BpoSupabase.request('intermediation_calculations', {
                 method: 'POST',
                 body: JSON.stringify({
                     company_id: pag,
                     agreement_id: acordo.id,
-                    contract_id: null,
+                    contract_id: contratoId || null,
                     document_id: null,
                     competence_month: comp,
-                    base_amount: valorDecimal,
+                    base_amount: baseAmountSalvar,
                     rate: taxaAcordo,
                     intermediation_amount: window.BpoMoney.toDecimalString(valorRepasseCents),
                     status: 'pending',

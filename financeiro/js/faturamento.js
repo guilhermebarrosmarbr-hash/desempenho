@@ -994,6 +994,21 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             if (el) el.addEventListener('change', () => dispararPreviaImpostos('empresa_ou_tipo'));
         });
 
+        // Auto-preenchimento ao selecionar Contrato no Lançamento (Valor Total / Base)
+        if (selContrato) {
+            selContrato.addEventListener('change', () => {
+                const ctrId = selContrato.value;
+                if (!ctrId) return;
+                const ctr = contratos.find(c => c.id === ctrId);
+                const docId = document.getElementById('docId')?.value;
+                // Preenche se estiver criando um novo lançamento ou se o valor estiver zerado
+                if (ctr && ctr.reference_value && inpBruto && (!docId || !inpBruto.value || inpBruto.value === '0,00')) {
+                    inpBruto.value = window.BpoMoney.toDecimalString(window.BpoMoney.toCents(ctr.reference_value));
+                    dispararPreviaImpostos('valores');
+                }
+            });
+        }
+
         // Natureza / Item: Prestação de Serviço vs Venda de Mercadoria
         if (selItemTipo) {
             selItemTipo.addEventListener('change', () => {

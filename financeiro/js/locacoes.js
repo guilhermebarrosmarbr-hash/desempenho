@@ -691,13 +691,13 @@
                 <tr style="background:#111827; color:#9ca3af; text-transform:uppercase; font-size:0.72rem; letter-spacing:0.05em;">
                     <th style="padding:10px 10px; text-align:left; border-bottom:2px solid rgba(255,255,255,0.1); position:sticky; left:0; background:#111827; z-index:2;">Contrato</th>
                     <th style="padding:10px 10px; text-align:center; border-bottom:2px solid rgba(255,255,255,0.1);">Vencimento</th>
-                    <th style="padding:10px 10px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1);">Valor Bruto</th>
+                    <th style="padding:10px 10px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1);">Valor Total</th>
                     <th style="padding:10px 10px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1);">IPTU</th>
                     <th style="padding:10px 10px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1);">Desconto</th>
                     <th style="padding:10px 10px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1);">Juros/Multa</th>
-                    <th style="padding:10px 10px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1);">DAS</th>
+                    <th style="padding:10px 10px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1);">Total de Impostos (DAS)</th>
                     <th style="padding:10px 10px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1);">Honorários</th>
-                    <th style="padding:10px 10px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1); font-weight:700; color:#fff;">Líquido</th>
+                    <th style="padding:10px 10px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1); font-weight:700; color:#fff;">Valor Líquido</th>
                     ${sociosCols.map(([id, nome]) =>
                         `<th style="padding:10px 8px; text-align:right; border-bottom:2px solid rgba(255,255,255,0.1);">${escapeHtml(nome)}</th>`
                     ).join('')}
@@ -1163,6 +1163,14 @@
         // Inicializa o select de contratos vazio (aguarda seleção de empresa)
         if (selContratoRef) {
             selContratoRef.innerHTML = '<option value="">Selecione primeiro a empresa locatária...</option>';
+            selContratoRef.onchange = function() {
+                const ctrId = this.value;
+                if (!ctrId) return;
+                const ctr = todosContratos.find(c => c.id === ctrId);
+                if (ctr && ctr.reference_value && inpValor && (!inpValor.value || inpValor.value === '0,00' || !contratoExistente)) {
+                    inpValor.value = window.BpoMoney.formatBRL(ctr.reference_value).replace('R\u00a0', '').replace('R$\u00a0', '').trim();
+                }
+            };
         }
 
         document.getElementById('formContratoLocacao')?.reset();

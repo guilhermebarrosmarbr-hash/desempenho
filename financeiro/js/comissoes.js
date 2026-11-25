@@ -368,7 +368,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 <th rowspan="2" style="min-width: 60px;">NF</th>
                 <th rowspan="2" style="min-width: 75px;">Ciclo</th>
                 <th rowspan="2" style="min-width: 110px;">Data de recebimento</th>
-                <th rowspan="2" style="min-width: 100px;">Valor Bruto</th>
+                <th rowspan="2" style="min-width: 100px;">Valor Total</th>
                 <th rowspan="2" style="min-width: 100px;">Valor recebido</th>
                 <th rowspan="2" style="min-width: 100px;">Valor Líquido</th>
         `;
@@ -999,6 +999,27 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         selContrato.innerHTML = contratos.map(c => `<option value="${c.id}">${escapeHtml(c.code)} - ${escapeHtml(c.name)}</option>`).join('') || '<option value="">Sem contratos elegíveis</option>';
         selColab.innerHTML = colaboradores.map(c => `<option value="${c.id}">${escapeHtml(c.name)} (${escapeHtml(c.setor)})</option>`).join('') || '<option value="">Sem colaboradores</option>';
 
+        const lblBrutoContrato = document.getElementById('regraContratoValorBruto');
+        const lblLiqContrato = document.getElementById('regraContratoValorLiquido');
+
+        function atualizarValoresContratoRegra(contratoId) {
+            const ctr = contratos.find(c => c.id === contratoId);
+            if (ctr && ctr.reference_value) {
+                const bCents = window.BpoMoney.toCents(ctr.reference_value);
+                if (lblBrutoContrato) lblBrutoContrato.textContent = window.BpoMoney.formatBRL(bCents);
+                // Projeta valor líquido estimado (alíquota padrão gerencial ~11.83% se LP ou RBT12 padrão)
+                const liqEstimado = window.BpoMoney.applyPercentage(bCents, 88.17);
+                if (lblLiqContrato) lblLiqContrato.textContent = window.BpoMoney.formatBRL(liqEstimado);
+            } else {
+                if (lblBrutoContrato) lblBrutoContrato.textContent = 'R$ 0,00';
+                if (lblLiqContrato) lblLiqContrato.textContent = 'R$ 0,00';
+            }
+        }
+
+        selContrato.onchange = function() {
+            atualizarValoresContratoRegra(this.value);
+        };
+
         if (regraExistente) {
             if (inpRegraId) inpRegraId.value = regraExistente.id;
             if (titulo) titulo.textContent = 'Editar Regra de Comissão';
@@ -1008,12 +1029,17 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             if (inpPercentual) inpPercentual.value = regraExistente.percentage;
             if (selBase) selBase.value = regraExistente.basis_override || 'net_proportional';
             if (btnExc) btnExc.style.display = 'inline-flex';
+            atualizarValoresContratoRegra(regraExistente.contract_id);
         } else {
             if (inpRegraId) inpRegraId.value = '';
             if (titulo) titulo.textContent = 'Regra de Comissão por Contrato';
             document.getElementById('formRegra').reset();
             if (inpPercentual) inpPercentual.value = '0.5';
             if (btnExc) btnExc.style.display = 'none';
+            if (contratos.length > 0) {
+                selContrato.value = contratos[0].id;
+                atualizarValoresContratoRegra(contratos[0].id);
+            }
         }
 
         if (modalRegra) modalRegra.style.display = 'flex';
