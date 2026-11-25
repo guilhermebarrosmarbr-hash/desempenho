@@ -53,6 +53,45 @@
       border-radius: 6px;
       border: 1px solid #cbd5e1;
     }
+    .m03-tab-btn {
+      padding: 6px 14px;
+      font-size: 13px;
+      font-weight: 700;
+      border: 1px solid #cbd5e1;
+      background: #f1f5f9;
+      color: #475569;
+      border-radius: 6px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .m03-tab-btn.active {
+      background: #2563eb;
+      color: #ffffff;
+      border-color: #1d4ed8;
+      box-shadow: 0 2px 4px rgba(37,99,235,0.25);
+    }
+    .prod-stat-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .prod-filter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .prod-filter-group label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
   </style>
 </head>
 <body>
@@ -78,6 +117,16 @@
     </div>
 
     <div class="nav-actions">
+      <!-- Alternador de Abas do Módulo 03 -->
+      <div style="display: flex; gap: 4px; background: #e2e8f0; padding: 3px; border-radius: 8px;">
+        <button type="button" class="m03-tab-btn active" id="tabModoApuracao" title="Apuração Mensal por Ciclo">
+          📋 Apuração Mensal
+        </button>
+        <button type="button" class="m03-tab-btn" id="tabModoProdutividade" title="Painel de Produtividade e Médias Históricas">
+          📊 Média de Produtividade
+        </button>
+      </div>
+
       <a href="index.html" class="btn btn-secondary" style="text-decoration: none;" title="Voltar ao Hub de Módulos">
         ⬅️ Módulos
       </a>
@@ -90,8 +139,8 @@
     </div>
   </nav>
 
-  <!-- Container Principal em 3 Colunas -->
-  <main class="app-main-grid">
+  <!-- Container Principal em 3 Colunas (Visão 1: Apuração Mensal) -->
+  <main class="app-main-grid" id="secaoApuracaoMensal">
 
     <!-- 1. LATERAL ESQUERDA (Reduzida e Limpa) -->
     <aside class="left-sidebar">
@@ -182,6 +231,140 @@
     </aside>
 
   </main>
+
+  <!-- Visão 2: Painel de Produtividade & Médias por Período -->
+  <section id="secaoPainelProdutividade" style="display: none; max-width: 1600px; margin: 0 auto; padding: 16px;">
+    
+    <!-- Filtros de Período e Seleção -->
+    <div class="card" style="margin-bottom: 16px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 12px; padding: 18px 24px; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
+      <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 16px;">
+        
+        <div style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px;">
+          <!-- Data Inicial (Mês/Ano ou Data Completa) -->
+          <div class="prod-filter-group">
+            <label for="prodDataInicio">📅 Início do Período</label>
+            <input type="month" id="prodDataInicio" class="form-input" style="padding: 6px 12px; font-size: 13px; font-weight: 700; border-color: #94a3b8; cursor: pointer; color-scheme: light;" />
+          </div>
+
+          <!-- Data Final -->
+          <div class="prod-filter-group">
+            <label for="prodDataFim">📅 Fim do Período</label>
+            <input type="month" id="prodDataFim" class="form-input" style="padding: 6px 12px; font-size: 13px; font-weight: 700; border-color: #94a3b8; cursor: pointer; color-scheme: light;" />
+          </div>
+
+          <!-- Filtro de Técnicos: Todos ou Técnico Específico -->
+          <div class="prod-filter-group" style="min-width: 220px;">
+            <label for="prodFiltroTecnico">👤 Técnico</label>
+            <select id="prodFiltroTecnico" class="form-input" style="padding: 6px 12px; font-size: 13px; font-weight: 600; border-color: #94a3b8; cursor: pointer;">
+              <option value="all">Todos os Técnicos (Visão Geral)</option>
+            </select>
+          </div>
+
+          <!-- Filtro de Contrato / Setor -->
+          <div class="prod-filter-group" style="min-width: 180px;">
+            <label for="prodFiltroContrato">🏢 Contrato / Setor</label>
+            <select id="prodFiltroContrato" class="form-input" style="padding: 6px 12px; font-size: 13px; font-weight: 600; border-color: #94a3b8; cursor: pointer;">
+              <option value="all">Todos os Contratos</option>
+            </select>
+          </div>
+
+          <button type="button" class="btn btn-primary" id="btnFiltrarProdutividade" style="padding: 8px 18px; font-size: 13px; font-weight: 700; background: #2563eb; display: inline-flex; align-items: center; gap: 6px;">
+            🔍 Filtrar &amp; Calcular
+          </button>
+        </div>
+
+        <!-- Atalhos Rápidos de Período -->
+        <div style="display: flex; gap: 6px; align-items: center;">
+          <span style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">Atalhos:</span>
+          <button type="button" class="btn btn-outline btn-sm" id="btnAtalho3Meses" style="font-size: 11px; padding: 4px 8px;">Últimos 3 Meses</button>
+          <button type="button" class="btn btn-outline btn-sm" id="btnAtalho6Meses" style="font-size: 11px; padding: 4px 8px;">Últimos 6 Meses</button>
+          <button type="button" class="btn btn-outline btn-sm" id="btnAtalhoAnoAtual" style="font-size: 11px; padding: 4px 8px;">Ano Atual</button>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Cards Superiores com Indicadores de Média no Período -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 20px;">
+      
+      <div class="prod-stat-card" style="border-left: 4px solid #2563eb;">
+        <div style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase;">Média Geral de Produtividade</div>
+        <div id="statMediaGeralPct" style="font-size: 26px; font-weight: 800; color: #1e293b; margin-top: 4px;">0%</div>
+        <div style="font-size: 11.5px; color: #64748b; margin-top: 2px;">Cumprimento de ordens no período</div>
+      </div>
+
+      <div class="prod-stat-card" style="border-left: 4px solid #16a34a;">
+        <div style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase;">Média Preventiva Mensal</div>
+        <div id="statMediaMensalPct" style="font-size: 26px; font-weight: 800; color: #16a34a; margin-top: 4px;">0%</div>
+        <div style="font-size: 11.5px; color: #64748b; margin-top: 2px;">Executado / Planejado</div>
+      </div>
+
+      <div class="prod-stat-card" style="border-left: 4px solid #0284c7;">
+        <div style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase;">Média Preventiva Semestral</div>
+        <div id="statMediaSemestralPct" style="font-size: 26px; font-weight: 800; color: #0284c7; margin-top: 4px;">0%</div>
+        <div style="font-size: 11.5px; color: #64748b; margin-top: 2px;">Executado / Planejado</div>
+      </div>
+
+      <div class="prod-stat-card" style="border-left: 4px solid #ea580c;">
+        <div style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase;">Média Corretivas &bull; Excedentes</div>
+        <div id="statMediaCorretivasPct" style="font-size: 26px; font-weight: 800; color: #ea580c; margin-top: 4px;">0%</div>
+        <div id="statTotalExcedentesPeriodo" style="font-size: 11.5px; color: #64748b; margin-top: 2px;">0 atendimentos excedentes</div>
+      </div>
+
+      <div class="prod-stat-card" style="border-left: 4px solid #8b5cf6;">
+        <div style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase;">Incentivo Veicular Médio</div>
+        <div id="statMediaIncentivoValor" style="font-size: 26px; font-weight: 800; color: #8b5cf6; margin-top: 4px;">R$ 0,00</div>
+        <div id="statMesesIncentivoMaximo" style="font-size: 11.5px; color: #64748b; margin-top: 2px;">0 meses atingiram o teto</div>
+      </div>
+
+    </div>
+
+    <!-- Tabela Analítica de Produtividade dos Técnicos -->
+    <div class="card" style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 12px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
+      
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <div>
+          <h3 style="font-size: 16px; font-weight: 800; color: #1e293b; margin: 0;">
+            📊 Tabela de Desempenho e Produtividade por Técnico
+          </h3>
+          <p style="font-size: 12px; color: #64748b; margin: 2px 0 0 0;">
+            Médias apuradas com base nos faturamentos e importações do período selecionado.
+          </p>
+        </div>
+        <div id="contagemTecnicosPeriodo" style="font-size: 12px; font-weight: 700; color: #475569;">
+          0 técnicos analisados
+        </div>
+      </div>
+
+      <div style="overflow-x: auto;">
+        <table class="table" style="width: 100%; border-collapse: collapse; font-size: 13px;">
+          <thead>
+            <tr style="background: #f8fafc; border-bottom: 2px solid #cbd5e1; text-align: left;">
+              <th style="padding: 10px 12px; font-weight: 700; color: #334155;">Técnico</th>
+              <th style="padding: 10px 12px; font-weight: 700; color: #334155;">Contrato / Setor</th>
+              <th style="padding: 10px 12px; font-weight: 700; color: #334155; text-align: center;">Meses Apurados</th>
+              <th style="padding: 10px 12px; font-weight: 700; color: #16a34a; text-align: center;">Média Mensal</th>
+              <th style="padding: 10px 12px; font-weight: 700; color: #0284c7; text-align: center;">Média Semestral</th>
+              <th style="padding: 10px 12px; font-weight: 700; color: #ea580c; text-align: center;">Média Corretiva</th>
+              <th style="padding: 10px 12px; font-weight: 700; color: #64748b; text-align: center;">Média EPI</th>
+              <th style="padding: 10px 12px; font-weight: 800; color: #1e293b; text-align: center;">Produtividade Geral</th>
+              <th style="padding: 10px 12px; font-weight: 700; color: #8b5cf6; text-align: right;">Incentivo Médio</th>
+              <th style="padding: 10px 12px; font-weight: 700; color: #334155; text-align: center;">Classificação</th>
+            </tr>
+          </thead>
+          <tbody id="tabelaProdutividadeBody">
+            <tr>
+              <td colspan="10" style="text-align: center; color: #64748b; padding: 32px;">
+                Carregando dados de produtividade do período...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+
+  </section>
 
   <!-- Scripts (caminhos relativos para compatibilidade com qualquer subpasta ou servidor local) -->
   <script src="financeiro/js/supabase.js"></script>

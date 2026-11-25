@@ -20,6 +20,7 @@
       this.renderTecnicosStatusList();
       this.renderCentralCards();
       this.initModals();
+      this.initPainelProdutividade();
 
       // 1. Sincroniza Cadastros Globais (Técnicos, Contratos, Setores, Tarefas) do Supabase
       if (window.M03Cadastros && window.M03Cadastros.carregarCadastrosDoSupabase) {
@@ -1494,6 +1495,379 @@
         window.M03Cadastros.deleteTarefa(id);
         this.switchModalTab('tarefas');
       }
+    },
+
+    // =========================================================================
+    // PAINEL DE PRODUTIVIDADE & MÉDIAS POR PERÍODO
+    // =========================================================================
+    initPainelProdutividade() {
+      const tabApuracao = document.getElementById('tabModoApuracao');
+      const tabProd = document.getElementById('tabModoProdutividade');
+      const secaoApuracao = document.getElementById('secaoApuracaoMensal');
+      const secaoProd = document.getElementById('secaoPainelProdutividade');
+
+      if (tabApuracao && tabProd && secaoApuracao && secaoProd) {
+        tabApuracao.addEventListener('click', () => {
+          tabApuracao.classList.add('active');
+          tabProd.classList.remove('active');
+          secaoApuracao.style.display = 'grid';
+          secaoProd.style.display = 'none';
+        });
+
+        tabProd.addEventListener('click', () => {
+          tabProd.classList.add('active');
+          tabApuracao.classList.remove('active');
+          secaoApuracao.style.display = 'none';
+          secaoProd.style.display = 'block';
+          this.prepararFiltrosProdutividade();
+          this.calcularERenderizarProdutividade();
+        });
+      }
+
+      // Atalhos de Período
+      const btnAtalho3 = document.getElementById('btnAtalho3Meses');
+      const btnAtalho6 = document.getElementById('btnAtalho6Meses');
+      const btnAtalhoAno = document.getElementById('btnAtalhoAnoAtual');
+      const btnFiltrar = document.getElementById('btnFiltrarProdutividade');
+
+      if (btnAtalho3) {
+        btnAtalho3.addEventListener('click', () => {
+          this.setPeriodoAtalhoMeses(3);
+          this.calcularERenderizarProdutividade();
+        });
+      }
+      if (btnAtalho6) {
+        btnAtalho6.addEventListener('click', () => {
+          this.setPeriodoAtalhoMeses(6);
+          this.calcularERenderizarProdutividade();
+        });
+      }
+      if (btnAtalhoAno) {
+        btnAtalhoAno.addEventListener('click', () => {
+          const ano = (this.competencia ? this.competencia.slice(0, 4) : '2026');
+          document.getElementById('prodDataInicio').value = `${ano}-01`;
+          document.getElementById('prodDataFim').value = `${ano}-12`;
+          this.calcularERenderizarProdutividade();
+        });
+      }
+      if (btnFiltrar) {
+        btnFiltrar.addEventListener('click', () => {
+          this.calcularERenderizarProdutividade();
+        });
+      }
+    },
+
+    setPeriodoAtalhoMeses(qtdMeses) {
+      const compRef = this.competencia || '2026-10';
+      const [anoStr, mesStr] = compRef.split('-');
+      let ano = parseInt(anoStr, 10);
+      let mes = parseInt(mesStr, 10);
+
+      document.getElementById('prodDataFim').value = `${ano}-${String(mes).padStart(2, '0')}`;
+
+      // Recua N-1 meses
+      for (let i = 1; i < qtdMeses; i++) {
+        mes--;
+        if (mes === 0) {
+          mes = 12;
+          ano--;
+        }
+      }
+      document.getElementById('prodDataInicio').value = `${ano}-${String(mes).padStart(2, '0')}`;
+    },
+
+    prepararFiltrosProdutividade() {
+      const inpIni = document.getElementById('prodDataInicio');
+      const inpFim = document.getElementById('prodDataFim');
+
+      if (inpIni && !inpIni.value) {
+        // Padrão: Últimos 6 meses até a competência ativa
+        this.setPeriodoAtalhoMeses(6);
+      } else if (inpFim && !inpFim.value) {
+        inpFim.value = this.competencia || '2026-10';
+      }
+
+      // Popula select de Técnicos
+      const selTec = document.getElementById('prodFiltroTecnico');
+      if (selTec) {
+        const valAtual = selTec.value || 'all';
+        const tecnicos = window.M03Cadastros.getTecnicos();
+        selTec.innerHTML = '<option value="all">Todos os Técnicos (Visão Geral)</option>' +
+          tecnicos.map(t => `<option value="${t.id}">${t.nome} (Nível 0${t.nivel || 1})</option>`).join('');
+        selTec.value = valAtual;
+      }
+
+      // Popula select de Contratos
+      const selCtr = document.getElementById('prodFiltroContrato');
+      if (selCtr) {
+        const valAtual = selCtr.value || 'all';
+        const contratos = window.M03Cadastros.getContratos();
+        selCtr.innerHTML = '<option value="all">Todos os Contratos</option>' +
+          contratos.map(c => `<option value="${c.id}">${c.codigo} &bull; ${c.nome}</option>`).join('');
+        selCtr.value = valAtual;
+      }
+    },
+
+    obterListaMesesPeriodo(mesIni, mesFim) {
+      if (!mesIni || !mesFim) return [];
+      let [aIni, mIni] = mesIni.split('-').map(Number);
+      let [aFim, mFim] = mesFim.split('-').map(Number);
+
+      if (aIni > aFim || (aIni === aFim && mIni > mFim)) {
+        // Inverte se o usuário colocou o início maior que o fim
+        const tmpA = aIni; const tmpM = mIni;
+        aIni = aFim; mIni = mFim;
+        aFim = tmpA; mFim = tmpM;
+      }
+
+      const lista = [];
+      let aCur = aIni;
+      let mCur = mIni;
+
+      while (aCur < aFim || (aCur === aFim && mCur <= mFim)) {
+        lista.push(`${aCur}-${String(mCur).padStart(2, '0')}`);
+        mCur++;
+        if (mCur > 12) {
+          mCur = 1;
+          aCur++;
+        }
+      }
+      return lista;
+    },
+
+    async calcularERenderizarProdutividade() {
+      const inpIni = document.getElementById('prodDataInicio');
+      const inpFim = document.getElementById('prodDataFim');
+      const mesIni = (inpIni && inpIni.value) ? inpIni.value : '2026-05';
+      const mesFim = (inpFim && inpFim.value) ? inpFim.value : (this.competencia || '2026-10');
+
+      const meses = this.obterListaMesesPeriodo(mesIni, mesFim);
+      const selTecId = document.getElementById('prodFiltroTecnico')?.value || 'all';
+      const selCtrId = document.getElementById('prodFiltroContrato')?.value || 'all';
+
+      // 1. Garante que os meses do período estejam sincronizados do Supabase para o cache local
+      if (window.M03Cadastros && window.M03Cadastros.sincronizarDoSupabase) {
+        for (const m of meses) {
+          await window.M03Cadastros.sincronizarDoSupabase(m);
+        }
+      }
+
+      const todosTecnicos = window.M03Cadastros.getTecnicos();
+      const contratos = window.M03Cadastros.getContratos();
+      const setores = window.M03Cadastros.getSetores();
+
+      // Filtra técnicos por seleção ou contrato
+      const tecnicosFiltrados = todosTecnicos.filter(t => {
+        if (selTecId !== 'all' && t.id !== selTecId) return false;
+        if (selCtrId !== 'all' && t.contratoId !== selCtrId) return false;
+        return true;
+      });
+
+      // Consolidação de métricas por técnico no período
+      const dadosTecnicos = [];
+      let somaGeralPcts = 0;
+      let countGeralPcts = 0;
+      let somaMensalPcts = 0;
+      let countMensal = 0;
+      let somaSemestralPcts = 0;
+      let countSemestral = 0;
+      let somaCorretivaPcts = 0;
+      let countCorretiva = 0;
+      let totalExcedentesGeral = 0;
+      let somaIncentivoValores = 0;
+      let countIncentivoMeses = 0;
+      let countMesesTetoIncentivo = 0;
+
+      tecnicosFiltrados.forEach(tec => {
+        const ctr = contratos.find(c => c.id === tec.contratoId);
+        const set = setores.find(s => s.id === tec.setorId);
+        const contratoNome = ctr ? (ctr.codigo ? `${ctr.codigo} &bull; ${ctr.nome}` : ctr.nome) : 'Contrato Padrão';
+        const setorNome = set ? set.nome : 'Setor Único';
+
+        let mesesApuradosCount = 0;
+        let tSomaMensal = 0;
+        let tCountMensal = 0;
+        let tSomaSemestral = 0;
+        let tCountSemestral = 0;
+        let tSomaCorretiva = 0;
+        let tCountCorretiva = 0;
+        let tSomaEpi = 0;
+        let tCountEpi = 0;
+        let tSomaIncentivo = 0;
+        let tExcedentesQtd = 0;
+
+        meses.forEach(m => {
+          const fat = window.M03Cadastros.getFaturamento(m, tec.id);
+          if (fat && fat.apurado && Array.isArray(fat.itens) && fat.itens.length > 0) {
+            mesesApuradosCount++;
+
+            // Tarefas individuais
+            fat.itens.forEach(it => {
+              const exec = Number(it.executado) || 0;
+              const nome = (it.nome || '').toUpperCase();
+
+              if (nome.includes('MENSAL')) {
+                tSomaMensal += exec;
+                tCountMensal++;
+                somaMensalPcts += exec;
+                countMensal++;
+              } else if (nome.includes('SEMESTRAL')) {
+                tSomaSemestral += exec;
+                tCountSemestral++;
+                somaSemestralPcts += exec;
+                countSemestral++;
+              } else if (nome.includes('CORRETIVA')) {
+                tSomaCorretiva += exec;
+                tCountCorretiva++;
+                somaCorretivaPcts += exec;
+                countCorretiva++;
+              } else if (nome.includes('EPI')) {
+                tSomaEpi += exec;
+                tCountEpi++;
+              }
+
+              somaGeralPcts += exec;
+              countGeralPcts++;
+            });
+
+            // Excedentes
+            if (fat.excedente && fat.excedente.qtd > 0) {
+              tExcedentesQtd += Number(fat.excedente.qtd) || 0;
+              totalExcedentesGeral += Number(fat.excedente.qtd) || 0;
+            }
+
+            // Incentivo Veicular
+            if (fat.incentivoVeicular && fat.incentivoVeicular.ativo) {
+              const valInc = Number(fat.incentivoVeicular.total) || 0;
+              tSomaIncentivo += valInc;
+              somaIncentivoValores += valInc;
+              countIncentivoMeses++;
+              if (valInc >= 1000) {
+                countMesesTetoIncentivo++;
+              }
+            }
+          }
+        });
+
+        const mediaMensal = tCountMensal > 0 ? (tSomaMensal / tCountMensal) : 0;
+        const mediaSemestral = tCountSemestral > 0 ? (tSomaSemestral / tCountSemestral) : 0;
+        const mediaCorretiva = tCountCorretiva > 0 ? (tSomaCorretiva / tCountCorretiva) : 0;
+        const mediaEpi = tCountEpi > 0 ? (tSomaEpi / tCountEpi) : 0;
+
+        const countTarefasValidas = (tCountMensal ? 1 : 0) + (tCountSemestral ? 1 : 0) + (tCountCorretiva ? 1 : 0) + (tCountEpi ? 1 : 0);
+        const produtividadeGeral = countTarefasValidas > 0 
+          ? ((mediaMensal + mediaSemestral + mediaCorretiva + mediaEpi) / countTarefasValidas) 
+          : 0;
+
+        const incentivoMedio = mesesApuradosCount > 0 ? (tSomaIncentivo / mesesApuradosCount) : 0;
+
+        dadosTecnicos.push({
+          tecnico: tec,
+          contratoNome: `${contratoNome} (${setorNome})`,
+          mesesApuradosCount,
+          mediaMensal,
+          mediaSemestral,
+          mediaCorretiva,
+          mediaEpi,
+          produtividadeGeral,
+          incentivoMedio,
+          tExcedentesQtd
+        });
+      });
+
+      // Ordena decrescente por produtividade geral
+      dadosTecnicos.sort((a, b) => b.produtividadeGeral - a.produtividadeGeral);
+
+      // Atualiza os Cards Superiores do Período
+      const statMediaGeral = countGeralPcts > 0 ? (somaGeralPcts / countGeralPcts) : 0;
+      const statMediaMensal = countMensal > 0 ? (somaMensalPcts / countMensal) : 0;
+      const statMediaSemestral = countSemestral > 0 ? (somaSemestralPcts / countSemestral) : 0;
+      const statMediaCorretiva = countCorretiva > 0 ? (somaCorretivaPcts / countCorretiva) : 0;
+      const statMediaIncentivo = countIncentivoMeses > 0 ? (somaIncentivoValores / countIncentivoMeses) : 0;
+
+      const elStatGeral = document.getElementById('statMediaGeralPct');
+      const elStatMensal = document.getElementById('statMediaMensalPct');
+      const elStatSemestral = document.getElementById('statMediaSemestralPct');
+      const elStatCorretiva = document.getElementById('statMediaCorretivasPct');
+      const elStatExcedentes = document.getElementById('statTotalExcedentesPeriodo');
+      const elStatIncentivoVal = document.getElementById('statMediaIncentivoValor');
+      const elStatIncentivoTeto = document.getElementById('statMesesIncentivoMaximo');
+      const elContagem = document.getElementById('contagemTecnicosPeriodo');
+
+      if (elStatGeral) elStatGeral.textContent = this.formatPct(statMediaGeral);
+      if (elStatMensal) elStatMensal.textContent = this.formatPct(statMediaMensal);
+      if (elStatSemestral) elStatSemestral.textContent = this.formatPct(statMediaSemestral);
+      if (elStatCorretiva) elStatCorretiva.textContent = this.formatPct(statMediaCorretiva);
+      if (elStatExcedentes) elStatExcedentes.textContent = `${totalExcedentesGeral} atendimentos excedentes acumulados`;
+      if (elStatIncentivoVal) elStatIncentivoVal.textContent = `R$ ${this.formatMoeda(statMediaIncentivo)}`;
+      if (elStatIncentivoTeto) elStatIncentivoTeto.textContent = `${countMesesTetoIncentivo} meses atingiram o teto (R$ 1.000,00)`;
+      if (elContagem) elContagem.textContent = `${dadosTecnicos.length} técnico${dadosTecnicos.length !== 1 ? 's' : ''} analisado${dadosTecnicos.length !== 1 ? 's' : ''} no período (${meses.length} meses)`;
+
+      // Renderiza Tabela de Produtividade
+      const tbody = document.getElementById('tabelaProdutividadeBody');
+      if (!tbody) return;
+
+      if (dadosTecnicos.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="10" style="text-align: center; color: #64748b; padding: 32px;">
+              Nenhum técnico encontrado para os filtros selecionados no período de ${mesIni} a ${mesFim}.
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      tbody.innerHTML = dadosTecnicos.map(d => {
+        const pctGeralInt = Math.round(d.produtividadeGeral * 100);
+        let badgeClassificacao = '';
+        if (d.mesesApuradosCount === 0) {
+          badgeClassificacao = `<span class="badge" style="background:#f1f5f9; color:#64748b; font-size:11px;">Sem apuração</span>`;
+        } else if (pctGeralInt >= 95) {
+          badgeClassificacao = `<span class="badge" style="background:#dcfce7; color:#15803d; font-size:11px; font-weight:700;">🟢 Excelente (${pctGeralInt}%)</span>`;
+        } else if (pctGeralInt >= 90) {
+          badgeClassificacao = `<span class="badge" style="background:#fef9c3; color:#854d0e; font-size:11px; font-weight:700;">🟡 Regular (${pctGeralInt}%)</span>`;
+        } else {
+          badgeClassificacao = `<span class="badge" style="background:#fee2e2; color:#b91c1c; font-size:11px; font-weight:700;">🔴 Abaixo (${pctGeralInt}%)</span>`;
+        }
+
+        return `
+          <tr style="border-bottom: 1px solid #f1f5f9;">
+            <td style="padding: 10px 12px;">
+              <strong style="color: #1e293b; display: block;">${d.tecnico.nome}</strong>
+              <span style="font-size: 11px; color: #64748b;">Nível 0${d.tecnico.nivel || 1} &bull; R$ ${this.formatMoeda(d.tecnico.valorContrato || 6000)}</span>
+            </td>
+            <td style="padding: 10px 12px; color: #475569; font-size: 12px;">
+              ${d.contratoNome}
+            </td>
+            <td style="padding: 10px 12px; text-align: center; font-weight: 700; color: #1e293b;">
+              ${d.mesesApuradosCount} / ${meses.length}
+            </td>
+            <td style="padding: 10px 12px; text-align: center; font-weight: 700; color: #16a34a;">
+              ${d.mesesApuradosCount > 0 ? this.formatPct(d.mediaMensal) : '—'}
+            </td>
+            <td style="padding: 10px 12px; text-align: center; font-weight: 700; color: #0284c7;">
+              ${d.mesesApuradosCount > 0 ? this.formatPct(d.mediaSemestral) : '—'}
+            </td>
+            <td style="padding: 10px 12px; text-align: center; font-weight: 700; color: #ea580c;">
+              ${d.mesesApuradosCount > 0 ? this.formatPct(d.mediaCorretiva) : '—'}
+              ${d.tExcedentesQtd > 0 ? `<span style="font-size:10px; display:block; color:#ea580c;">+${d.tExcedentesQtd} exc.</span>` : ''}
+            </td>
+            <td style="padding: 10px 12px; text-align: center; font-weight: 600; color: #64748b;">
+              ${d.mesesApuradosCount > 0 ? this.formatPct(d.mediaEpi) : '—'}
+            </td>
+            <td style="padding: 10px 12px; text-align: center; font-size: 14px; font-weight: 800; color: #1e293b;">
+              ${d.mesesApuradosCount > 0 ? this.formatPct(d.produtividadeGeral) : '—'}
+            </td>
+            <td style="padding: 10px 12px; text-align: right; font-weight: 700; color: #8b5cf6;">
+              ${d.tecnico.hasIncentivoVeicular ? `R$ ${this.formatMoeda(d.incentivoMedio)}` : '<span style="color:#94a3b8; font-size:11px;">Inativo</span>'}
+            </td>
+            <td style="padding: 10px 12px; text-align: center;">
+              ${badgeClassificacao}
+            </td>
+          </tr>
+        `;
+      }).join('');
     }
   };
 
