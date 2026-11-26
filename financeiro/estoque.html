@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Módulo 11 — Controle de Estoque & Produtos (Auvo)</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        .layout-container {
+            max-width: 98% !important;
+            width: 98% !important;
+            padding: 24px 16px !important;
+        }
+
+        .badge-estoque-ok {
+            background: rgba(16, 185, 129, 0.15);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-weight: 600;
+        }
+
+        .badge-estoque-baixo {
+            background: rgba(239, 68, 68, 0.15);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            animation: pulse-border 2s infinite;
+        }
+
+        @keyframes pulse-border {
+            0% { border-color: rgba(239, 68, 68, 0.3); }
+            50% { border-color: rgba(239, 68, 68, 0.8); }
+            100% { border-color: rgba(239, 68, 68, 0.3); }
+        }
+
+        .tag-alerta-minimo {
+            display: inline-block;
+            font-size: 0.72rem;
+            color: #ef4444;
+            background: rgba(239, 68, 68, 0.1);
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-top: 4px;
+            font-weight: 600;
+        }
+
+        .btn-sync {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: #2563eb;
+            color: #fff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-sync:hover {
+            background: #1d4ed8;
+        }
+
+        .btn-sync.spinning #syncIcon {
+            display: inline-block;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            100% { transform: rotate(360deg); }
+        }
+
+        .banner-aviso {
+            background: rgba(30, 41, 59, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 14px 20px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.88rem;
+        }
+
+        /* Estilo da Tabela de Estoque */
+        #tabelaEstoque th {
+            padding: 12px 14px;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        #tabelaEstoque td {
+            padding: 12px 14px;
+            font-size: 0.86rem;
+        }
+
+        .th-sort {
+            background: none;
+            border: none;
+            color: inherit;
+            font: inherit;
+            cursor: pointer;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+    </style>
+</head>
+<body class="finance-body">
+    <!-- Navbar Superior -->
+    <header class="finance-header">
+        <div class="header-content">
+            <div class="brand">
+                <a href="../index.html" class="brand-back" title="Voltar ao Painel Geral">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M19 12H5M12 19l-7-7 7-7"/>
+                    </svg>
+                </a>
+                <div>
+                    <h1 class="brand-title">Controle de Estoque &amp; Materiais</h1>
+                    <div class="brand-subtitle">Integração Direta com Auvo • Módulo 11</div>
+                </div>
+            </div>
+
+            <!-- Navegação entre módulos -->
+            <nav class="module-nav" style="display: flex; gap: 8px; align-items: center;">
+                <a href="faturamento.html" class="nav-item">04 Faturamento</a>
+                <a href="impostos.html" class="nav-item">05 Impostos</a>
+                <a href="comissoes.html" class="nav-item">06 Comissões</a>
+                <a href="intermediacao.html" class="nav-item">07 Intermediação</a>
+                <a href="locacoes.html" class="nav-item">08 Locações</a>
+                <a href="inadimplencia.html" class="nav-item">09 Inadimplência</a>
+                <a href="relatorio_gerencial.html" class="nav-item">10 Gerencial</a>
+                <a href="estoque.html" class="nav-item active">11 Estoque</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="layout-container">
+        <!-- Banner de Status da Sincronização Auvo -->
+        <div class="banner-aviso" id="bannerSyncInfo">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <span style="font-size: 1.4rem;">📦</span>
+                <div>
+                    <div style="font-weight: 600; color: #fff;">Sincronização Auvo API v2</div>
+                    <div style="color: var(--text-muted); font-size: 0.8rem;" id="infoUltimaSync">
+                        Última sincronização: Carregando...
+                    </div>
+                </div>
+            </div>
+            <div style="display: flex; gap: 12px; align-items: center;">
+                <span id="badgeAutoSync" style="font-size: 0.75rem; color: #34d399; background: rgba(16, 185, 129, 0.1); padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(16, 185, 129, 0.2);">
+                    ● Atualização automática: 15 min
+                </span>
+                <button class="btn-sync" id="btnSincronizarAgora">
+                    <span id="syncIcon">🔄</span>
+                    <span id="syncText">Atualizar agora</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Cards de Métricas Rápidas -->
+        <section class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-bottom: 24px;">
+            <div class="metric-card">
+                <div class="metric-label">Total de Itens Cadastrados</div>
+                <div class="metric-value" id="valTotalItens">0</div>
+                <div class="metric-help">Produtos mapeados na base Auvo</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Itens com Estoque Positivo</div>
+                <div class="metric-value" id="valItensComEstoque" style="color: #34d399;">0</div>
+                <div class="metric-help">Produtos com saldo físico &gt; 0</div>
+            </div>
+            <div class="metric-card" style="border-left: 4px solid #ef4444;">
+                <div class="metric-label" style="color: #f87171;">Abaixo do Estoque Mínimo</div>
+                <div class="metric-value" id="valItensAbaixoMinimo" style="color: #ef4444;">0</div>
+                <div class="metric-help">Necessitam de reposição imediata</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Com Técnicos / Colaboradores</div>
+                <div class="metric-value" id="valItensComTecnicos" style="color: #60a5fa;">0</div>
+                <div class="metric-help">Alocados em posse de equipes</div>
+            </div>
+        </section>
+
+        <!-- Barra de Filtros e Busca -->
+        <section class="finance-card" style="margin-bottom: 24px; padding: 18px 24px;">
+            <div style="display: grid; grid-template-columns: 2fr 1.2fr 1fr 1fr auto; gap: 16px; align-items: flex-end;">
+                <div>
+                    <label style="font-size: 0.78rem; color: var(--text-muted); display: block; margin-bottom: 6px;">Buscar Produto:</label>
+                    <input type="text" id="filtroBusca" class="select-control" placeholder="Buscar por código, nome ou descrição..." style="width: 100%;">
+                </div>
+
+                <div>
+                    <label style="font-size: 0.78rem; color: var(--text-muted); display: block; margin-bottom: 6px;">Categoria:</label>
+                    <select id="filtroCategoria" class="select-control" style="width: 100%;">
+                        <option value="all">Todas as Categorias</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label style="font-size: 0.78rem; color: var(--text-muted); display: block; margin-bottom: 6px;">Situação:</label>
+                    <select id="filtroStatus" class="select-control" style="width: 100%;">
+                        <option value="all">Todos (Ativos e Inativos)</option>
+                        <option value="active" selected>Apenas Ativos</option>
+                        <option value="inactive">Apenas Inativos</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label style="font-size: 0.78rem; color: var(--text-muted); display: block; margin-bottom: 6px;">Nível de Estoque:</label>
+                    <select id="filtroEstoqueNivel" class="select-control" style="width: 100%;">
+                        <option value="all">Todos os Saldos</option>
+                        <option value="below_min">Apenas Abaixo do Mínimo ⚠️</option>
+                        <option value="positive">Apenas com Saldo &gt; 0</option>
+                        <option value="zero">Saldo Zerado</option>
+                    </select>
+                </div>
+
+                <div>
+                    <button class="btn btn-secondary" id="btnLimparFiltros" style="height: 38px;">Limpar</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tabela de Produtos -->
+        <section class="finance-card">
+            <div class="card-header">
+                <div>
+                    <h2 class="card-title">Inventário de Estoque de Produtos &amp; Materiais</h2>
+                    <p class="card-subtitle">Consultas sincronizadas com o catálogo e saldos da Auvo</p>
+                </div>
+                <div style="font-size: 0.85rem; color: var(--text-muted);" id="resumoContagemProdutos">
+                    Exibindo 0 produtos
+                </div>
+            </div>
+
+            <!-- Estado de Carregamento -->
+            <div id="loadingIndicator" style="display: none; padding: 48px; text-align: center;">
+                <div class="spinner" style="margin: 0 auto 16px;"></div>
+                <div style="color: #fff; font-weight: 600; font-size: 1.1rem;">Sincronizando estoque com Auvo...</div>
+                <div style="color: var(--text-muted); font-size: 0.85rem; margin-top: 6px;">Buscando páginas de catálogo e saldo de técnicos</div>
+            </div>
+
+            <!-- Estado de Falha / Aviso -->
+            <div id="errorBanner" style="display: none; padding: 16px 20px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; margin: 16px; color: #fca5a5;">
+                <strong>⚠️ Aviso de Sincronização:</strong> <span id="errorBannerText"></span>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table-custom" id="tabelaEstoque">
+                    <thead>
+                        <tr>
+                            <th style="width: 110px;"><button class="th-sort" data-col="code">Código <span class="sort-icon">⇅</span></button></th>
+                            <th><button class="th-sort" data-col="name">Produto / Material <span class="sort-icon">⇅</span></button></th>
+                            <th style="width: 160px;"><button class="th-sort" data-col="categoryName">Categoria <span class="sort-icon">⇅</span></button></th>
+                            <th style="text-align: right; width: 140px;"><button class="th-sort" data-col="totalStock">Qtd em Estoque <span class="sort-icon">⇅</span></button></th>
+                            <th style="text-align: right; width: 130px;"><button class="th-sort" data-col="minimumStock">Estoque Mínimo <span class="sort-icon">⇅</span></button></th>
+                            <th style="text-align: center; width: 130px;">Com Técnicos</th>
+                            <th style="text-align: center; width: 100px;"><button class="th-sort" data-col="active">Situação <span class="sort-icon">⇅</span></button></th>
+                            <th style="text-align: center; width: 100px;">Detalhes</th>
+                        </tr>
+                    </thead>
+                    <tbody id="listaEstoqueBody">
+                        <tr>
+                            <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 48px;">
+                                Carregando produtos e estoque...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Paginação Inferior -->
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; border-top: 1px solid var(--border-color);">
+                <div style="color: var(--text-muted); font-size: 0.85rem;" id="infoPaginacao">
+                    Página 1 de 1
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-secondary btn-sm" id="btnPaginaAnt" disabled>&larr; Anterior</button>
+                    <button class="btn btn-secondary btn-sm" id="btnPaginaProx" disabled>Próxima &rarr;</button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- MODAL: Detalhes do Produto e Estoque por Colaborador -->
+    <div class="modal-overlay" id="modalDetalheProduto" style="display: none; z-index: 1000;">
+        <div class="modal-card" style="max-width: 800px; width: 95%; max-height: 88vh; display: flex; flex-direction: column;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
+                <div>
+                    <h2 class="card-title" id="modalProdNome" style="margin: 0; font-size: 1.2rem;">Detalhes do Produto</h2>
+                    <p class="card-subtitle" id="modalProdCodigo" style="margin: 4px 0 0 0;">Código: -</p>
+                </div>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="fecharModalProduto()" style="font-size: 1.1rem; line-height: 1; padding: 6px 10px;">✕</button>
+            </div>
+
+            <div style="flex: 1; overflow-y: auto; padding: 4px 0;">
+                <!-- Informações Cadastrais -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 20px; background: rgba(255, 255, 255, 0.02); padding: 16px; border-radius: 8px; border: 1px solid var(--border-color);">
+                    <div>
+                        <span style="font-size: 0.75rem; color: var(--text-muted); display: block;">Categoria:</span>
+                        <strong id="modalProdCategoria" style="color: #fff; font-size: 0.9rem;">-</strong>
+                    </div>
+                    <div>
+                        <span style="font-size: 0.75rem; color: var(--text-muted); display: block;">Estoque Central (Total):</span>
+                        <strong id="modalProdEstoqueTotal" style="color: #34d399; font-size: 1.1rem;">0</strong>
+                    </div>
+                    <div>
+                        <span style="font-size: 0.75rem; color: var(--text-muted); display: block;">Estoque Mínimo:</span>
+                        <strong id="modalProdEstoqueMin" style="color: #fff; font-size: 0.9rem;">-</strong>
+                    </div>
+                    <div>
+                        <span style="font-size: 0.75rem; color: var(--text-muted); display: block;">Situação:</span>
+                        <span id="modalProdStatus">-</span>
+                    </div>
+                </div>
+
+                <!-- Tabela de Estoque Distribuído por Colaborador -->
+                <h3 style="font-size: 1rem; color: #fff; margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
+                    <span>👥 Estoque com Técnicos / Colaboradores</span>
+                </h3>
+                <div style="border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;">
+                    <table class="table-custom" style="width: 100%;">
+                        <thead>
+                            <tr>
+                                <th style="padding: 10px 14px;">Colaborador</th>
+                                <th style="padding: 10px 14px; text-align: right;">Quantidade em Posse</th>
+                                <th style="padding: 10px 14px; text-align: right;">Última Movimentação</th>
+                            </tr>
+                        </thead>
+                        <tbody id="modalProdListaTecnicos">
+                            <tr>
+                                <td colspan="3" style="text-align: center; color: var(--text-muted); padding: 20px;">
+                                    Nenhum estoque alocado com colaboradores para este item.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; margin-top: 16px; border-top: 1px solid var(--border-color); padding-top: 12px;">
+                <button type="button" class="btn btn-secondary" onclick="fecharModalProduto()">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/estoque.js"></script>
+</body>
+</html>
