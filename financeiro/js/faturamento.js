@@ -68,6 +68,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
     const modalDocumento = document.getElementById('modalDocumento');
     const modalRecebimento = document.getElementById('modalRecebimento');
     const modalContrato = document.getElementById('modalContrato');
+    const modalGestaoContratos = document.getElementById('modalGestaoContratos');
 
     // Controle de concorrência / debounce para prévia de impostos
     let debounceTimerPrevia = null;
@@ -193,8 +194,8 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             });
         }
 
-        // Novo Contrato
-        document.getElementById('btnNovoContrato').addEventListener('click', () => {
+        // Abertura do Modal de Cadastro de Contrato
+        function abrirModalNovoContrato() {
             if (empresas.length === 0) { alert('Cadastre ao menos uma empresa primeiro.'); return; }
 
             document.getElementById('contratoId').value = '';
@@ -227,7 +228,28 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             if (inpDocumento) inpDocumento.placeholder = '00.000.000/0000-00';
             document.getElementById('btnExcluirContratoModal').style.display = 'none';
             abrirModal(modalContrato);
-        });
+        }
+
+        // Botão Novo Contrato (Barra Principal)
+        const btnNovoContrato = document.getElementById('btnNovoContrato');
+        if (btnNovoContrato) {
+            btnNovoContrato.addEventListener('click', abrirModalNovoContrato);
+        }
+
+        // Botão Novo Contrato dentro do Modal de Gestão de Contratos
+        const btnNovoContratoModalGestao = document.getElementById('btnNovoContratoModalGestao');
+        if (btnNovoContratoModalGestao) {
+            btnNovoContratoModalGestao.addEventListener('click', abrirModalNovoContrato);
+        }
+
+        // Botão Gestão de Contratos (Barra Principal)
+        const btnGestaoContratos = document.getElementById('btnGestaoContratos');
+        if (btnGestaoContratos) {
+            btnGestaoContratos.addEventListener('click', () => {
+                renderizarContratos();
+                abrirModal(modalGestaoContratos);
+            });
+        }
 
         // Botões de exclusão nos modais
         const btnExcluirDocModal = document.getElementById('btnExcluirDocumentoModal');
@@ -275,6 +297,11 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         modalEmpresa.style.display = 'none';
         modalDocumento.style.display = 'none';
         modalRecebimento.style.display = 'none';
+        if (modalContrato) modalContrato.style.display = 'none';
+        if (modalGestaoContratos) modalGestaoContratos.style.display = 'none';
+    };
+
+    window.fecharModalContrato = function() {
         if (modalContrato) modalContrato.style.display = 'none';
     };
 
@@ -854,6 +881,11 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
     }
 
     function renderizarContratos() {
+        const elTotalInfo = document.getElementById('totalContratosInfo');
+        if (elTotalInfo) {
+            elTotalInfo.textContent = `Total de ${contratos.length} contrato(s) cadastrado(s)`;
+        }
+
         if (contratos.length === 0) {
             listaContratosBody.innerHTML = `
                 <tr>
@@ -2225,7 +2257,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
                 }
             }
 
-            fecharModais();
+            fecharModalContrato();
             await carregarDadosCompetencia();
             alert('Contrato salvo com sucesso!');
         } catch (err) {
@@ -2272,7 +2304,7 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
 
         try {
             await window.BpoSupabase.request(`contracts?id=eq.${contratoId}`, { method: 'DELETE' });
-            fecharModais();
+            fecharModalContrato();
             await carregarDadosCompetencia();
             alert('Contrato excluído com sucesso!');
         } catch (err) {

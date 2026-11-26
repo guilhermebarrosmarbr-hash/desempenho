@@ -140,6 +140,7 @@
             <div style="display: flex; gap: 12px;">
                 <button class="btn btn-primary" id="btnNovoDocumento">+ Criar Lançamento</button>
                 <button class="btn btn-secondary" id="btnNovoContrato">+ Novo Contrato</button>
+                <button class="btn btn-secondary" id="btnGestaoContratos">📋 Gestão de Contratos</button>
             </div>
             <div>
                 <a href="impostos.html" class="btn btn-secondary btn-sm" style="margin-right: 8px;">Ir para Impostos (05)</a>
@@ -187,17 +188,23 @@
                 </table>
             </div>
         </section>
+    </main>
 
-        <!-- Seção de Contratos Ativos -->
-        <section class="finance-card">
-            <div class="card-header">
+    <!-- MODAL: Gestão de Contratos -->
+    <div class="modal-overlay" id="modalGestaoContratos" style="display: none; z-index: 1000;">
+        <div class="modal-card" style="max-width: 1100px; width: 95%; max-height: 88vh; display: flex; flex-direction: column; padding: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
                 <div>
-                    <h2 class="card-title">Contratos Vinculados</h2>
-                    <p class="card-subtitle">Contratos de clientes com regras de faturamento, comissão e tributação</p>
+                    <h2 class="card-title" style="margin: 0; font-size: 1.2rem;">📋 Gestão de Contratos Vinculados</h2>
+                    <p class="card-subtitle" style="margin: 4px 0 0 0;">Contratos de clientes com regras de faturamento, comissão e tributação</p>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button class="btn btn-primary btn-sm" id="btnNovoContratoModalGestao">+ Novo Contrato</button>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="fecharModais()" style="font-size: 1.1rem; line-height: 1; padding: 6px 10px;">✕</button>
                 </div>
             </div>
 
-            <div class="table-responsive">
+            <div class="table-responsive" style="flex: 1; overflow-y: auto; max-height: 60vh;">
                 <table class="table-custom" id="tabelaContratos">
                     <thead>
                         <tr>
@@ -222,8 +229,13 @@
                     </tbody>
                 </table>
             </div>
-        </section>
-    </main>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; border-top: 1px solid var(--border-color); padding-top: 12px;">
+                <span id="totalContratosInfo" style="color: var(--text-muted); font-size: 0.85rem;"></span>
+                <button type="button" class="btn btn-secondary" onclick="fecharModais()">Fechar</button>
+            </div>
+        </div>
+    </div>
 
     <!-- MODAL: Cadastrar / Editar Empresa -->
     <div class="modal-overlay" id="modalEmpresa">
@@ -679,7 +691,7 @@
     </div>
 
     <!-- MODAL: Cadastrar / Editar Contrato -->
-    <div class="modal-overlay" id="modalContrato">
+    <div class="modal-overlay" id="modalContrato" style="z-index: 1050;">
         <div class="modal-card">
             <h2 class="card-title" id="modalContratoTitulo" style="margin-bottom: 8px;">Cadastrar Novo Contrato</h2>
             <p class="card-subtitle" style="margin-bottom: 20px;">Vincule um contrato com regras de faturamento e comissões.</p>
@@ -761,7 +773,7 @@
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px;">
                     <button type="button" class="btn btn-danger btn-sm" id="btnExcluirContratoModal" style="display: none;">🗑️ Excluir Contrato</button>
                     <div style="display: flex; gap: 12px; margin-left: auto;">
-                        <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
+                        <button type="button" class="btn btn-secondary" onclick="fecharModalContrato()">Cancelar</button>
                         <button type="submit" class="btn btn-primary">Salvar Contrato</button>
                     </div>
                 </div>
