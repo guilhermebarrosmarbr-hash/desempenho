@@ -488,12 +488,37 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         if (estadoVazioGeral) estadoVazioGeral.style.display = 'none';
 
         try {
-            // 1. Carrega Empresas
-            empresas = await window.BpoSupabase.request('companies?order=name.asc', { method: 'GET' }) || [];
+            // Carregamento paralelo de todas as fontes de dados independentes
+            const [
+                empresasRes,
+                contratosRes,
+                billingDocsRes,
+                receiptsRes
+            ] = await Promise.all([
+                window.BpoSupabase.request('companies?order=name.asc', { method: 'GET' }).catch(err => {
+                    console.warn('Erro ao carregar empresas:', err);
+                    return [];
+                }),
+                window.BpoSupabase.request('contracts?order=name.asc', { method: 'GET' }).catch(err => {
+                    console.warn('Erro ao carregar contratos:', err);
+                    return [];
+                }),
+                window.BpoSupabase.request('billing_documents?status=neq.cancelled&order=due_date.asc', { method: 'GET' }).catch(err => {
+                    console.warn('Erro ao carregar billing_documents:', err);
+                    return [];
+                }),
+                window.BpoSupabase.request('receipts?order=receipt_date.asc', { method: 'GET' }).catch(err => {
+                    console.warn('Erro ao carregar receipts:', err);
+                    return [];
+                }),
+                carregarPendenciasManuais()
+            ]);
+
+            // 1. Processa Empresas
+            empresas = empresasRes || [];
             companiesMap.clear();
             empresas.forEach(emp => companiesMap.set(emp.id, emp));
 
-            // Popula seletor de empresas (com 'Todas as empresas' selecionado por padrão)
             const valorAtual = selectEmpresa.value || 'all';
             selectEmpresa.innerHTML = '<option value="all">Todas as empresas</option>';
             empresas.forEach(emp => {
@@ -504,56 +529,50 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
             });
             selectEmpresa.value = valorAtual;
 
-            // 2. Carrega Contratos
-            try {
-                const contratos = await window.BpoSupabase.request('contracts?order=name.asc', { method: 'GET' }) || [];
-                contratosMap.clear();
-                contratos.forEach(c => contratosMap.set(c.id, c));
-            } catch (e) {
-                console.warn('Aviso ao carregar contratos:', e);
-            }
+            // 2. Processa Contratos
+            contratosMap.clear();
+            (contratosRes || []).forEach(c => contratosMap.set(c.id, c));
 
-            // 3. Carrega Lançamentos de Faturamento não cancelados
-            billingDocs = await window.BpoSupabase.request('billing_documents?status=neq.cancelled&order=due_date.asc', { method: 'GET' }) || [];
+            // 3. Processa Lançamentos de Faturamento
+            billingDocs = billingDocsRes || [];
 
-            // 4. Carrega Recebimentos para mapear pagamentos parciais / totais
+            // 4. Processa Recebimentos
             receiptsByDocMap.clear();
-            try {
-                const recs = await window.BpoSupabase.request('receipts?order=receipt_date.asc', { method: 'GET' }) || [];
-                recs.forEach(r => {
-                    let docRelacionadoId = r.external_id || null;
-                    if (!docRelacionadoId && r.notes) {
-                        const m = r.notes.match(/\[doc_id:\s*([a-f0-9\-]+)\]/i);
-                        if (m) docRelacionadoId = m[1];
+            (receiptsRes || []).forEach(r => {
+                let docRelacionadoId = r.external_id || null;
+                if (!docRelacionadoId && r.notes) {
+                    const m = r.notes.match(/\[doc_id:\s*([a-f0-9\-]+)\]/i);
+                    if (m) docRelacionadoId = m[1];
+                }
+                if (docRelacionadoId) {
+                    if (!receiptsByDocMap.has(docRelacionadoId)) {
+                        receiptsByDocMap.set(docRelacionadoId, []);
                     }
-                    if (docRelacionadoId) {
-                        if (!receiptsByDocMap.has(docRelacionadoId)) {
-                            receiptsByDocMap.set(docRelacionadoId, []);
-                        }
-                        receiptsByDocMap.get(docRelacionadoId).push(r);
-                    }
-                });
-            } catch (e) {
-                console.warn('Aviso ao carregar receipts:', e);
-            }
-
-            // 5. Carrega Pendências Manuais
-            await carregarPendenciasManuais();
-
-            // 6. Prepara o contexto fiscal de todas as competências e empresas presentes nos documentos
-            const paresEmpresaComp = new Set();
-            billingDocs.forEach(d => {
-                if (d.company_id && d.competence_month) {
-                    paresEmpresaComp.add(`${d.company_id}::${d.competence_month}`);
+                    receiptsByDocMap.get(docRelacionadoId).push(r);
                 }
             });
 
-            for (const par of paresEmpresaComp) {
-                const [cid, comp] = par.split('::');
-                await obterContextoFiscalCompetencia(cid, comp);
+            // 5. Prepara contexto fiscal apenas se houver notas sem tax_details gravados no banco
+            const paresSemTaxDetails = new Set();
+            billingDocs.forEach(d => {
+                if (d.company_id && d.competence_month) {
+                    const td = d.tax_details || (window.BpoFiscalUtils && window.BpoFiscalUtils.extrairTaxDetails(d));
+                    if (!td || td.imposto_apurado === undefined || td.liquido_apurado === undefined) {
+                        paresSemTaxDetails.add(`${d.company_id}::${d.competence_month}`);
+                    }
+                }
+            });
+
+            // Se houver notas sem gravação prévia, resolve em paralelo sem travar em série
+            if (paresSemTaxDetails.size > 0) {
+                const promisesContexto = Array.from(paresSemTaxDetails).map(par => {
+                    const [cid, comp] = par.split('::');
+                    return obterContextoFiscalCompetencia(cid, comp);
+                });
+                await Promise.all(promisesContexto);
             }
 
-            // 7. Processa e Renderiza Tabelas e Métricas
+            // 6. Processa e Renderiza Tabelas e Métricas
             processarERenderizar();
 
         } catch (err) {
