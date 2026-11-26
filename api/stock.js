@@ -13,10 +13,20 @@
 
 const https = require('https');
 
-// Credenciais da Auvo (armazenadas com segurança no backend)
+// Credenciais da Auvo — obrigatoriamente via variáveis de ambiente
+const AUVO_API_KEY = process.env.AUVO_API_KEY;
+const AUVO_API_TOKEN = process.env.AUVO_API_TOKEN;
+
+if (!AUVO_API_KEY || !AUVO_API_TOKEN) {
+  throw new Error(
+    'Credenciais da Auvo não configuradas. ' +
+    'Defina AUVO_API_KEY e AUVO_API_TOKEN nas variáveis de ambiente.'
+  );
+}
+
 const AUVO_CONFIG = {
-  apiKey: process.env.AUVO_API_KEY || '0R0GL0AE2Ughz4C1f6uhTL5s5rbg6HMq',
-  apiToken: process.env.AUVO_API_TOKEN || 't3BB4Jwz30jtf38RloxT4GB60ruWfQN',
+  apiKey: AUVO_API_KEY,
+  apiToken: AUVO_API_TOKEN,
   baseUrl: 'api.auvo.com.br'
 };
 
