@@ -898,33 +898,41 @@ window.BpoFiscalUtils = window.BpoFiscalUtils || {
         }
 
         listaContratosBody.innerHTML = contratos.map(c => {
-            const clienteExibicao = c._clientName ? escapeHtml(c._clientName) : '<span style="color:var(--text-muted);font-size:0.85rem;">Não informado</span>';
-            const docExibicao = c._clientDoc ? `<span style="font-family: monospace; font-size: 0.85rem;">${escapeHtml(c._clientDoc)}</span>` : '<span style="color:var(--text-muted);font-size:0.85rem;">-</span>';
+            const clienteExibicao = c._clientName ? escapeHtml(c._clientName) : '<span style="color:var(--text-muted);font-size:0.8rem;">Não informado</span>';
+            const docExibicao = c._clientDoc ? `<span style="font-family: monospace; font-size: 0.8rem; white-space: nowrap;">${escapeHtml(c._clientDoc)}</span>` : '<span style="color:var(--text-muted);font-size:0.8rem;">-</span>';
             const tipoContrato = c.contract_type || 'B2B';
             const tipoBadgeClass = tipoContrato === 'B2G' ? 'badge-info' : (tipoContrato === 'B2C' ? 'badge-warning' : 'badge-primary');
-            const tipoBadge = `<span class="badge ${tipoBadgeClass}">${escapeHtml(tipoContrato)}</span>`;
+            const tipoBadge = `<span class="badge ${tipoBadgeClass}" style="padding: 2px 6px; font-size: 0.72rem;">${escapeHtml(tipoContrato)}</span>`;
 
             const statusBadge = c.status === 'active' 
-                ? '<span class="badge badge-success">Ativo</span>' 
-                : `<span class="badge badge-warning">${escapeHtml(c.status)}</span>`;
+                ? '<span class="badge badge-success" style="padding: 2px 6px; font-size: 0.72rem;">Ativo</span>' 
+                : `<span class="badge badge-warning" style="padding: 2px 6px; font-size: 0.72rem;">${escapeHtml(c.status)}</span>`;
 
             const emp = companiesMap.get(c.company_id);
-            const empText = emp ? ` <span style="font-size:0.75rem; color:var(--text-muted);">(${escapeHtml(emp.trade_name || emp.name)})</span>` : '';
+            const empText = emp ? `<br><span style="font-size:0.72rem; color:var(--text-muted);">(${escapeHtml(emp.trade_name || emp.name)})</span>` : '';
+
+            const freqMap = {
+                'monthly': 'Mensal',
+                'quarterly': 'Trimestral',
+                'annual': 'Anual',
+                'punctual': 'Pontual'
+            };
+            const freqExibicao = freqMap[c.billing_frequency] || escapeHtml(c.billing_frequency || '-');
 
             return `
                 <tr>
-                    <td style="font-weight: 600; color: #fff;">${escapeHtml(c.code)}${empText}</td>
-                    <td>${tipoBadge}</td>
-                    <td>${escapeHtml(c.name)}</td>
-                    <td>${clienteExibicao}</td>
-                    <td>${docExibicao}</td>
-                    <td>${escapeHtml(window.BpoMoney.formatBRL(c.reference_value))}</td>
-                    <td>${escapeHtml(c.billing_frequency)}</td>
-                    <td>${c.commission_eligible ? 'Sim' : 'Não'}</td>
-                    <td>${statusBadge}</td>
-                    <td style="white-space: nowrap;">
-                        <button class="btn btn-primary btn-sm btn-editar-contrato" data-id="${escapeHtml(c.id)}">Editar</button>
-                        <button class="btn btn-danger btn-sm btn-excluir-contrato" data-id="${escapeHtml(c.id)}" title="Excluir Contrato" style="padding: 4px 8px; margin-left: 4px;">🗑️</button>
+                    <td style="font-weight: 600; color: #fff; padding: 8px 12px; white-space: nowrap;">${escapeHtml(c.code)}${empText}</td>
+                    <td style="padding: 8px; text-align: center;">${tipoBadge}</td>
+                    <td style="padding: 8px 12px; font-weight: 500;">${escapeHtml(c.name)}</td>
+                    <td style="padding: 8px 12px;">${clienteExibicao}</td>
+                    <td style="padding: 8px 10px;">${docExibicao}</td>
+                    <td style="padding: 8px 12px; text-align: right; font-weight: 600; color: #fff; white-space: nowrap;">${escapeHtml(window.BpoMoney.formatBRL(c.reference_value))}</td>
+                    <td style="padding: 8px 10px; text-align: center; font-size: 0.8rem;">${freqExibicao}</td>
+                    <td style="padding: 8px; text-align: center; font-size: 0.8rem;">${c.commission_eligible ? 'Sim' : 'Não'}</td>
+                    <td style="padding: 8px; text-align: center;">${statusBadge}</td>
+                    <td style="padding: 8px 12px; text-align: center; white-space: nowrap;">
+                        <button class="btn btn-primary btn-sm btn-editar-contrato" data-id="${escapeHtml(c.id)}" style="padding: 3px 8px; font-size: 0.75rem;">Editar</button>
+                        <button class="btn btn-danger btn-sm btn-excluir-contrato" data-id="${escapeHtml(c.id)}" title="Excluir Contrato" style="padding: 3px 7px; margin-left: 4px; font-size: 0.75rem;">🗑️</button>
                     </td>
                 </tr>
             `;
