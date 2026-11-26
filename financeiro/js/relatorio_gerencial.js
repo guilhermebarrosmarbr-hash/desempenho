@@ -103,15 +103,22 @@
     }
 
     async function precarregarContextosFiscaisDocumentos(docs) {
-        const pares = new Set();
+        const paresSemTaxDetails = new Set();
         (docs || []).forEach(d => {
             if (d.company_id && d.competence_month) {
-                pares.add(`${d.company_id}::${d.competence_month}`);
+                const td = d.tax_details || (window.BpoFiscalUtils && window.BpoFiscalUtils.extrairTaxDetails(d));
+                if (!td || td.imposto_apurado === undefined || td.liquido_apurado === undefined) {
+                    paresSemTaxDetails.add(`${d.company_id}::${d.competence_month}`);
+                }
             }
         });
-        for (const par of pares) {
-            const [cid, comp] = par.split('::');
-            await obterContextoFiscalCompetencia(cid, comp);
+
+        if (paresSemTaxDetails.size > 0) {
+            const promisesContexto = Array.from(paresSemTaxDetails).map(par => {
+                const [cid, comp] = par.split('::');
+                return obterContextoFiscalCompetencia(cid, comp);
+            });
+            await Promise.all(promisesContexto);
         }
     }
 

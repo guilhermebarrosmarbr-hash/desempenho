@@ -1073,18 +1073,22 @@ window.BpoFiscalUtils.calcularFaturamentoTotalDoc = function(doc, taxDetails) {
             return `${aComp}-${String(mComp).padStart(2, '0')}`;
         });
 
-        // Busca documentos das competências correspondentes para a Mar Brasil (sem persistir nada)
+        // Busca documentos das competências correspondentes para a Mar Brasil (sem persistir nada) em paralelo
         let servicosTrimestreCents = 0n;
         let produtosTrimestreCents = 0n;
         let irrfTrimestreCents = 0n;
         let mesesComDados = 0;
 
-        for (const m of competenciasOperacionaisTrimestre) {
-            try {
-                const docsMes = await window.BpoSupabase.request(
+        try {
+            const promessasTrimestre = competenciasOperacionaisTrimestre.map(m =>
+                window.BpoSupabase.request(
                     `billing_documents?company_id=eq.${marBrasil.id}&competence_month=eq.${m}&status=neq.cancelled`,
                     { method: 'GET' }
-                );
+                ).catch(() => [])
+            );
+            const resultadosDocsMes = await Promise.all(promessasTrimestre);
+
+            resultadosDocsMes.forEach(docsMes => {
                 if (docsMes && docsMes.length > 0) {
                     mesesComDados++;
                     docsMes.forEach(d => {
@@ -1100,8 +1104,8 @@ window.BpoFiscalUtils.calcularFaturamentoTotalDoc = function(doc, taxDetails) {
                         }
                     });
                 }
-            } catch (e) {}
-        }
+            });
+        } catch (e) {}
 
         // API real: apurarLucroPresumidoTrimestral(receitaServico, receitaProduto, options)
         const apuracaoTrimestral = window.BpoTaxEngine.apurarLucroPresumidoTrimestral(
