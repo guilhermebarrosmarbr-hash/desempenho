@@ -234,7 +234,7 @@ async function sincronizarCompleto() {
 function montarContratosConsolidados(localData = []) {
   const equipsPorCliente = {};
   for (const eq of cacheContratos.equipamentos) {
-    const cid = String(eq.customerId || eq.clientId || '');
+    const cid = String(eq.associatedCustomerId || eq.customerId || eq.clientId || '');
     if (!cid) continue;
     if (!equipsPorCliente[cid]) equipsPorCliente[cid] = [];
     equipsPorCliente[cid].push(eq);
@@ -254,16 +254,16 @@ function montarContratosConsolidados(localData = []) {
       if (ativo) unidadesAtivas++;
       return {
         auvoId: u.id || u.clientId,
-        nome: u.name || u.companyName || u.tradeName || 'Sem nome',
+        nome: u.description || u.name || u.legalName || u.companyName || u.tradeName || 'Sem nome',
         endereco: formatarEndereco(u),
         ativo,
         auvoUrl: `https://app.auvo.com.br/gerenciarClientes/cliente/${u.id || u.clientId}`,
         equipamentos: equips.map(eq => ({
           auvoId: eq.id,
-          nome: eq.description || eq.name || 'Sem nome',
-          identificacao: eq.serialNumber || eq.identification || null,
+          nome: eq.name || eq.description || 'Sem nome',
+          identificacao: eq.identifier || eq.serialNumber || eq.identification || null,
           ativo: eq.active !== false,
-          customerId: eq.customerId || eq.clientId
+          customerId: eq.associatedCustomerId || eq.customerId || eq.clientId
         }))
       };
     });
