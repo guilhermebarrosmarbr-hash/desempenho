@@ -7,6 +7,7 @@ const API = '/api/contracts';
 let contratoId = null;
 let contratoAtual = null;
 let buscaTimer = null;
+let statusEquipFiltro = 'ativo';
 
 // ── Inicialização ─────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -21,6 +22,12 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('filtroBusca').addEventListener('input', e => {
     clearTimeout(buscaTimer);
     buscaTimer = setTimeout(() => filtrarUnidades(e.target.value), 300);
+  });
+  document.getElementById('filtroStatusEquip').addEventListener('change', e => {
+    statusEquipFiltro = e.target.value;
+    if (contratoAtual) {
+      renderizarUnidades(contratoAtual.unidades, document.getElementById('filtroBusca').value);
+    }
   });
 
   carregarContrato();
@@ -58,7 +65,8 @@ function renderizarContrato(c, snap) {
   }
 
   // Resumo
-  const equipTotal = c.unidades.reduce((s, u) => s + u.equipamentos.length, 0);
+  const equipTotalGeral = c.unidades.reduce((s, u) => s + u.equipamentos.length, 0);
+  const equipTotal = c.unidades.reduce((s, u) => s + u.equipamentos.filter(eq => eq.ativo).length, 0);
   const varMaquinas = snap
     ? equipTotal - (snap.total_equipamentos || 0)
     : null;
@@ -79,8 +87,8 @@ function renderizarContrato(c, snap) {
       <div class="resumo-valor">${c.totalUnidades} <span style="font-size:0.8rem;color:#94a3b8;">(${c.unidadesAtivas} ativas)</span></div>
     </div>
     <div class="resumo-item">
-      <div class="resumo-label">Equipamentos</div>
-      <div class="resumo-valor">${equipTotal} <span style="font-size:0.78rem;color:${varColor};">${varLabel}</span></div>
+      <div class="resumo-label">Equipamentos Ativos</div>
+      <div class="resumo-valor">${equipTotal} <span style="font-size:0.78rem;color:var(--text-muted);">(${equipTotalGeral} total)</span> <span style="font-size:0.78rem;color:${varColor};">${varLabel}</span></div>
     </div>
     ${c.maquinasContratadas ? `
     <div class="resumo-item" style="border-left:4px solid ${equipTotal === c.maquinasContratadas ? '#34d399' : '#f59e0b'}">
@@ -130,17 +138,27 @@ function renderizarUnidades(unidades, filtro = '') {
   let visiveis = 0;
 
   unidades.forEach((u, idx) => {
+    const equipsFiltrados = u.equipamentos.filter(eq => {
+      if (statusEquipFiltro === 'ativo') return eq.ativo;
+      if (statusEquipFiltro === 'inativo') return !eq.ativo;
+      return true;
+    });
+
     // Filtro busca: unidade ou algum equipamento
     if (q) {
       const matchUnidade = u.nome.toLowerCase().includes(q) || (u.endereco || '').toLowerCase().includes(q);
-      const matchEquip = u.equipamentos.some(eq =>
+      const matchEquip = equipsFiltrados.some(eq =>
         eq.nome.toLowerCase().includes(q) || (eq.identificacao || '').toLowerCase().includes(q)
       );
       if (!matchUnidade && !matchEquip) return;
     }
     visiveis++;
 
-    const totalEquipsUnidade = u.equipamentos.length;
+    const totalEquipsAtivos = u.equipamentos.filter(eq => eq.ativo).length;
+    const totalEquipsUnidade = equipsFiltrados.length;
+    const labelEquips = statusEquipFiltro === 'ativo'
+      ? `${totalEquipsAtivos} ativos (${u.equipamentos.length} total)`
+      : `${totalEquipsUnidade} equip.`;
     const subtotalFormatado = u.subtotalIncompleto
       ? `<span style="color:#f59e0b;">Incompleto</span>`
       : `R$ ${fmt(u.subtotal)}`;
@@ -160,7 +178,7 @@ function renderizarUnidades(unidades, filtro = '') {
           ${u.endereco ? `<div class="unidade-end">📍 ${esc(u.endereco)}</div>` : ''}
         </div>
         <div style="display:flex;align-items:center;gap:14px;flex-shrink:0;">
-          <span style="font-size:0.82rem;color:var(--text-muted);">${totalEquipsUnidade} equip.</span>
+          <span style="font-size:0.82rem;color:var(--text-muted);">${labelEquips}</span>
           <span style="font-size:0.85rem;font-weight:700;color:#fff;">${subtotalFormatado}</span>
           <a href="${u.auvoUrl}" target="_blank" rel="noopener" class="link-auvo" title="Abrir cadastro na Auvo" onclick="event.stopPropagation()">
             🔗 Auvo
@@ -168,7 +186,7 @@ function renderizarUnidades(unidades, filtro = '') {
         </div>
       </div>
       <div id="equips-${idx}" style="display:none;">
-        ${renderizarEquipamentos(u.equipamentos, idx)}
+        ${renderizarEquipamentos(equipsFiltrados, idx)}
       </div>
     `;
 

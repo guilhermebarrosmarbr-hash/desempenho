@@ -143,7 +143,14 @@
             <div style="font-weight: 700; color: #fff; font-size: 1rem;" id="lblUnidades">Unidades</div>
             <div style="color: var(--text-muted); font-size: 0.82rem; margin-top: 2px;">Expandir para ver os equipamentos de cada unidade</div>
           </div>
-          <input type="text" id="filtroBusca" class="select-control busca-global" placeholder="Buscar unidade, endereço ou equipamento...">
+          <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <select id="filtroStatusEquip" class="select-control" style="width: 170px;">
+              <option value="ativo" selected>Somente Ativos</option>
+              <option value="todos">Todos os Equipamentos</option>
+              <option value="inativo">Somente Inativos</option>
+            </select>
+            <input type="text" id="filtroBusca" class="select-control busca-global" placeholder="Buscar unidade, endereço ou equipamento...">
+          </div>
         </div>
       </div>
 

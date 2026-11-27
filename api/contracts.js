@@ -246,12 +246,19 @@ function montarContratosConsolidados(localData = []) {
 
     // Contagem de equipamentos por unidade
     let totalEquips = 0;
+    let totalEquipsAtivos = 0;
+    let equipsAtivosUnidadesAtivas = 0;
     let unidadesAtivas = 0;
     const unidadesEnriquecidas = unidades.map(u => {
       const equips = equipsPorCliente[String(u.id || u.clientId)] || [];
+      const equipsAtivos = equips.filter(eq => eq.active !== false).length;
       totalEquips += equips.length;
+      totalEquipsAtivos += equipsAtivos;
       const ativo = u.active !== false && u.deleted !== true;
-      if (ativo) unidadesAtivas++;
+      if (ativo) {
+        unidadesAtivas++;
+        equipsAtivosUnidadesAtivas += equipsAtivos;
+      }
       return {
         auvoId: u.id || u.clientId,
         nome: u.description || u.name || u.legalName || u.companyName || u.tradeName || 'Sem nome',
@@ -287,7 +294,9 @@ function montarContratosConsolidados(localData = []) {
       unidades: unidadesEnriquecidas,
       totalUnidades: unidades.length,
       unidadesAtivas,
-      totalEquipamentos: totalEquips,
+      totalEquipamentos: totalEquipsAtivos,
+      totalEquipamentosGeral: totalEquips,
+      equipsAtivosUnidadesAtivas,
       hasLocalData: Object.keys(local).length > 1
     };
   });
@@ -417,19 +426,20 @@ async function handler(req, res) {
         })
       }));
 
-      // Calcula subtotais e total
+      // Calcula subtotais e total (apenas equipamentos ativos e incluídos no contrato)
       let totalContrato = 0;
       let totalIncompleto = false;
       contrato.unidades = contrato.unidades.map(u => {
         let subtotal = 0;
         let subtotalIncompleto = false;
         u.equipamentos.forEach(eq => {
-          if (eq.incluidoContrato !== false) {
+          if (eq.ativo && eq.incluidoContrato !== false) {
             if (eq.valor === null || eq.valor === undefined) {
               subtotalIncompleto = true;
               totalIncompleto = true;
             } else {
               subtotal += eq.valor;
+              totalContrato += eq.valor;
             }
           }
         });
@@ -493,7 +503,7 @@ async function handler(req, res) {
     const kpis = {
       contratosAtivos: todos.filter(c => c.situacao === 'ativo').length,
       unidadesAtivas: todos.reduce((s, c) => s + c.unidadesAtivas, 0),
-      maquinasAtendimento: todos.filter(c => c.situacao === 'ativo').reduce((s, c) => s + c.totalEquipamentos, 0),
+      maquinasAtendimento: todos.filter(c => c.situacao === 'ativo').reduce((s, c) => s + c.equipsAtivosUnidadesAtivas, 0),
       totalContratos: todos.length
     };
 
@@ -510,6 +520,7 @@ async function handler(req, res) {
         totalUnidades: c.totalUnidades,
         unidadesAtivas: c.unidadesAtivas,
         totalEquipamentos: c.totalEquipamentos,
+        totalEquipamentosGeral: c.totalEquipamentosGeral,
         maquinasContratadas: c.maquinasContratadas,
         hasLocalData: c.hasLocalData
       })),

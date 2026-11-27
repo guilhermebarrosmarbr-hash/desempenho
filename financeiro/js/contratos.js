@@ -94,6 +94,9 @@ function renderizarTabela(contratos) {
     const diff = c.maquinasContratadas
       ? ` <span style="color:${c.totalEquipamentos === c.maquinasContratadas ? '#34d399' : '#f59e0b'};font-size:0.75rem;">(prev. ${c.maquinasContratadas})</span>`
       : '';
+    const totalGeralInfo = (c.totalEquipamentosGeral !== undefined && c.totalEquipamentosGeral !== c.totalEquipamentos)
+      ? ` <span style="color:var(--text-muted);font-size:0.75rem;">(${c.totalEquipamentosGeral} total)</span>`
+      : '';
 
     tr.innerHTML = `
       <td>
@@ -103,7 +106,7 @@ function renderizarTabela(contratos) {
       <td>${refText}</td>
       <td>${badgeSit}${inferido}</td>
       <td style="text-align:center;">${c.totalUnidades} <span style="color:var(--text-muted);font-size:0.78rem;">(${c.unidadesAtivas} ativas)</span></td>
-      <td style="text-align:center;">${c.totalEquipamentos}${diff}</td>
+      <td style="text-align:center;"><strong>${c.totalEquipamentos}</strong> ativos${totalGeralInfo}${diff}</td>
       <td style="text-align:center;">${c.maquinasContratadas ?? '<span style="color:var(--text-muted);">—</span>'}</td>
       <td>${pendencia}</td>
     `;
