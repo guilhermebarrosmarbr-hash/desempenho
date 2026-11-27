@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contrato — Módulo 12</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    .layout-container { max-width: 98% !important; width: 98% !important; padding: 24px 16px !important; }
+
+    /* ── Unidade Expandível ──────────────────────────── */
+    .unidade-row {
+      background: var(--bg-card); border: 1px solid var(--border-color);
+      border-radius: 10px; margin-bottom: 10px; overflow: hidden;
+    }
+    .unidade-header {
+      display: flex; align-items: center; gap: 12px; padding: 14px 18px;
+      cursor: pointer; transition: background 0.15s;
+    }
+    .unidade-header:hover { background: rgba(255,255,255,0.03); }
+    .btn-expand {
+      background: none; border: 1px solid var(--border-color); color: var(--text-muted);
+      width: 28px; height: 28px; border-radius: 6px; cursor: pointer;
+      font-size: 0.8rem; display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s; flex-shrink: 0;
+    }
+    .btn-expand.open { background: rgba(99,102,241,0.15); border-color: #6366f1; color: #a5b4fc; }
+
+    .unidade-nome { font-weight: 700; color: #fff; font-size: 0.95rem; }
+    .unidade-end  { font-size: 0.8rem; color: var(--text-muted); margin-top: 2px; }
+    .link-auvo    { font-size: 0.75rem; color: #60a5fa; text-decoration: none; white-space: nowrap; }
+    .link-auvo:hover { text-decoration: underline; }
+
+    /* ── Tabela de Equipamentos ───────────────────────── */
+    .table-equips { width: 100%; border-collapse: collapse; margin: 0; }
+    .table-equips th {
+      padding: 9px 16px; font-size: 0.72rem; text-transform: uppercase;
+      letter-spacing: 0.05em; color: var(--text-muted); border-bottom: 1px solid var(--border-color);
+      background: rgba(99,102,241,0.05); font-weight: 700; text-align: left;
+    }
+    .table-equips td { padding: 11px 16px; font-size: 0.85rem; border-bottom: 1px solid rgba(255,255,255,0.04); vertical-align: middle; }
+    .table-equips tbody tr:last-child td { border-bottom: none; }
+    .table-equips tfoot td { padding: 10px 16px; font-size: 0.85rem; border-top: 1px solid rgba(255,255,255,0.1); font-weight: 700; }
+
+    /* Valor editável */
+    .valor-cell { display: flex; align-items: center; gap: 6px; }
+    .input-valor {
+      background: var(--bg-input); border: 1px solid var(--border-color); color: #fff;
+      padding: 5px 9px; border-radius: 6px; font-size: 0.84rem; width: 120px;
+      font-family: inherit;
+    }
+    .input-valor:focus { outline: none; border-color: #6366f1; }
+    .btn-save-valor {
+      background: #6366f1; color: #fff; border: none; padding: 5px 10px;
+      border-radius: 6px; cursor: pointer; font-size: 0.78rem; font-weight: 600;
+    }
+    .btn-save-valor:hover { background: #4f46e5; }
+    .tag-pendente { font-size: 0.72rem; color: #f59e0b; background: rgba(245,158,11,0.1); padding: 2px 7px; border-radius: 4px; }
+    .tag-nao-incluido { font-size: 0.72rem; color: #94a3b8; background: rgba(148,163,184,0.1); padding: 2px 7px; border-radius: 4px; }
+
+    /* ── Badges ──────────────────────────────────────── */
+    .badge-ativo   { background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.3); padding: 2px 8px; border-radius: 999px; font-size: 0.72rem; font-weight: 700; }
+    .badge-inativo { background: rgba(100,116,139,0.15); color: #94a3b8; border: 1px solid rgba(100,116,139,0.3); padding: 2px 8px; border-radius: 999px; font-size: 0.72rem; font-weight: 700; }
+    .badge-revisar { background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3); padding: 2px 8px; border-radius: 999px; font-size: 0.72rem; font-weight: 700; }
+
+    /* ── Resumo do contrato ───────────────────────────── */
+    .resumo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap: 16px; margin-bottom: 24px; }
+    .resumo-item { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; padding: 14px 18px; }
+    .resumo-label { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px; }
+    .resumo-valor { font-size: 1.1rem; font-weight: 700; color: #fff; }
+
+    /* ── Modal Editar Contrato ────────────────────────── */
+    .modal-overlay {
+      position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+      background: rgba(0,0,0,0.75); backdrop-filter: blur(4px);
+      display: flex; align-items: center; justify-content: center; z-index: 1000;
+    }
+    .modal-card {
+      background: #111827; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px;
+      width: 100%; max-width: 560px; padding: 28px;
+      box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); max-height: 90vh; overflow-y: auto;
+    }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 12px; }
+    .modal-close { background: none; border: none; color: var(--text-muted); font-size: 1.5rem; cursor: pointer; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .form-full { grid-column: 1 / -1; }
+    .form-group { margin-bottom: 2px; }
+    .form-label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 5px; }
+    .form-input { width: 100%; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 8px; color: #fff; padding: 8px 12px; font-size: 0.88rem; font-family: inherit; }
+    .form-input:focus { outline: none; border-color: #6366f1; }
+    textarea.form-input { resize: vertical; min-height: 72px; }
+
+    /* ── Busca ────────────────────────────────────────── */
+    .busca-global { width: 100%; max-width: 440px; }
+
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <!-- Top Navbar -->
+  <header class="top-navbar">
+    <div class="brand-section">
+      <a href="contratos.html" style="text-decoration: none; display: flex; align-items: center; gap: 12px;">
+        <div class="brand-logo" style="background: linear-gradient(135deg, #6366f1, #4f46e5);">12</div>
+        <div>
+          <h1 class="brand-title" id="tituloContrato">Carregando contrato...</h1>
+          <div class="brand-subtitle" id="subtituloContrato">Módulo 12 — Contratos</div>
+        </div>
+      </a>
+    </div>
+    <div class="company-selector-bar" style="display: flex; gap: 10px; align-items: center;">
+      <a href="contratos.html" class="btn btn-secondary btn-sm">← Voltar aos Contratos</a>
+      <button class="btn btn-secondary btn-sm" id="btnEditarContrato">⚙️ Editar Contrato</button>
+    </div>
+  </header>
+
+  <main class="layout-container">
+
+    <!-- Loading -->
+    <div id="loadingState" style="text-align: center; padding: 60px 20px;">
+      <div style="font-size: 1.8rem; margin-bottom: 12px; animation: spin 1s linear infinite;">⏳</div>
+      <p style="color: var(--text-secondary);">Carregando dados do contrato...</p>
+    </div>
+
+    <!-- Conteúdo (oculto até carregar) -->
+    <div id="conteudo" style="display: none;">
+
+      <!-- Alerta situação inferida -->
+      <div id="alertaSituacao" style="display: none; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3); border-radius: 10px; padding: 12px 18px; margin-bottom: 20px; font-size: 0.87rem; color: #fbbf24;">
+        ⚠️ <strong>Situação inferida automaticamente</strong> com base nos cadastros da Auvo. Defina manualmente se necessário.
+      </div>
+
+      <!-- Resumo -->
+      <div class="resumo-grid" id="resumoGrid"></div>
+
+      <!-- Busca + Título tabela -->
+      <div class="finance-card" style="padding: 18px 24px; margin-bottom: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <div>
+            <div style="font-weight: 700; color: #fff; font-size: 1rem;" id="lblUnidades">Unidades</div>
+            <div style="color: var(--text-muted); font-size: 0.82rem; margin-top: 2px;">Expandir para ver os equipamentos de cada unidade</div>
+          </div>
+          <input type="text" id="filtroBusca" class="select-control busca-global" placeholder="Buscar unidade, endereço ou equipamento...">
+        </div>
+      </div>
+
+      <!-- Lista de Unidades -->
+      <div id="listaUnidades"></div>
+
+      <!-- Total do Contrato -->
+      <div class="finance-card" id="totalContrato" style="padding: 18px 24px; margin-top: 20px; display: flex; justify-content: space-between; align-items: center;">
+        <div style="font-weight: 700; color: #fff; font-size: 1rem;">Total Calculado do Contrato</div>
+        <div id="totalContratoValor" style="font-size: 1.3rem; font-weight: 800; color: #34d399;"></div>
+      </div>
+
+    </div><!-- /conteudo -->
+
+  </main>
+
+  <!-- Modal Editar Contrato -->
+  <div id="modalContrato" class="modal-overlay" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 style="color: #fff; font-size: 1.1rem; font-weight: 700;">⚙️ Dados do Contrato</h3>
+        <button class="modal-close" id="btnFecharModal">&times;</button>
+      </div>
+      <form id="formContrato">
+        <input type="hidden" id="contratoAuvoId">
+        <div class="form-grid">
+          <div class="form-group form-full">
+            <label class="form-label">Nome de Exibição</label>
+            <input type="text" id="cNome" class="form-input" placeholder="Nome interno do contrato">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Referência / Nº do Contrato</label>
+            <input type="text" id="cReferencia" class="form-input" placeholder="Ex: CTR-2024-001">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Responsável</label>
+            <input type="text" id="cResponsavel" class="form-input" placeholder="Nome do gestor">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Data de Início</label>
+            <input type="date" id="cDataInicio" class="form-input" style="color-scheme: dark;">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Data de Término</label>
+            <input type="date" id="cDataFim" class="form-input" style="color-scheme: dark;">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Situação Manual</label>
+            <select id="cSituacao" class="form-input">
+              <option value="">Automática (inferida da Auvo)</option>
+              <option value="ativo">Ativo (forçado)</option>
+              <option value="inativo">Inativo (forçado)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Máquinas Contratadas (opcional)</label>
+            <input type="number" id="cMaquinas" class="form-input" placeholder="Qtd. esperada" min="0">
+          </div>
+          <div class="form-group form-full">
+            <label class="form-label">Observações</label>
+            <textarea id="cObs" class="form-input" rows="3"></textarea>
+          </div>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px;">
+          <button type="button" class="btn btn-secondary" id="btnCancelarModal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="js/contrato_detalhe.js"></script>
+</body>
+</html>
